@@ -170,11 +170,8 @@ class ClearA11y_Admin {
         
         echo '<div id="cleara11y-meta-box">';
         echo '<div class="cleara11y-scan-buttons">';
-        echo '<button type="button" class="button button-primary cleara11y-axe-scan-btn" data-post-id="' . $post->ID . '">';
-        echo __('Scan with Axe-core', 'cleara11y');
-        echo '</button>';
-        echo '<button type="button" class="button cleara11y-scan-btn" data-post-id="' . $post->ID . '" style="margin-left: 5px;">';
-        echo __('Quick Scan', 'cleara11y');
+        echo '<button type="button" class="button button-primary cleara11y-comprehensive-scan-btn" data-post-id="' . $post->ID . '">';
+        echo __('Scan for Accessibility Issues', 'cleara11y');
         echo '</button>';
         echo '</div>';
         

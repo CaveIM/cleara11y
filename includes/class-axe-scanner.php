@@ -24,6 +24,7 @@ class ClearA11y_Axe_Scanner {
         // AJAX endpoints for axe-core scanning
         add_action('wp_ajax_cleara11y_axe_scan_post', array($this, 'ajax_axe_scan_post'));
         add_action('wp_ajax_cleara11y_axe_scan_content', array($this, 'ajax_axe_scan_content'));
+        add_action('wp_ajax_cleara11y_get_post_url', array($this, 'ajax_get_post_url'));
     }
     
     /**
@@ -53,6 +54,34 @@ class ClearA11y_Axe_Scanner {
             'post_id' => $post_id,
             'content' => $post_content,
             'scan_url' => get_permalink($post_id)
+        ));
+    }
+    
+    /**
+     * AJAX handler for getting post URL
+     */
+    public function ajax_get_post_url() {
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['nonce'], 'cleara11y_scan_nonce')) {
+            wp_die('Security check failed');
+        }
+        
+        $post_id = intval($_POST['post_id']);
+        
+        // Check permissions
+        if (!$this->user_can_scan_post($post_id)) {
+            wp_send_json_error('Insufficient permissions');
+        }
+        
+        $post_url = get_permalink($post_id);
+        
+        if (!$post_url) {
+            wp_send_json_error('Invalid post ID or post not published');
+        }
+        
+        wp_send_json_success(array(
+            'url' => $post_url,
+            'post_id' => $post_id
         ));
     }
     

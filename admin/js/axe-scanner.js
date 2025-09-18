@@ -36,14 +36,12 @@
         },
         
         bindEvents: function() {
-            // Enhanced scan button with axe-core
-            $(document).on('click', '.cleara11y-axe-scan-btn', this.handleAxeScan.bind(this));
+            // Comprehensive scan button with axe-core
+            $(document).on('click', '.cleara11y-comprehensive-scan-btn', this.handleComprehensiveScan.bind(this));
         },
         
-        handleAxeScan: function(e) {
+        handleComprehensiveScan: function(e) {
             e.preventDefault();
-            
-            // Note: We don't need to check axeLoaded here since we load axe-core into each iframe
             
             var $button = $(e.currentTarget);
             var postId = $button.data('post-id');
@@ -55,14 +53,14 @@
             }
             
             // Show loading state
-            $button.prop('disabled', true).text('Scanning with Axe-core...');
-            $resultsContainer.html('<div class="cleara11y-scan-loading"><div class="spinner is-active"></div><p>Preparing accessibility scan...</p></div>');
+            $button.prop('disabled', true).text('Scanning for Issues...');
+            $resultsContainer.html('<div class="cleara11y-scan-loading"><div class="spinner is-active"></div><p>Running comprehensive accessibility scan...</p></div>');
             
-            // First, get the post content
-            this.getPostContent(postId)
+            // Get the post URL and scan it directly
+            this.getPostUrl(postId)
                 .then(function(response) {
                     if (response.success) {
-                        return ClearA11yAxeScanner.runAxeScan(response.data);
+                        return ClearA11yAxeScanner.runAxeScanOnUrl(response.data.url);
                     } else {
                         throw new Error(response.data);
                     }
@@ -82,17 +80,17 @@
                     ClearA11yAxeScanner.displayError(error.message, $resultsContainer);
                 })
                 .finally(function() {
-                    $button.prop('disabled', false).text('Scan with Axe-core');
+                    $button.prop('disabled', false).text('Scan for Accessibility Issues');
                 });
         },
         
-        getPostContent: function(postId) {
+        getPostUrl: function(postId) {
             return new Promise(function(resolve, reject) {
                 $.ajax({
                     url: cleara11y_ajax.ajax_url,
                     type: 'POST',
                     data: {
-                        action: 'cleara11y_axe_scan_post',
+                        action: 'cleara11y_get_post_url',
                         post_id: postId,
                         nonce: cleara11y_ajax.scan_nonce
                     },
@@ -101,6 +99,75 @@
                         reject(new Error('Network error: ' + error));
                     }
                 });
+            });
+        },
+        
+        runAxeScanOnUrl: function(url) {
+            return new Promise(function(resolve, reject) {
+                // Create a hidden iframe to load the actual page
+                var iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.style.width = '1024px';
+                iframe.style.height = '768px';
+                iframe.src = url;
+                document.body.appendChild(iframe);
+                
+                iframe.onload = function() {
+                    try {
+                        // Load axe-core into the iframe
+                        var axeScript = iframe.contentDocument.createElement('script');
+                        axeScript.src = cleara11y_ajax.plugin_url + 'assets/axe.min.js';
+                        
+                        axeScript.onload = function() {
+                            try {
+                                // Wait a moment for axe to initialize
+                                setTimeout(function() {
+                                    if (!iframe.contentWindow.axe) {
+                                        document.body.removeChild(iframe);
+                                        reject(new Error('Axe-core failed to load in iframe'));
+                                        return;
+                                    }
+                                    
+                                    // Get axe configuration
+                                    var axeConfig = ClearA11yAxeScanner.getAxeConfig();
+                                    
+                                    // Run axe-core scan on the fully rendered page
+                                    iframe.contentWindow.axe.run(iframe.contentDocument, axeConfig, function(err, results) {
+                                        // Clean up iframe
+                                        document.body.removeChild(iframe);
+                                        
+                                        if (err) {
+                                            reject(new Error('Axe scan failed: ' + err.message));
+                                            return;
+                                        }
+                                        
+                                        resolve(results);
+                                    });
+                                }, 1000); // Wait 1 second for page and axe to fully load
+                            } catch (error) {
+                                document.body.removeChild(iframe);
+                                reject(new Error('Axe scan error: ' + error.message));
+                            }
+                        };
+                        
+                        axeScript.onerror = function() {
+                            document.body.removeChild(iframe);
+                            reject(new Error('Failed to load axe-core library into iframe'));
+                        };
+                        
+                        // Add the script to iframe head
+                        iframe.contentDocument.head.appendChild(axeScript);
+                        
+                    } catch (error) {
+                        document.body.removeChild(iframe);
+                        reject(new Error('Iframe setup error: ' + error.message));
+                    }
+                };
+                
+                iframe.onerror = function() {
+                    document.body.removeChild(iframe);
+                    reject(new Error('Failed to load page: ' + url));
+                };
             });
         },
         
@@ -270,7 +337,7 @@
             if ($lastScan.length === 0) {
                 // Create last scan section if it doesn't exist
                 var html = '<div class="cleara11y-last-scan">';
-                html += '<h4>Latest Axe-core Scan</h4>';
+                html += '<h4>Latest Accessibility Scan</h4>';
                 html += '<p><strong>Scanned:</strong> Just now</p>';
                 
                 if (data.violations > 0) {
@@ -288,7 +355,7 @@
                 $('#cleara11y-meta-box').append(html);
             } else {
                 // Update existing summary
-                $lastScan.find('h4').text('Latest Axe-core Scan');
+                $lastScan.find('h4').text('Latest Accessibility Scan');
                 $lastScan.find('p:first').html('<strong>Scanned:</strong> Just now');
                 
                 // Remove old status

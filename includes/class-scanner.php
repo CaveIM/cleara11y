@@ -159,6 +159,8 @@ class ClearA11y_Scanner {
         $batch_posts = array_slice($post_ids, $start_index, $batch_size);
         
         foreach ($batch_posts as $post_id) {
+            // Use basic PHP scanner for bulk scans (faster)
+            // Individual scans can use axe-core for detailed analysis
             $result = $this->scan_post($post_id);
             $progress['results'][] = array(
                 'post_id' => $post_id,
@@ -358,6 +360,71 @@ class ClearA11y_Scanner {
                     'failureSummary' => 'Fix the following: Form element does not have an implicit (wrapped) or explicit (associated) label'
                 );
             }
+        }
+        
+        // Check for color contrast issues (basic detection)
+        $elements_with_style = $xpath->query('//*[@style]');
+        foreach ($elements_with_style as $element) {
+            $style = $element->getAttribute('style');
+            if (preg_match('/color\s*:\s*([^;]+)/i', $style, $color_matches) && 
+                preg_match('/background(?:-color)?\s*:\s*([^;]+)/i', $style, $bg_matches)) {
+                
+                // This is a simplified check - real color contrast requires complex calculations
+                $text_color = trim($color_matches[1]);
+                $bg_color = trim($bg_matches[1]);
+                
+                // Flag potential issues with light colors on light backgrounds
+                if ((stripos($text_color, 'white') !== false || stripos($text_color, '#fff') !== false || stripos($text_color, '#ffffff') !== false) &&
+                    (stripos($bg_color, 'white') !== false || stripos($bg_color, '#fff') !== false || stripos($bg_color, '#ffffff') !== false)) {
+                    
+                    $violations[] = array(
+                        'id' => 'color-contrast',
+                        'impact' => 'serious',
+                        'description' => 'Elements must have sufficient color contrast',
+                        'help' => 'Ensure text and background colors have sufficient contrast ratio',
+                        'helpUrl' => 'https://dequeuniversity.com/rules/axe/4.7/color-contrast',
+                        'tags' => array('cat.color', 'wcag2aa', 'wcag143'),
+                        'target' => array($this->get_element_selector($element)),
+                        'nodes' => array(array(
+                            'html' => $dom->saveHTML($element),
+                            'target' => array($this->get_element_selector($element))
+                        )),
+                        'failureSummary' => 'Fix the following: Element has insufficient color contrast'
+                    );
+                }
+            }
+        }
+        
+        // Check for missing page title
+        $titles = $xpath->query('//title');
+        if ($titles->length === 0 || empty(trim($titles->item(0)->textContent))) {
+            $violations[] = array(
+                'id' => 'document-title',
+                'impact' => 'serious',
+                'description' => 'Documents must have a title element to aid in navigation',
+                'help' => 'Every HTML document must have a title',
+                'helpUrl' => 'https://dequeuniversity.com/rules/axe/4.7/document-title',
+                'tags' => array('cat.text-alternatives', 'wcag2a', 'wcag242'),
+                'target' => array('html'),
+                'nodes' => array(),
+                'failureSummary' => 'Fix the following: Document does not have a title element'
+            );
+        }
+        
+        // Check for missing main landmark
+        $main_elements = $xpath->query('//main | //*[@role="main"]');
+        if ($main_elements->length === 0) {
+            $violations[] = array(
+                'id' => 'landmark-one-main',
+                'impact' => 'moderate',
+                'description' => 'Document should have one main landmark',
+                'help' => 'Ensure the document has a main landmark',
+                'helpUrl' => 'https://dequeuniversity.com/rules/axe/4.7/landmark-one-main',
+                'tags' => array('cat.semantics', 'best-practice'),
+                'target' => array('html'),
+                'nodes' => array(),
+                'failureSummary' => 'Fix the following: Document does not have a main landmark'
+            );
         }
         
         // Mock some passes for demonstration

@@ -112,8 +112,7 @@ class ClearA11y_Admin {
             true
         );
         
-        // Temporarily disabled axe-core scanner
-        /*
+        // Enqueue axe-core scanner
         wp_enqueue_script(
             'cleara11y-axe-scanner',
             CLEARA11Y_PLUGIN_URL . 'admin/js/axe-scanner.js',
@@ -121,7 +120,6 @@ class ClearA11y_Admin {
             CLEARA11Y_VERSION,
             true
         );
-        */
         
         // Localize script
         wp_localize_script('cleara11y-admin', 'cleara11y_ajax', array(

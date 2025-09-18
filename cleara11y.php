@@ -79,7 +79,7 @@ final class ClearA11y {
         
         new ClearA11y_Frontend();
         new ClearA11y_Scanner();
-        // Temporarily disabled: new ClearA11y_Axe_Scanner();
+        new ClearA11y_Axe_Scanner();
     }
     
     /**
@@ -88,7 +88,7 @@ final class ClearA11y {
     private function load_dependencies() {
         require_once CLEARA11Y_PLUGIN_DIR . 'includes/class-database.php';
         require_once CLEARA11Y_PLUGIN_DIR . 'includes/class-scanner.php';
-        // Temporarily disabled: require_once CLEARA11Y_PLUGIN_DIR . 'includes/class-axe-scanner.php';
+        require_once CLEARA11Y_PLUGIN_DIR . 'includes/class-axe-scanner.php';
         require_once CLEARA11Y_PLUGIN_DIR . 'includes/class-admin.php';
         require_once CLEARA11Y_PLUGIN_DIR . 'includes/class-frontend.php';
     }

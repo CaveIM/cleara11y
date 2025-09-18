@@ -396,29 +396,79 @@
                 return;
             }
             
-            var html = '';
+            // Group violations by violation_id (rule type)
+            var groupedViolations = {};
             
             violations.forEach(function(violation) {
-                html += '<div class="cleara11y-violation-item ' + violation.impact + '">';
-                html += '<div class="cleara11y-violation-title">' + violation.description + '</div>';
-                html += '<div class="cleara11y-violation-description">' + violation.help + '</div>';
+                var ruleId = violation.violation_id || 'unknown';
+                if (!groupedViolations[ruleId]) {
+                    groupedViolations[ruleId] = {
+                        rule: violation,
+                        instances: []
+                    };
+                }
+                groupedViolations[ruleId].instances.push(violation);
+            });
+            
+            var html = '';
+            
+            // Display each group
+            Object.keys(groupedViolations).forEach(function(ruleId) {
+                var group = groupedViolations[ruleId];
+                var rule = group.rule;
+                var instances = group.instances;
                 
-                if (violation.help_url) {
-                    html += '<a href="' + violation.help_url + '" target="_blank" class="cleara11y-violation-help">Learn more →</a>';
+                html += '<div class="cleara11y-violation-item ' + rule.impact + '">';
+                html += '<div class="cleara11y-violation-title">' + rule.description + '</div>';
+                html += '<div class="cleara11y-violation-description">' + rule.help + '</div>';
+                
+                if (rule.help_url) {
+                    html += '<a href="' + rule.help_url + '" target="_blank" class="cleara11y-violation-help">Learn more →</a>';
                 }
                 
-                if (violation.target_selector) {
-                    html += '<div class="cleara11y-violation-target">Target: ' + violation.target_selector + '</div>';
+                // Show instance count if more than 1
+                if (instances.length > 1) {
+                    html += '<div class="cleara11y-violation-count"><strong>' + instances.length + ' instances found:</strong></div>';
                 }
                 
-                if (violation.failure_summary) {
-                    html += '<div class="cleara11y-violation-target">Issue: ' + violation.failure_summary + '</div>';
-                }
+                // Show each instance
+                instances.forEach(function(instance, index) {
+                    html += '<div class="cleara11y-violation-instance">';
+                    
+                    if (instances.length > 1) {
+                        html += '<strong>Instance ' + (index + 1) + ':</strong><br>';
+                    }
+                    
+                    if (instance.target_selector) {
+                        html += '<div class="cleara11y-violation-target">Target: ' + instance.target_selector + '</div>';
+                    }
+                    
+                    if (instance.failure_summary) {
+                        html += '<div class="cleara11y-violation-target">Issue: ' + instance.failure_summary + '</div>';
+                    }
+                    
+                    if (instance.html_snippet) {
+                        html += '<div class="cleara11y-violation-target">HTML: ' + ClearA11yAxeScanner.escapeHtml(instance.html_snippet.substring(0, 100)) + (instance.html_snippet.length > 100 ? '...' : '') + '</div>';
+                    }
+                    
+                    html += '</div>';
+                });
                 
                 html += '</div>';
             });
             
             $container.html(html);
+        },
+        
+        escapeHtml: function(text) {
+            var map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, function(m) { return map[m]; });
         },
         
         loadHistory: function() {
@@ -447,7 +497,7 @@
                     if (data.incomplete > 0) {
                         html += '<p class="cleara11y-incomplete"><strong>' + data.incomplete + '</strong> items need manual review</p>';
                     }
-                    html += '<button type="button" class="button cleara11y-view-detailed-results" data-post-id="' + data.post_id + '">View Details</button>';
+                    html += '<p><em>Switch to the "Violations" tab to see details.</em></p>';
                 } else {
                     html += '<p class="cleara11y-success">✅ No violations found!</p>';
                 }
@@ -463,13 +513,14 @@
                 // Remove old status
                 $lastScan.find('.cleara11y-violations, .cleara11y-success, .cleara11y-incomplete').remove();
                 $lastScan.find('.cleara11y-view-detailed-results').remove();
+                $lastScan.find('em').remove();
                 
                 if (data.violations > 0) {
                     $lastScan.append('<p class="cleara11y-violations"><strong>' + data.violations + '</strong> violations found</p>');
                     if (data.incomplete > 0) {
                         $lastScan.append('<p class="cleara11y-incomplete"><strong>' + data.incomplete + '</strong> items need manual review</p>');
                     }
-                    $lastScan.append('<button type="button" class="button cleara11y-view-detailed-results" data-post-id="' + data.post_id + '">View Details</button>');
+                    $lastScan.append('<p><em>Switch to the "Violations" tab to see details.</em></p>');
                 } else {
                     $lastScan.append('<p class="cleara11y-success">✅ No violations found!</p>');
                 }

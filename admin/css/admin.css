@@ -112,6 +112,26 @@
     color: #646970;
 }
 
+.cleara11y-violation-count {
+    margin: 10px 0;
+    padding: 8px;
+    background: #f0f0f1;
+    border-radius: 3px;
+    color: #1d2327;
+}
+
+.cleara11y-violation-instance {
+    margin: 10px 0;
+    padding: 10px;
+    background: #fafafa;
+    border-left: 3px solid #ddd;
+    border-radius: 0 3px 3px 0;
+}
+
+.cleara11y-violation-instance:last-child {
+    margin-bottom: 0;
+}
+
 #cleara11y-meta-box .cleara11y-scan-btn {
     width: 100%;
     margin-bottom: 15px;

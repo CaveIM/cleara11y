@@ -220,7 +220,7 @@ class ClearA11y_Admin {
             
             if ($violations_count > 0) {
                 echo '<p class="cleara11y-violations"><strong>' . $violations_count . '</strong> ' . __('violations found', 'cleara11y') . '</p>';
-                echo '<button type="button" class="button cleara11y-view-results" data-post-id="' . $post->ID . '">' . __('View Details', 'cleara11y') . '</button>';
+                echo '<p><em>' . __('Switch to the "Violations" tab to see details.', 'cleara11y') . '</em></p>';
             } else {
                 echo '<p class="cleara11y-success">' . __('No violations found!', 'cleara11y') . '</p>';
             }

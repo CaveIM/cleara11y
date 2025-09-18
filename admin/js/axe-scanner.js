@@ -43,10 +43,7 @@
         handleAxeScan: function(e) {
             e.preventDefault();
             
-            if (!this.axeLoaded) {
-                alert('Axe-core library is still loading. Please try again in a moment.');
-                return;
-            }
+            // Note: We don't need to check axeLoaded here since we load axe-core into each iframe
             
             var $button = $(e.currentTarget);
             var postId = $button.data('post-id');
@@ -118,24 +115,53 @@
                 
                 iframe.onload = function() {
                     try {
-                        // Get axe configuration
-                        var axeConfig = ClearA11yAxeScanner.getAxeConfig();
+                        // Load axe-core into the iframe
+                        var axeScript = iframe.contentDocument.createElement('script');
+                        axeScript.src = cleara11y_ajax.plugin_url + 'assets/axe.min.js';
                         
-                        // Run axe-core scan
-                        iframe.contentWindow.axe.run(iframe.contentDocument, axeConfig, function(err, results) {
-                            // Clean up iframe
-                            document.body.removeChild(iframe);
-                            
-                            if (err) {
-                                reject(new Error('Axe scan failed: ' + err.message));
-                                return;
+                        axeScript.onload = function() {
+                            try {
+                                // Wait a moment for axe to initialize
+                                setTimeout(function() {
+                                    if (!iframe.contentWindow.axe) {
+                                        document.body.removeChild(iframe);
+                                        reject(new Error('Axe-core failed to load in iframe'));
+                                        return;
+                                    }
+                                    
+                                    // Get axe configuration
+                                    var axeConfig = ClearA11yAxeScanner.getAxeConfig();
+                                    
+                                    // Run axe-core scan
+                                    iframe.contentWindow.axe.run(iframe.contentDocument, axeConfig, function(err, results) {
+                                        // Clean up iframe
+                                        document.body.removeChild(iframe);
+                                        
+                                        if (err) {
+                                            reject(new Error('Axe scan failed: ' + err.message));
+                                            return;
+                                        }
+                                        
+                                        resolve(results);
+                                    });
+                                }, 500); // Wait 500ms for axe to initialize
+                            } catch (error) {
+                                document.body.removeChild(iframe);
+                                reject(new Error('Axe scan error: ' + error.message));
                             }
-                            
-                            resolve(results);
-                        });
+                        };
+                        
+                        axeScript.onerror = function() {
+                            document.body.removeChild(iframe);
+                            reject(new Error('Failed to load axe-core library into iframe'));
+                        };
+                        
+                        // Add the script to iframe head
+                        iframe.contentDocument.head.appendChild(axeScript);
+                        
                     } catch (error) {
                         document.body.removeChild(iframe);
-                        reject(new Error('Axe scan error: ' + error.message));
+                        reject(new Error('Iframe setup error: ' + error.message));
                     }
                 };
                 

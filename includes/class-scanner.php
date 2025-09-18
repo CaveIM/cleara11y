@@ -65,12 +65,21 @@ class ClearA11y_Scanner {
             wp_die('Security check failed');
         }
         
-        $post_ids = array_map('intval', $_POST['post_ids']);
-        $post_types = sanitize_text_field($_POST['post_types'] ?? '');
+        // Get post types from form
+        $post_types_string = sanitize_text_field($_POST['post_types'] ?? '');
+        $post_types = explode(',', $post_types_string);
+        $post_status = sanitize_text_field($_POST['post_status'] ?? 'publish');
         
         // Check permissions
         if (!current_user_can('manage_options')) {
             wp_send_json_error('Insufficient permissions for bulk scanning');
+        }
+        
+        // Get posts to scan based on selected post types
+        $post_ids = $this->get_posts_for_bulk_scan($post_types, $post_status);
+        
+        if (empty($post_ids)) {
+            wp_send_json_error('No posts found to scan with the selected criteria');
         }
         
         // Schedule background processing
@@ -79,7 +88,8 @@ class ClearA11y_Scanner {
         
         wp_send_json_success(array(
             'batch_id' => $batch_id,
-            'message' => 'Bulk scan initiated. You will be notified when complete.'
+            'total_posts' => count($post_ids),
+            'message' => 'Bulk scan initiated for ' . count($post_ids) . ' posts. You will be notified when complete.'
         ));
     }
     
@@ -351,6 +361,44 @@ class ClearA11y_Scanner {
         );
         
         wp_mail($admin_email, $subject, $message);
+    }
+    
+    /**
+     * Get posts for bulk scanning based on post types and status
+     */
+    private function get_posts_for_bulk_scan($post_types, $post_status = 'publish') {
+        // Validate post types
+        $enabled_post_types = get_option('cleara11y_scan_post_types', array('page', 'post'));
+        $valid_post_types = array_intersect($post_types, $enabled_post_types);
+        
+        if (empty($valid_post_types)) {
+            return array();
+        }
+        
+        // Query posts
+        $args = array(
+            'post_type' => $valid_post_types,
+            'post_status' => $post_status === 'any' ? array('publish', 'draft', 'private') : $post_status,
+            'posts_per_page' => 100, // Limit to prevent timeouts
+            'fields' => 'ids',
+            'meta_query' => array(
+                'relation' => 'OR',
+                array(
+                    'key' => '_cleara11y_last_scan',
+                    'compare' => 'NOT EXISTS'
+                ),
+                array(
+                    'key' => '_cleara11y_last_scan',
+                    'value' => date('Y-m-d', strtotime('-7 days')),
+                    'compare' => '<',
+                    'type' => 'DATE'
+                )
+            )
+        );
+        
+        $posts = get_posts($args);
+        
+        return is_array($posts) ? $posts : array();
     }
     
     /**

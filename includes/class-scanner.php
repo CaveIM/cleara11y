@@ -24,6 +24,8 @@ class ClearA11y_Scanner {
         // AJAX endpoints for scanning
         add_action('wp_ajax_cleara11y_scan_post', array($this, 'ajax_scan_post'));
         add_action('wp_ajax_cleara11y_bulk_scan', array($this, 'ajax_bulk_scan'));
+        add_action('wp_ajax_cleara11y_bulk_scan_progress', array($this, 'ajax_bulk_scan_progress'));
+        add_action('wp_ajax_cleara11y_process_bulk_batch', array($this, 'ajax_process_bulk_batch'));
         add_action('wp_ajax_cleara11y_get_scan_results', array($this, 'ajax_get_scan_results'));
         
         // Background processing for bulk scans
@@ -82,15 +84,104 @@ class ClearA11y_Scanner {
             wp_send_json_error('No posts found to scan with the selected criteria');
         }
         
-        // Schedule background processing
+        // Store posts for progressive processing
         $batch_id = uniqid('bulk_scan_');
-        wp_schedule_single_event(time(), 'cleara11y_process_bulk_scan', array($post_ids, $batch_id));
+        set_transient('cleara11y_bulk_posts_' . $batch_id, $post_ids, HOUR_IN_SECONDS);
+        set_transient('cleara11y_bulk_progress_' . $batch_id, array(
+            'processed' => 0,
+            'total' => count($post_ids),
+            'results' => array(),
+            'status' => 'running'
+        ), HOUR_IN_SECONDS);
         
         wp_send_json_success(array(
             'batch_id' => $batch_id,
             'total_posts' => count($post_ids),
-            'message' => 'Bulk scan initiated for ' . count($post_ids) . ' posts. You will be notified when complete.'
+            'message' => 'Bulk scan initiated for ' . count($post_ids) . ' posts.'
         ));
+    }
+    
+    /**
+     * AJAX handler for bulk scan progress
+     */
+    public function ajax_bulk_scan_progress() {
+        $batch_id = sanitize_text_field($_GET['batch_id'] ?? '');
+        
+        if (empty($batch_id)) {
+            wp_send_json_error('Invalid batch ID');
+        }
+        
+        $progress = get_transient('cleara11y_bulk_progress_' . $batch_id);
+        
+        if ($progress === false) {
+            wp_send_json_error('Batch not found or expired');
+        }
+        
+        wp_send_json_success($progress);
+    }
+    
+    /**
+     * AJAX handler for processing bulk scan batches
+     */
+    public function ajax_process_bulk_batch() {
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['nonce'], 'cleara11y_bulk_scan_nonce')) {
+            wp_die('Security check failed');
+        }
+        
+        $batch_id = sanitize_text_field($_POST['batch_id'] ?? '');
+        $batch_size = intval($_POST['batch_size'] ?? 5); // Process 5 posts at a time
+        
+        if (empty($batch_id)) {
+            wp_send_json_error('Invalid batch ID');
+        }
+        
+        // Check permissions
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+        
+        // Get current progress
+        $progress = get_transient('cleara11y_bulk_progress_' . $batch_id);
+        $post_ids = get_transient('cleara11y_bulk_posts_' . $batch_id);
+        
+        if ($progress === false || $post_ids === false) {
+            wp_send_json_error('Batch not found or expired');
+        }
+        
+        if ($progress['status'] === 'completed') {
+            wp_send_json_success($progress);
+            return;
+        }
+        
+        // Process next batch of posts
+        $start_index = $progress['processed'];
+        $batch_posts = array_slice($post_ids, $start_index, $batch_size);
+        
+        foreach ($batch_posts as $post_id) {
+            $result = $this->scan_post($post_id);
+            $progress['results'][] = array(
+                'post_id' => $post_id,
+                'result' => $result
+            );
+            $progress['processed']++;
+            
+            // Update post meta with scan timestamp
+            update_post_meta($post_id, '_cleara11y_last_scan', current_time('mysql'));
+        }
+        
+        // Check if completed
+        if ($progress['processed'] >= $progress['total']) {
+            $progress['status'] = 'completed';
+            
+            // Send notification email
+            $this->send_bulk_scan_notification($batch_id, $progress['results']);
+        }
+        
+        // Update progress
+        set_transient('cleara11y_bulk_progress_' . $batch_id, $progress, HOUR_IN_SECONDS);
+        
+        wp_send_json_success($progress);
     }
     
     /**

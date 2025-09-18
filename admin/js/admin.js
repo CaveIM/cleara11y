@@ -265,10 +265,85 @@
         },
         
         monitorBulkProgress: function(batchId) {
-            // This would monitor the progress of bulk scanning
-            // For now, just show a message
-            $('.progress-text').text('Bulk scan is running in the background. You will receive an email notification when complete.');
-            $('.progress-fill').css('width', '100%');
+            var self = this;
+            var progressInterval;
+            
+            // Start processing batches
+            this.processBulkBatch(batchId);
+            
+            // Monitor progress
+            progressInterval = setInterval(function() {
+                $.ajax({
+                    url: cleara11y_ajax.ajax_url,
+                    type: 'GET',
+                    data: {
+                        action: 'cleara11y_bulk_scan_progress',
+                        batch_id: batchId
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            var progress = response.data;
+                            var percentage = Math.round((progress.processed / progress.total) * 100);
+                            
+                            $('.progress-fill').css('width', percentage + '%');
+                            $('.progress-text').text('Processed ' + progress.processed + ' of ' + progress.total + ' posts (' + percentage + '%)');
+                            
+                            if (progress.status === 'completed') {
+                                clearInterval(progressInterval);
+                                $('.progress-text').text('✅ Bulk scan completed! Processed ' + progress.total + ' posts.');
+                                
+                                // Show results summary
+                                var violations = 0;
+                                progress.results.forEach(function(result) {
+                                    if (result.result && !result.result.error && result.result.violations) {
+                                        violations += result.result.violations;
+                                    }
+                                });
+                                
+                                setTimeout(function() {
+                                    $('.progress-text').append('<br><strong>Total violations found: ' + violations + '</strong>');
+                                }, 1000);
+                            }
+                        }
+                    },
+                    error: function() {
+                        clearInterval(progressInterval);
+                        $('.progress-text').text('❌ Error monitoring progress. Check the results page for completed scans.');
+                    }
+                });
+            }, 2000); // Check every 2 seconds
+        },
+        
+        processBulkBatch: function(batchId) {
+            var self = this;
+            
+            $.ajax({
+                url: cleara11y_ajax.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'cleara11y_process_bulk_batch',
+                    batch_id: batchId,
+                    batch_size: 3, // Process 3 posts at a time to prevent timeouts
+                    nonce: cleara11y_ajax.bulk_scan_nonce
+                },
+                success: function(response) {
+                    if (response.success) {
+                        var progress = response.data;
+                        
+                        if (progress.status !== 'completed') {
+                            // Continue processing next batch after a short delay
+                            setTimeout(function() {
+                                self.processBulkBatch(batchId);
+                            }, 1000);
+                        }
+                    } else {
+                        $('.progress-text').text('❌ Error processing batch: ' + response.data);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    $('.progress-text').text('❌ Network error during batch processing: ' + error);
+                }
+            });
         }
     };
     

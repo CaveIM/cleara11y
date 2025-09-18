@@ -1,8 +1,115 @@
 /* ClearA11y Admin Styles */
 
-/* Meta Box Styles */
+/* Meta box styling */
 #cleara11y-meta-box {
-    padding: 10px 0;
+    padding: 0;
+}
+
+/* Tabbed interface */
+.cleara11y-widget {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+}
+
+.cleara11y-tabs {
+    display: flex;
+    background: #f1f1f1;
+    border-bottom: 1px solid #ccd0d4;
+    margin: 0;
+    padding: 0;
+}
+
+.cleara11y-tab-btn {
+    background: none;
+    border: none;
+    padding: 12px 20px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: #646970;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.cleara11y-tab-btn:hover {
+    background: #e8e8e8;
+    color: #2271b1;
+}
+
+.cleara11y-tab-btn.active {
+    background: #fff;
+    color: #2271b1;
+    border-bottom-color: #2271b1;
+}
+
+.cleara11y-tab-content {
+    padding: 20px;
+}
+
+.cleara11y-tab-pane {
+    display: none;
+}
+
+.cleara11y-tab-pane.active {
+    display: block;
+}
+
+/* Violations display */
+.cleara11y-violation-item {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 15px;
+    padding: 15px;
+    background: #fff;
+}
+
+.cleara11y-violation-item.critical {
+    border-left: 4px solid #d63638;
+}
+
+.cleara11y-violation-item.serious {
+    border-left: 4px solid #f56e28;
+}
+
+.cleara11y-violation-item.moderate {
+    border-left: 4px solid #dba617;
+}
+
+.cleara11y-violation-item.minor {
+    border-left: 4px solid #00a32a;
+}
+
+.cleara11y-violation-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #1d2327;
+}
+
+.cleara11y-violation-description {
+    margin-bottom: 10px;
+    color: #646970;
+}
+
+.cleara11y-violation-help {
+    font-size: 12px;
+    color: #2271b1;
+    text-decoration: none;
+}
+
+.cleara11y-violation-help:hover {
+    text-decoration: underline;
+}
+
+.cleara11y-violation-target {
+    background: #f6f7f7;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    padding: 8px;
+    font-family: monospace;
+    font-size: 11px;
+    margin-top: 10px;
+    color: #646970;
 }
 
 #cleara11y-meta-box .cleara11y-scan-btn {

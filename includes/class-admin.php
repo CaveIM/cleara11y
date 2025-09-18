@@ -151,8 +151,8 @@ class ClearA11y_Admin {
                 __('Accessibility Scanner', 'cleara11y'),
                 array($this, 'meta_box_scanner'),
                 $post_type,
-                'side',
-                'default'
+                'normal',  // Changed from 'side' to 'normal' for main content area
+                'high'     // Changed from 'default' to 'high' for better visibility
             );
         }
     }
@@ -168,12 +168,47 @@ class ClearA11y_Admin {
         
         $latest_scan = ClearA11y_Database::get_latest_scan($post->ID);
         
-        echo '<div id="cleara11y-meta-box">';
+        echo '<div id="cleara11y-meta-box" class="cleara11y-widget">';
+        
+        // Tab navigation
+        echo '<div class="cleara11y-tabs">';
+        echo '<button type="button" class="cleara11y-tab-btn active" data-tab="scan">' . __('Scan', 'cleara11y') . '</button>';
+        echo '<button type="button" class="cleara11y-tab-btn" data-tab="violations">' . __('Violations', 'cleara11y') . '</button>';
+        echo '<button type="button" class="cleara11y-tab-btn" data-tab="history">' . __('History', 'cleara11y') . '</button>';
+        echo '</div>';
+        
+        // Tab content
+        echo '<div class="cleara11y-tab-content">';
+        
+        // Scan tab
+        echo '<div class="cleara11y-tab-pane active" id="cleara11y-tab-scan">';
         echo '<div class="cleara11y-scan-buttons">';
         echo '<button type="button" class="button button-primary cleara11y-comprehensive-scan-btn" data-post-id="' . $post->ID . '">';
         echo __('Scan for Accessibility Issues', 'cleara11y');
         echo '</button>';
         echo '</div>';
+        echo '<div id="cleara11y-scan-results"></div>';
+        echo '</div>';
+        
+        // Violations tab
+        echo '<div class="cleara11y-tab-pane" id="cleara11y-tab-violations">';
+        echo '<div id="cleara11y-violations-list">';
+        if ($latest_scan && $latest_scan->total_violations > 0) {
+            echo '<p>' . __('Loading violations...', 'cleara11y') . '</p>';
+        } else {
+            echo '<p>' . __('No violations found. Run a scan to check for accessibility issues.', 'cleara11y') . '</p>';
+        }
+        echo '</div>';
+        echo '</div>';
+        
+        // History tab
+        echo '<div class="cleara11y-tab-pane" id="cleara11y-tab-history">';
+        echo '<div id="cleara11y-scan-history">';
+        echo '<p>' . __('Loading scan history...', 'cleara11y') . '</p>';
+        echo '</div>';
+        echo '</div>';
+        
+        echo '</div>'; // End tab content
         
         if ($latest_scan) {
             $scan_data = json_decode($latest_scan->scan_results, true);

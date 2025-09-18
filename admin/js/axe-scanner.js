@@ -38,6 +38,31 @@
         bindEvents: function() {
             // Comprehensive scan button with axe-core
             $(document).on('click', '.cleara11y-comprehensive-scan-btn', this.handleComprehensiveScan.bind(this));
+            
+            // Tab switching
+            $(document).on('click', '.cleara11y-tab-btn', this.handleTabSwitch.bind(this));
+        },
+        
+        handleTabSwitch: function(e) {
+            e.preventDefault();
+            
+            var $button = $(e.currentTarget);
+            var tabName = $button.data('tab');
+            
+            // Update active tab button
+            $('.cleara11y-tab-btn').removeClass('active');
+            $button.addClass('active');
+            
+            // Update active tab pane
+            $('.cleara11y-tab-pane').removeClass('active');
+            $('#cleara11y-tab-' + tabName).addClass('active');
+            
+            // Load content for specific tabs
+            if (tabName === 'violations') {
+                this.loadViolations();
+            } else if (tabName === 'history') {
+                this.loadHistory();
+            }
         },
         
         handleComprehensiveScan: function(e) {
@@ -304,6 +329,9 @@
             } else {
                 html += '<h4>⚠️ ' + data.violations + ' Accessibility Violations Found</h4>';
                 html += '<p>Scan completed in ' + (data.duration ? data.duration.toFixed(2) + ' seconds' : 'unknown time') + '</p>';
+                
+                // Show action to view violations
+                html += '<p><strong>→ Switch to the "Violations" tab to see detailed issues and remediation steps.</strong></p>';
             }
             
             if (data.incomplete > 0) {
@@ -313,22 +341,96 @@
             html += '<p><strong>Passes:</strong> ' + data.passes + ' rules passed</p>';
             html += '</div>';
             
-            // Action buttons
-            if (data.violations > 0 || data.incomplete > 0) {
-                html += '<div class="cleara11y-action-buttons">';
-                html += '<button type="button" class="button cleara11y-view-detailed-results" data-post-id="' + data.post_id + '">View Detailed Results</button>';
-                html += '<button type="button" class="button cleara11y-export-results" data-post-id="' + data.post_id + '">Export Report</button>';
-                html += '</div>';
-            }
-            
             html += '</div>';
             
             $container.html(html);
+            
+            // Auto-switch to violations tab if violations found
+            if (data.violations > 0) {
+                setTimeout(function() {
+                    $('.cleara11y-tab-btn[data-tab="violations"]').click();
+                }, 2000);
+            }
         },
         
         displayError: function(message, $container) {
             var html = '<div class="notice notice-error"><p><strong>Axe-core Scan Error:</strong> ' + message + '</p></div>';
             $container.html(html);
+        },
+        
+        loadViolations: function() {
+            var postId = $('.cleara11y-comprehensive-scan-btn').data('post-id');
+            var $container = $('#cleara11y-violations-list');
+            
+            if (!postId) {
+                $container.html('<p>Error: No post ID found</p>');
+                return;
+            }
+            
+            $container.html('<p>Loading violations...</p>');
+            
+            $.ajax({
+                url: cleara11y_ajax.ajax_url,
+                type: 'GET',
+                data: {
+                    action: 'cleara11y_get_scan_results',
+                    post_id: postId,
+                    nonce: cleara11y_ajax.scan_nonce
+                },
+                success: function(response) {
+                    if (response.success && response.data.violations) {
+                        ClearA11yAxeScanner.displayDetailedViolations(response.data.violations, $container);
+                    } else {
+                        $container.html('<p>No violations found. Run a scan to check for accessibility issues.</p>');
+                    }
+                },
+                error: function() {
+                    $container.html('<p>Error loading violations. Please try again.</p>');
+                }
+            });
+        },
+        
+        displayDetailedViolations: function(violations, $container) {
+            if (!violations || violations.length === 0) {
+                $container.html('<p>No violations found. Great job!</p>');
+                return;
+            }
+            
+            var html = '';
+            
+            violations.forEach(function(violation) {
+                html += '<div class="cleara11y-violation-item ' + violation.impact + '">';
+                html += '<div class="cleara11y-violation-title">' + violation.description + '</div>';
+                html += '<div class="cleara11y-violation-description">' + violation.help + '</div>';
+                
+                if (violation.help_url) {
+                    html += '<a href="' + violation.help_url + '" target="_blank" class="cleara11y-violation-help">Learn more →</a>';
+                }
+                
+                if (violation.target_selector) {
+                    html += '<div class="cleara11y-violation-target">Target: ' + violation.target_selector + '</div>';
+                }
+                
+                if (violation.failure_summary) {
+                    html += '<div class="cleara11y-violation-target">Issue: ' + violation.failure_summary + '</div>';
+                }
+                
+                html += '</div>';
+            });
+            
+            $container.html(html);
+        },
+        
+        loadHistory: function() {
+            var postId = $('.cleara11y-comprehensive-scan-btn').data('post-id');
+            var $container = $('#cleara11y-scan-history');
+            
+            $container.html('<p>Loading scan history...</p>');
+            
+            // This would load scan history - for now show placeholder
+            setTimeout(function() {
+                $container.html('<p>Scan history feature coming soon!</p>');
+            }, 500);
         },
         
         updateMetaBoxSummary: function(data) {

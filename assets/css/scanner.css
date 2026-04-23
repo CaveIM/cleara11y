@@ -1,0 +1,197 @@
+/**
+ * ClearA11y Scanner Styles
+ *
+ * @package ClearA11y
+ */
+
+/* Scanner Overlay */
+.cleara11y-scanner-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.8);
+	z-index: 999998;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.cleara11y-scanner-container {
+	background: #fff;
+	width: 90%;
+	max-width: 500px;
+	padding: 30px;
+	border-radius: 8px;
+	box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+	text-align: center;
+}
+
+.cleara11y-scanner-logo {
+	width: 80px;
+	height: 80px;
+	margin: 0 auto 20px;
+	background: #2271b1;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.cleara11y-scanner-logo::before {
+	content: '\f483';
+	font-family: dashicons;
+	font-size: 40px;
+	color: #fff;
+}
+
+.cleara11y-scanner-title {
+	font-size: 1.5em;
+	font-weight: 600;
+	margin: 0 0 10px;
+	color: #1d2327;
+}
+
+.cleara11y-scanner-status {
+	font-size: 1.1em;
+	color: #646970;
+	margin-bottom: 20px;
+}
+
+.cleara11y-scanner-progress {
+	background: #f0f0f1;
+	height: 8px;
+	border-radius: 4px;
+	overflow: hidden;
+	margin-bottom: 15px;
+}
+
+.cleara11y-scanner-progress-bar {
+	height: 100%;
+	background: linear-gradient(90deg, #2271b1, #135e96);
+	transition: width 0.3s ease;
+	width: 0%;
+}
+
+.cleara11y-scanner-progress-bar.scanning {
+	animation: cleara11y-progress-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes cleara11y-progress-pulse {
+	0% { width: 0%; }
+	50% { width: 70%; }
+	100% { width: 100%; }
+}
+
+.cleara11y-scanner-details {
+	font-size: 0.9em;
+	color: #646970;
+	min-height: 20px;
+}
+
+.cleara11y-scanner-complete {
+	display: none;
+}
+
+.cleara11y-scanner-complete.show {
+	display: block;
+}
+
+.cleara11y-scanner-complete-icon {
+	width: 60px;
+	height: 60px;
+	margin: 0 auto 15px;
+	background: #00a32a;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.cleara11y-scanner-complete-icon::before {
+	content: '\147';
+	font-family: dashicons;
+	font-size: 30px;
+	color: #fff;
+}
+
+.cleara11y-scanner-results {
+	text-align: left;
+	margin-top: 20px;
+	padding-top: 20px;
+	border-top: 1px solid #eee;
+}
+
+.cleara11y-scanner-result-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 10px 0;
+}
+
+.cleara11y-scanner-result-label {
+	font-weight: 500;
+}
+
+.cleara11y-scanner-result-count {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 30px;
+	height: 30px;
+	padding: 0 8px;
+	border-radius: 15px;
+	font-weight: 500;
+	color: #fff;
+}
+
+.cleara11y-scanner-result-count.critical {
+	background: #d63638;
+}
+
+.cleara11y-scanner-result-count.moderate {
+	background: #f56e28;
+}
+
+.cleara11y-scanner-result-count.minor {
+	background: #ffb900;
+}
+
+.cleara11y-scanner-close-button {
+	margin-top: 20px;
+}
+
+/* Scanner Error */
+.cleara11y-scanner-error {
+	display: none;
+	background: #fcf0f1;
+	border-left: 4px solid #d63638;
+	padding: 15px;
+	margin-top: 15px;
+	text-align: left;
+}
+
+.cleara11y-scanner-error.show {
+	display: block;
+}
+
+.cleara11y-scanner-error-title {
+	font-weight: 600;
+	color: #d63638;
+	margin-bottom: 5px;
+}
+
+/* Hide scanner elements by default */
+#cleara11y-scanner-overlay,
+#cleara11y-scanner-container {
+	display: none;
+}
+
+#cleara11y-scanner-overlay.show {
+	display: flex;
+}
+
+#cleara11y-scanner-container.show {
+	display: block;
+}

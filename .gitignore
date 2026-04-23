@@ -44,4 +44,11 @@ Thumbs.db
 # Backup files
 *.bak
 *.backup
+*.bak2
+*.bak3
 *~
+*_fix
+*_fix2
+*_revert
+*_revert2
+*_revert3

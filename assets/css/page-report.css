@@ -1,0 +1,437 @@
+/**
+ * ClearA11y Page Report Styles
+ *
+ * Styles for the page-level accessibility report.
+ *
+ * @package ClearA11y
+ */
+
+/* ===== Container ===== */
+.cleara11y-page-report-wrap {
+	max-width: 1400px;
+	margin: 0;
+	padding: 0;
+}
+
+/* ===== Breadcrumb ===== */
+.cleara11y-report-breadcrumb {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 13px;
+	color: #646970;
+	margin-bottom: 16px;
+	flex-wrap: wrap;
+}
+
+.cleara11y-report-breadcrumb a {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	color: #2271b1;
+	text-decoration: none;
+}
+
+.cleara11y-report-breadcrumb a:hover {
+	text-decoration: underline;
+}
+
+.cleara11y-scan-date {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	color: #646970;
+	font-size: 14px;
+	margin: 8px 0 16px 0;
+}
+
+/* ===== Report Grid ===== */
+.cleara11y-report-grid {
+	display: grid;
+	grid-template-columns: 320px 1fr;
+	gap: 24px;
+	margin-top: 20px;
+}
+
+/* ===== Sidebar ===== */
+.cleara11y-report-sidebar {
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+}
+
+.cleara11y-score-card {
+	background: #ffffff;
+	padding: 30px 20px;
+	border: 1px solid #c3c4c7;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+	border-radius: 8px;
+	text-align: center;
+}
+
+.cleara11y-score-circle {
+	width: 140px;
+	height: 140px;
+	border-radius: 50%;
+	margin: 0 auto 16px;
+	position: relative;
+}
+
+.cleara11y-score-inner {
+	position: absolute;
+	top: 12px;
+	left: 12px;
+	right: 12px;
+	bottom: 12px;
+	background: #ffffff;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.cleara11y-score-value {
+	font-size: 52px;
+	font-weight: 700;
+	line-height: 1;
+}
+
+.cleara11y-score-label {
+	font-size: 14px;
+	font-weight: 600;
+	color: #646970;
+}
+
+.cleara11y-issue-summary {
+	display: grid;
+	grid-template-columns: 1fr 1fr 1fr;
+	gap: 12px;
+}
+
+.cleara11y-summary-item {
+	background: #f6f7f7;
+	padding: 16px 12px;
+	border-radius: 8px;
+	text-align: center;
+	border: 1px solid #c3c4c7;
+}
+
+.cleara11y-summary-item.critical {
+	background: #fef2f2;
+	border-color: #fecaca;
+}
+
+.cleara11y-summary-item.moderate {
+	background: #fff7ed;
+	border-color: #fed7aa;
+}
+
+.cleara11y-summary-item.minor {
+	background: #fefce8;
+	border-color: #fef08a;
+}
+
+.cleara11y-summary-count {
+	display: block;
+	font-size: 32px;
+	font-weight: 700;
+	line-height: 1;
+	margin-bottom: 4px;
+}
+
+.cleara11y-summary-item.critical .cleara11y-summary-count {
+	color: #dc2626;
+}
+
+.cleara11y-summary-item.moderate .cleara11y-summary-count {
+	color: #ea580c;
+}
+
+.cleara11y-summary-item.minor .cleara11y-summary-count {
+	color: #ca8a04;
+}
+
+.cleara11y-summary-label {
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: #646970;
+}
+
+.cleara11y-report-actions-card {
+	background: #ffffff;
+	padding: 24px;
+	border: 1px solid #c3c4c7;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+	border-radius: 8px;
+}
+
+.cleara11y-report-actions-card h3 {
+	margin: 0 0 16px 0;
+	font-size: 16px;
+	font-weight: 600;
+	color: #1d2327;
+}
+
+.cleara11y-report-actions-card .button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	width: 100%;
+	margin-bottom: 12px;
+}
+
+.cleara11y-report-actions-card .button:last-child {
+	margin-bottom: 0;
+}
+
+/* ===== Content ===== */
+.cleara11y-report-content {
+	display: flex;
+	flex-direction: column;
+	gap: 20px;
+}
+
+.cleara11y-report-header-card {
+	background: #ffffff;
+	padding: 20px 24px;
+	border: 1px solid #c3c4c7;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+	border-radius: 8px;
+}
+
+.cleara11y-report-header-card h2 {
+	margin: 0;
+	font-size: 18px;
+	font-weight: 600;
+	color: #1d2327;
+}
+
+/* ===== Issues List ===== */
+.cleara11y-issues-list {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.cleara11y-issue-card {
+	background: #ffffff;
+	padding: 20px 24px;
+	border: 1px solid #c3c4c7;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+	border-radius: 8px;
+	border-left: 4px solid;
+}
+
+.cleara11y-issue-card.severity-critical {
+	border-left-color: #dc2626;
+}
+
+.cleara11y-issue-card.severity-moderate {
+	border-left-color: #ea580c;
+}
+
+.cleara11y-issue-card.severity-minor {
+	border-left-color: #ca8a04;
+}
+
+.cleara11y-issue-card-header {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	margin-bottom: 16px;
+}
+
+.cleara11y-issue-title-row {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 16px;
+}
+
+.cleara11y-issue-title {
+	margin: 0;
+	font-size: 16px;
+	font-weight: 600;
+	color: #1d2327;
+}
+
+.cleara11y-issue-severity-badge {
+	padding: 4px 12px;
+	border-radius: 12px;
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	flex-shrink: 0;
+}
+
+.cleara11y-issue-card.severity-critical .cleara11y-issue-severity-badge {
+	background: #fef2f2;
+	color: #dc2626;
+}
+
+.cleara11y-issue-card.severity-moderate .cleara11y-issue-severity-badge {
+	background: #fff7ed;
+	color: #ea580c;
+}
+
+.cleara11y-issue-card.severity-minor .cleara11y-issue-severity-badge {
+	background: #fefce8;
+	color: #ca8a04;
+}
+
+.cleara11y-issue-selector {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 8px 12px;
+	background: #f0f0f1;
+	border-radius: 6px;
+	align-self: flex-start;
+}
+
+.cleara11y-issue-selector code {
+	font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+	font-size: 12px;
+	color: #1d2327;
+	word-break: break-all;
+}
+
+.cleara11y-issue-message {
+	font-size: 14px;
+	color: #3c434a;
+	line-height: 1.6;
+	margin-bottom: 16px;
+}
+
+.cleara11y-issue-card-footer {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	padding-top: 16px;
+	border-top: 1px solid #e5e7eb;
+	flex-wrap: wrap;
+}
+
+.cleara11y-issue-help-link {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 13px;
+	font-weight: 500;
+	color: #2271b1;
+	text-decoration: none;
+}
+
+.cleara11y-issue-help-link:hover {
+	color: #135e96;
+	text-decoration: underline;
+}
+
+.cleara11y-issue-wcag {
+	font-size: 12px;
+	color: #646970;
+}
+
+.cleara11y-issue-wcag strong {
+	color: #3c434a;
+}
+
+/* ===== No Issues ===== */
+.cleara11y-no-issues {
+	background: #ffffff;
+	padding: 60px 40px;
+	border: 1px solid #c3c4c7;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+	border-radius: 8px;
+	text-align: center;
+}
+
+.cleara11y-no-issues-icon {
+	width: 80px;
+	height: 80px;
+	margin: 0 auto 20px;
+	background: #ecfdf5;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.cleara11y-no-issues-icon .dashicons {
+	font-size: 48px;
+	color: #22c55e;
+	width: 48px;
+	height: 48px;
+}
+
+.cleara11y-no-issues h2 {
+	margin: 0 0 8px 0;
+	font-size: 20px;
+	font-weight: 600;
+	color: #1d2327;
+}
+
+.cleara11y-no-issues p {
+	margin: 0;
+	font-size: 15px;
+	color: #646970;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 1200px) {
+	.cleara11y-report-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.cleara11y-report-sidebar {
+		order: -1;
+	}
+
+	.cleara11y-issue-summary {
+		grid-template-columns: 1fr;
+	}
+
+	.cleara11y-summary-item {
+		padding: 12px;
+	}
+}
+
+@media (max-width: 600px) {
+	.cleara11y-report-breadcrumb {
+		font-size: 12px;
+	}
+
+	.cleara11y-score-circle {
+		width: 120px;
+		height: 120px;
+	}
+
+	.cleara11y-score-value {
+		font-size: 42px;
+	}
+
+	.cleara11y-summary-count {
+		font-size: 24px;
+	}
+
+	.cleara11y-issue-card {
+		padding: 16px;
+	}
+
+	.cleara11y-issue-title-row {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+
+	.cleara11y-issue-selector {
+		width: 100%;
+	}
+
+	.cleara11y-issue-selector code {
+		word-break: break-word;
+	}
+}

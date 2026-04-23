@@ -1,0 +1,233 @@
+/**
+ * ClearA11y Metabox Styles
+ *
+ * Styles for the page/post edit screen metabox.
+ *
+ * @package ClearA11y
+ */
+
+.cleara11y-metabox {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+}
+
+/* ===== Score Section ===== */
+.cleara11y-score-section {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 20px 0;
+	border-bottom: 1px solid #e5e7eb;
+	margin-bottom: 16px;
+}
+
+.cleara11y-score-circle {
+	width: 100px;
+	height: 100px;
+	border-radius: 50%;
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin-bottom: 12px;
+}
+
+.cleara11y-score-inner {
+	width: 80px;
+	height: 80px;
+	border-radius: 50%;
+	background: #ffffff;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.cleara11y-score-value {
+	font-size: 32px;
+	font-weight: 700;
+	line-height: 1;
+}
+
+.cleara11y-score-label {
+	font-size: 12px;
+	font-weight: 600;
+	color: #6b7280;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+/* ===== Issue Counts ===== */
+.cleara11y-issue-counts {
+	display: flex;
+	gap: 8px;
+	margin-bottom: 16px;
+}
+
+.cleara11y-issue-count-item {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	padding: 12px 8px;
+	border-radius: 8px;
+	background: #f9fafb;
+	border: 1px solid #e5e7eb;
+}
+
+.cleara11y-issue-count-item.critical {
+	background: #fef2f2;
+	border-color: #fecaca;
+}
+
+.cleara11y-issue-count-item.moderate {
+	background: #fff7ed;
+	border-color: #fed7aa;
+}
+
+.cleara11y-issue-count-item.minor {
+	background: #fefce8;
+	border-color: #fef08a;
+}
+
+.cleara11y-issue-count {
+	font-size: 24px;
+	font-weight: 700;
+	line-height: 1;
+	margin-bottom: 4px;
+}
+
+.cleara11y-issue-count-item.critical .cleara11y-issue-count {
+	color: #dc2626;
+}
+
+.cleara11y-issue-count-item.moderate .cleara11y-issue-count {
+	color: #ea580c;
+}
+
+.cleara11y-issue-count-item.minor .cleara11y-issue-count {
+	color: #ca8a04;
+}
+
+.cleara11y-issue-label {
+	font-size: 10px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: #6b7280;
+}
+
+/* ===== Scan Info ===== */
+.cleara11y-scan-info {
+	padding: 12px;
+	background: #f3f4f6;
+	border-radius: 6px;
+	margin-bottom: 16px;
+}
+
+.cleara11y-scan-date {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	color: #6b7280;
+}
+
+.cleara11y-scan-date svg {
+	flex-shrink: 0;
+}
+
+/* ===== Actions ===== */
+.cleara11y-metabox-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-bottom: 16px;
+}
+
+.cleara11y-metabox-actions .button {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	width: 100%;
+}
+
+.cleara11y-scan-btn,
+.cleara11y-view-btn {
+	padding: 10px 16px;
+	font-size: 13px;
+	font-weight: 600;
+}
+
+.cleara11y-scan-btn svg {
+	color: #6b7280;
+}
+
+.cleara11y-view-btn svg {
+	color: #ffffff;
+}
+
+/* ===== Progress/Complete Indicators ===== */
+.cleara11y-scan-progress,
+.cleara11y-scan-complete {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 12px;
+	padding: 12px;
+	background: #f3f4f6;
+	border-radius: 6px;
+	margin-bottom: 16px;
+	font-size: 13px;
+	font-weight: 500;
+	color: #6b7280;
+}
+
+.cleara11y-scan-complete {
+	background: #ecfdf5;
+	color: #059669;
+}
+
+.cleara11y-scan-complete svg {
+	color: #059669;
+}
+
+/* ===== Report Link ===== */
+.cleara11y-report-link {
+	text-align: center;
+}
+
+.cleara11y-report-link-anchor {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	font-weight: 600;
+	color: #3b82f6;
+	text-decoration: none;
+}
+
+.cleara11y-report-link-anchor:hover {
+	color: #2563eb;
+	text-decoration: underline;
+}
+
+/* ===== Responsive for smaller metabox width ===== */
+@media (max-width: 1400px) {
+	.cleara11y-score-circle {
+		width: 80px;
+		height: 80px;
+	}
+
+	.cleara11y-score-inner {
+		width: 64px;
+		height: 64px;
+	}
+
+	.cleara11y-score-value {
+		font-size: 24px;
+	}
+
+	.cleara11y-issue-count {
+		font-size: 20px;
+	}
+}

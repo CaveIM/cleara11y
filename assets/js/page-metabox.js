@@ -2,7 +2,8 @@
  * ClearA11y Page Metabox JavaScript
  *
  * Handles the page edit metabox functionality including:
- * - Initiating scans for individual pages
+ * - Initiating scans for individual pages (adds to job queue)
+ * - Polling for scan completion
  * - Displaying scan results
  * - Viewing page reports
  *
@@ -24,8 +25,8 @@
 	 * Page Metabox Module
 	 */
 	const PageMetabox = {
-		scanWindow: null,
-		scanCheckInterval: null,
+		pollInterval: null,
+		currentScanId: null,
 
 		/**
 		 * Initialize
@@ -33,7 +34,6 @@
 		init() {
 			this.setupEventListeners();
 			this.checkForScanResult();
-			this.setupMessageListener();
 			this.setupKeyboardShortcuts();
 		},
 
@@ -55,22 +55,6 @@
 
 			// Report link - let it navigate naturally (no JavaScript interception)
 			// The link already has the correct href, so we don't need to prevent default
-		},
-
-		/**
-		 * Setup message listener for scan window communication
-		 */
-		setupMessageListener() {
-			window.addEventListener('message', (event) => {
-				// Verify origin
-				if (event.origin !== window.location.origin) {
-					return;
-				}
-
-				if (event.data && event.data.type === 'cleara11y_scan_complete') {
-					this.handleScanComplete(event.data);
-				}
-			});
 		},
 
 		/**
@@ -123,7 +107,7 @@
 		},
 
 		/**
-		 * Initiate scan for this page
+		 * Initiate scan for this page - adds to job queue
 		 */
 		async initiateScan() {
 			const scanBtn = document.getElementById('cleara11y-scan-page-btn');
@@ -153,13 +137,21 @@
 				}
 
 				const result = await response.json();
+				console.log('[ClearA11y Metabox] Scan response:', result);
 
 				if (!result.success) {
-					throw new Error(result.data.message || 'Failed to initiate scan');
+					throw new Error(result.data?.message || result.message || 'Failed to initiate scan');
 				}
 
-				// Open scan window
-				this.openScanWindow(result.data.scan_url, result.data.token);
+				// Store scan ID and start polling
+				this.currentScanId = result.data?.scan_id;
+
+				if (!this.currentScanId) {
+					throw new Error('No scan ID returned from server');
+				}
+
+				console.log('[ClearA11y Metabox] Starting poll for scan ID:', this.currentScanId);
+				this.startPolling();
 
 			} catch (error) {
 				console.error('[ClearA11y Metabox] Error initiating scan:', error);
@@ -171,98 +163,29 @@
 		},
 
 		/**
-		 * Open scan window
+		 * Start polling for scan completion
 		 */
-		openScanWindow(scanUrl, token) {
-			// Store token for checking results
-			this.currentScanToken = token;
-
-				// Calculate window position (center of screen)
-				const width = 700;
-				const height = 900;
-				const left = Math.max(0, (window.screen.width - width) / 2);
-				const top = Math.max(0, (window.screen.height - height) / 2);
-
-				this.scanWindow = window.open(
-					scanUrl,
-					'cleara11y-scan-' + Date.now(),
-					`width=${width},height=${height},left=${left},top=${top},resizable,scrollbars`
-				);
-
-				if (!this.scanWindow) {
-					this.showError('Please allow popups for this site to scan the page.');
-					this.restoreScanButton();
-					return;
-				}
-
-				// Start checking for scan completion
-				this.startScanCheck();
-			},
-
-		/**
-		 * Start checking for scan completion
-		 */
-		startScanCheck() {
-			let checkCount = 0;
-			const maxChecks = 180; // 3 minutes max
-
-			this.scanCheckInterval = setInterval(() => {
-				checkCount++;
-
-				if (checkCount >= maxChecks) {
-					this.stopScanCheck();
-					this.showError('Scan timed out. Please try again.');
-					this.restoreScanButton();
-					return;
-				}
-
-				// Check if window was closed
-				if (this.scanWindow && this.scanWindow.closed) {
-					this.stopScanCheck();
-					// The scan might still be processing in background
-					// Poll for results
-					this.pollForResults();
-					return;
-				}
-
-			}, 1000);
-		},
-
-		/**
-		 * Stop checking for scan completion
-		 */
-		stopScanCheck() {
-			if (this.scanCheckInterval) {
-				clearInterval(this.scanCheckInterval);
-				this.scanCheckInterval = null;
-			}
-		},
-
-		/**
-		 * Poll for scan results
-		 */
-		async pollForResults() {
-			const progressDiv = document.querySelector('.cleara11y-scan-progress');
-
-			if (progressDiv) {
-				progressDiv.innerHTML = '<span class="spinner is-active"></span><span>Processing scan results...</span>';
-			}
-
+		startPolling() {
 			let pollCount = 0;
-			const maxPolls = 30;
+			const maxPolls = 120; // 4 minutes max (2 second intervals)
 
-			const poll = setInterval(async () => {
+			const progressDiv = document.querySelector('.cleara11y-scan-progress');
+			if (progressDiv) {
+				progressDiv.innerHTML = '<span class="spinner is-active"></span><span>Scan queued - waiting for processing...</span>';
+			}
+
+			this.pollInterval = setInterval(async () => {
 				pollCount++;
 
 				if (pollCount >= maxPolls) {
-					clearInterval(poll);
+					this.stopPolling();
 					this.restoreScanButton();
-					this.showScanComplete(); // Show complete even if we couldn't verify
+					this.showError('Scan timed out. Please try again.');
 					return;
 				}
 
 				try {
-					// Check for updated stats
+					// Check scan status via AJAX (not REST - no permission issues)
 					const response = await fetch(AJAX_URL, {
 						method: 'POST',
 						headers: {
@@ -272,43 +195,43 @@
 							action: 'cleara11y_get_page_stats',
 							nonce: AJAX_NONCE,
 							post_id: POST_ID,
+							scan_id: this.currentScanId,
 						}),
 					});
 
 					if (response.ok) {
 						const result = await response.json();
+
 						if (result.success && result.data.scan_status === 'completed') {
-							clearInterval(poll);
+							this.stopPolling();
 							this.showScanComplete();
 							this.updateMetabox(result.data);
 							return;
 						}
+
+						// Update progress message
+						if (progressDiv && result.success) {
+							if (result.data.scan_status === 'in_progress') {
+								progressDiv.innerHTML = '<span class="spinner is-active"></span><span>Scanning in progress...</span>';
+							} else if (result.data.scan_status === 'pending') {
+								progressDiv.innerHTML = '<span class="spinner is-active"></span><span>Scan queued - waiting for processing...</span>';
+							}
+						}
 					}
 				} catch (error) {
-					console.error('[ClearA11y Metabox] Error polling for results:', error);
+					console.error('[ClearA11y Metabox] Error polling scan status:', error);
 				}
 
 			}, 2000);
 		},
 
 		/**
-		 * Handle scan complete message
+		 * Stop polling for scan completion
 		 */
-		handleScanComplete(data) {
-			this.stopScanCheck();
-
-			if (this.scanWindow && !this.scanWindow.closed) {
-				this.scanWindow.close();
-			}
-
-			if (data.success) {
-				// Redirect to verify token and show results
-				const redirectUrl = window.location.href;
-				const separator = redirectUrl.includes('?') ? '&' : '?';
-				window.location.href = redirectUrl + separator + 'cleara11y_scan_result=' + (data.token || this.currentScanToken);
-			} else {
-				this.restoreScanButton();
-				this.showError('Scan failed: ' + (data.error || 'Unknown error'));
+		stopPolling() {
+			if (this.pollInterval) {
+				clearInterval(this.pollInterval);
+				this.pollInterval = null;
 			}
 		},
 

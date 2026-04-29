@@ -312,13 +312,13 @@
 
 			// Mouse events for tooltips
 			document.addEventListener('mouseenter', function(e) {
-				if (e.target.classList.contains('cleara11y-highlight')) {
+				if (e.target && e.target.classList && e.target.classList.contains('cleara11y-highlight')) {
 					self.showTooltip(e.target, e);
 				}
 			}, true);
 
 			document.addEventListener('mouseleave', function(e) {
-				if (e.target.classList.contains('cleara11y-highlight')) {
+				if (e.target && e.target.classList && e.target.classList.contains('cleara11y-highlight')) {
 					self.hideTooltip();
 				}
 			}, true);
@@ -338,6 +338,7 @@
 			if (!this.panel) return;
 
 			this.panel.classList.add('open');
+			document.body.classList.add('cleara11y-panel-open');
 			if (this.$toggle) {
 				this.$toggle.classList.add('panel-open');
 				this.$toggle.setAttribute('aria-expanded', 'true');
@@ -350,6 +351,7 @@
 			if (!this.panel) return;
 
 			this.panel.classList.remove('open');
+			document.body.classList.remove('cleara11y-panel-open');
 			if (this.$toggle) {
 				this.$toggle.classList.remove('panel-open');
 				this.$toggle.setAttribute('aria-expanded', 'false');
@@ -462,19 +464,23 @@
 			// Add focus highlight to this issue's elements
 			try {
 				var elements = document.querySelectorAll(issue.selector);
+				console.log('ClearA11y: Highlighting issue', index, 'found', elements.length, 'elements with selector:', issue.selector);
 				elements.forEach(function(el) {
+					// Ensure base highlight class is present for the pulse animation
+					el.classList.add('cleara11y-highlight', 'severity-' + issue.severity);
 					el.classList.add('cleara11y-highlight-focus');
-
-					// Scroll to first element
-					if (elements.length > 0) {
-						elements[0].scrollIntoView({
-							behavior: 'smooth',
-							block: 'center'
-						});
-					}
+					console.log('ClearA11y: Added highlight classes to element:', el);
 				});
+
+				// Scroll to first element
+				if (elements.length > 0) {
+					elements[0].scrollIntoView({
+						behavior: 'smooth',
+						block: 'center'
+					});
+				}
 			} catch (e) {
-				console.warn('Could not focus element with selector:', issue.selector);
+				console.warn('ClearA11y: Could not focus element with selector:', issue.selector, e);
 			}
 
 			// Update panel selection

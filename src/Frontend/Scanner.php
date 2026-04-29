@@ -37,6 +37,7 @@ class Scanner {
 	public function __construct() {
 		add_action('template_redirect', [$this, 'detect_scan_token']);
 		add_action('wp_enqueue_scripts', [$this, 'enqueue_scanner_scripts']);
+		add_filter('show_admin_bar', [$this, 'hide_admin_bar_during_scan']);
 	}
 
 	/**
@@ -174,6 +175,20 @@ class Scanner {
 				CLEARA11Y_VERSION
 			);
 		}
+	}
+
+	/**
+	 * Hide admin bar during scanning to simulate visitor experience.
+	 *
+	 * @param bool $show Whether to show admin bar.
+	 * @return bool False during scan, original value otherwise.
+	 */
+	public function hide_admin_bar_during_scan(bool $show): bool {
+		// Hide admin bar when scanning
+		if (self::is_scanning()) {
+			return false;
+		}
+		return $show;
 	}
 
 	/**

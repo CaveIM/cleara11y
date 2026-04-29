@@ -30,6 +30,13 @@ class Highlighter {
 	private const SCANNING_PARAM = 'cleara11y_scanning';
 
 	/**
+	 * Query parameter for scan token.
+	 *
+	 * @var string
+	 */
+	private const SCAN_TOKEN_PARAM = 'cleara11y_scan';
+
+	/**
 	 * Nonce parameter for security.
 	 *
 	 * @var string
@@ -84,7 +91,7 @@ class Highlighter {
 	 */
 	private function should_load_frontend_assets(): bool {
 		// Don't load frontend assets when scanning (prevents panel elements from being flagged as violations)
-		if (isset($_GET[self::SCANNING_PARAM])) {
+		if (isset($_GET[self::SCANNING_PARAM]) || isset($_GET[self::SCAN_TOKEN_PARAM])) {
 			return false;
 		}
 

@@ -361,6 +361,11 @@ class Admin {
 	 * @param \WP_Admin_Bar $wp_admin_bar WordPress admin bar instance.
 	 */
 	public function add_toolbar_indicator(\WP_Admin_Bar $wp_admin_bar): void {
+		// Skip if we're currently scanning (admin bar is hidden)
+		if (\ClearA11y\Frontend\Scanner::is_scanning()) {
+			return;
+		}
+
 		// Only show for users with manage_options capability
 		if (!current_user_can('manage_options')) {
 			return;

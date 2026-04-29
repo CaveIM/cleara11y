@@ -247,43 +247,41 @@
 				console.log('[ClearA11y] Violations count:', results.violations?.length || 0);
 
 
-					// Filter out ClearA11y plugin's own UI elements from results
+
+					// Remove ClearA11y plugin elements from results
 					if (results.violations && results.violations.length > 0) {
 						const originalCount = results.violations.length;
-						results.violations = results.violations.filter(violation => {
-							// Keep violation if at least one node doesn't target ClearA11y elements
-							return violation.nodes.some(node => {
-								if (!node.target || node.target.length === 0) return true;
 
-								// Check each target path
+						results.violations.forEach(violation => {
+							const beforeNodeCount = violation.nodes.length;
+							violation.nodes = violation.nodes.filter(node => {
+								if (!node.target || node.target.length === 0) return true;
 								for (const targetPath of node.target) {
 									if (!Array.isArray(targetPath)) continue;
 									const selectorPath = targetPath.join(' ');
-
-									// Check if this targets ClearA11y elements
 									const isClearA11yElement = [
 										selectorPath.includes('[data-cleara11y-plugin]'),
-										selectorPath.includes('[data-cleara11y-highlighted]'),
-										selectorPath.includes('.cleara11y-toggle'),
 										selectorPath.includes('.cleara11y-panel'),
-										selectorPath.includes('.cleara11y-tooltip'),
-										selectorPath.includes('.cleara11y-highlight-issue'),
-										selectorPath.includes('.cleara11y-highlight-panel'),
-										selectorPath.includes('.cleara11y-issue-severity'),
-										selectorPath.includes('[data-issue-index]')
+										selectorPath.includes('.cleara11y-backdrop'),
+										selectorPath.includes('.cleara11y-summary'),
+										selectorPath.includes('.cleara11y-stat'),
+										selectorPath.includes('.cleara11y-filter'),
+										selectorPath.includes('.cleara11y-panel-')
 									].some(check => check);
-
 									if (isClearA11yElement) {
-										return false; // This node targets ClearA11y, don't keep violation based on it
+										console.log('[ClearA11y] Filtered ClearA11y element:', selectorPath);
+										return false;
 									}
 								}
-								return true; // This node is valid (doesn't target ClearA11y)
+								return true;
 							});
+							if (violation.nodes.length !== beforeNodeCount) {
+								console.log('[ClearA11y] Filtered nodes from violation:', violation.id);
+							}
 						});
 
-						if (results.violations.length !== originalCount) {
-							console.log('[ClearA11y] Filtered out', originalCount - results.violations.length, 'ClearA11y plugin violations');
-						}
+						results.violations = results.violations.filter(v => v.nodes.length > 0);
+						console.log('[ClearA11y] Filtered out', originalCount - results.violations.length, 'ClearA11y violations');
 					}
 
 				// Extract evidence from results

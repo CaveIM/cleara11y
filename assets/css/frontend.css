@@ -84,6 +84,32 @@
 	visibility: visible;
 }
 
+/* ===== Body push effect ===== */
+body.cleara11y-panel-open {
+	overflow-x: hidden;
+}
+
+/* ===== Main content width adjustment ===== */
+body.cleara11y-panel-open #site-content,
+body.cleara11y-panel-open main,
+body.cleara11y-panel-open .site-content,
+body.cleara11y-panel-open .content-area,
+body.cleara11y-panel-open #primary,
+body.cleara11y-panel-open #content {
+	width: calc(100% - 420px) !important;
+	max-width: calc(100% - 420px) !important;
+	transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1), max-width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ===== Ensure panel elements revert to their defined widths ===== */
+/* body.cleara11y-panel-open .cleara11y-panel,
+body.cleara11y-panel-open .cleara11y-panel *,
+body.cleara11y-panel-open [data-cleara11y-plugin],
+body.cleara11y-panel-open [data-cleara11y-plugin] * {
+	width: revert-layer !important;
+	max-width: revert-layer !important;
+} */
+
 /* ===== Side Panel ===== */
 .cleara11y-panel {
 	position: fixed;
@@ -103,6 +129,10 @@
 
 .cleara11y-panel.open {
 	right: 0;
+}
+
+.cleara11y-panel.open ~ .cleara11y-backdrop {
+	display: none;
 }
 
 /* ===== Panel Header ===== */
@@ -602,16 +632,69 @@
 
 /* ===== Focus Highlight Animation ===== */
 .cleara11y-highlight-focus {
-	animation: cleara11y-pulse-focus 1.5s ease-in-out infinite !important;
 	z-index: 999996 !important;
+	animation: cleara11y-pulse 1s ease-in-out infinite !important;
 }
 
-@keyframes cleara11y-pulse-focus {
+.cleara11y-highlight-focus.severity-critical {
+	animation: cleara11y-pulse-critical 1s ease-in-out infinite !important;
+}
+
+.cleara11y-highlight-focus.severity-moderate {
+	animation: cleara11y-pulse-moderate 1s ease-in-out infinite !important;
+}
+
+.cleara11y-highlight-focus.severity-minor {
+	animation: cleara11y-pulse-minor 1s ease-in-out infinite !important;
+}
+
+@keyframes cleara11y-pulse {
 	0%, 100% {
-		outline-width: 3px !important;
+		box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7);
+		background-color: rgba(220, 38, 38, 0.08) !important;
 	}
 	50% {
-		outline-width: 5px !important;
+		box-shadow: 0 0 0 15px rgba(220, 38, 38, 0);
+		background-color: rgba(220, 38, 38, 0.2) !important;
+	}
+}
+
+@keyframes cleara11y-pulse-critical {
+	0%, 100% {
+		box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.8), 0 0 10px rgba(220, 38, 38, 0.5);
+		background-color: rgba(220, 38, 38, 0.08) !important;
+		transform: scale(1);
+	}
+	50% {
+		box-shadow: 0 0 0 20px rgba(220, 38, 38, 0), 0 0 25px rgba(220, 38, 38, 0.8);
+		background-color: rgba(220, 38, 38, 0.25) !important;
+		transform: scale(1.03);
+	}
+}
+
+@keyframes cleara11y-pulse-moderate {
+	0%, 100% {
+		box-shadow: 0 0 0 0 rgba(234, 88, 12, 0.8), 0 0 10px rgba(234, 88, 12, 0.5);
+		background-color: rgba(234, 88, 12, 0.08) !important;
+		transform: scale(1);
+	}
+	50% {
+		box-shadow: 0 0 0 20px rgba(234, 88, 12, 0), 0 0 25px rgba(234, 88, 12, 0.8);
+		background-color: rgba(234, 88, 12, 0.25) !important;
+		transform: scale(1.03);
+	}
+}
+
+@keyframes cleara11y-pulse-minor {
+	0%, 100% {
+		box-shadow: 0 0 0 0 rgba(202, 138, 4, 0.8), 0 0 10px rgba(202, 138, 4, 0.5);
+		background-color: rgba(202, 138, 4, 0.08) !important;
+		transform: scale(1);
+	}
+	50% {
+		box-shadow: 0 0 0 20px rgba(202, 138, 4, 0), 0 0 25px rgba(202, 138, 4, 0.8);
+		background-color: rgba(202, 138, 4, 0.25) !important;
+		transform: scale(1.03);
 	}
 }
 
@@ -709,11 +792,38 @@
 }
 
 /* ===== Responsive ===== */
-@media (max-width: 600px) {
+@media (max-width: 900px) {
+	body.cleara11y-panel-open #site-content,
+	body.cleara11y-panel-open main,
+	body.cleara11y-panel-open .site-content,
+	body.cleara11y-panel-open .content-area,
+	body.cleara11y-panel-open #primary,
+	body.cleara11y-panel-open #content {
+		width: calc(100% - 350px) !important;
+		max-width: calc(100% - 350px) !important;
+	}
+
 	.cleara11y-panel {
-		width: 100%;
-		max-width: 100%;
-		right: -100%;
+		width: 350px;
+		right: -350px;
+	}
+}
+
+@media (max-width: 600px) {
+	body.cleara11y-panel-open #site-content,
+	body.cleara11y-panel-open main,
+	body.cleara11y-panel-open .site-content,
+	body.cleara11y-panel-open .content-area,
+	body.cleara11y-panel-open #primary,
+	body.cleara11y-panel-open #content {
+		width: calc(100% - 85%) !important;
+		max-width: calc(100% - 85%) !important;
+	}
+
+	.cleara11y-panel {
+		width: 85%;
+		max-width: 85%;
+		right: -85%;
 	}
 
 	.cleara11y-toggle {

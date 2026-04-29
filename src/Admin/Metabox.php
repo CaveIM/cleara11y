@@ -254,6 +254,7 @@ class Metabox {
 		}
 
 		$post_id = isset($_POST['post_id']) ? intval($_POST['post_id']) : 0;
+		$scan_id = isset($_POST['scan_id']) ? intval($_POST['scan_id']) : 0;
 
 		if (!$post_id) {
 			wp_send_json_error(['message' => 'Invalid post ID']);
@@ -268,16 +269,33 @@ class Metabox {
 
 		$scan_date = $this->get_latest_scan_date($post_id);
 
+		// Get scan status if scan_id is provided
+		$scan_status = 'completed';
+		if ($scan_id) {
+			global $wpdb;
+			$scans_table = \ClearA11y\Database\Schema::get_table_name('scans');
+			$scan_status = $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT status FROM `{$scans_table}` WHERE id = %d",
+					$scan_id
+				)
+			);
+			// Default to completed if no scan found
+			if (!$scan_status) {
+				$scan_status = 'completed';
+			}
+		}
+
 		wp_send_json_success([
 			'score' => $score,
 			'counts' => $counts,
 			'scan_date' => $scan_date,
-			'scan_status' => 'completed',
+			'scan_status' => $scan_status,
 		]);
 	}
 
 	/**
-	 * AJAX handler to initiate scan.
+	 * AJAX handler to initiate scan - adds to job queue.
 	 *
 	 * @return void
 	 */
@@ -296,29 +314,99 @@ class Metabox {
 
 		// Check if tables exist
 		if (!\ClearA11y\Database\Schema::tables_exist()) {
+			error_log('[ClearA11y Metabox] Tables do not exist, creating...');
 			\ClearA11y\Database\Schema::create_tables();
 		}
 
-		// Generate scan token
-		$result = \ClearA11y\Services\Scan_Token_Manager::generate_token($post_id, 'individual');
-
-		if (isset($result['error'])) {
-			wp_send_json_error(['message' => $result['error']]);
+		// Validate post exists and is published
+		$post = get_post($post_id);
+		if (!$post || $post->post_status !== 'publish') {
+			wp_send_json_error(['message' => 'Post not found or not published']);
 		}
 
-		// Build scan URL with frontend highlighting disabled during scan
-		$scan_url = add_query_arg(
+		// Create a new scan for this individual page scan
+		$scan = new \ClearA11y\Models\Scan();
+		$scan->scan_type = 'individual';
+		$scan->scan_name = 'Single Page: ' . $post->post_title;
+		$scan->status = 'pending';
+		$scan->total_items = 1;
+		$scan->scanned_items = 0;
+		$scan->created_at = current_time('mysql');
+
+		$scan_id = \ClearA11y\Database\Scan_Repository::insert($scan);
+
+		if (!$scan_id) {
+			error_log('[ClearA11y Metabox] Failed to create scan');
+			wp_send_json_error(['message' => 'Failed to create scan']);
+		}
+
+		// Create scan item
+		$scan_item = new \ClearA11y\Models\Scan_Item();
+		$scan_item->scan_id = $scan_id;
+		$scan_item->post_id = $post_id;
+		$scan_item->post_type = $post->post_type;
+		$scan_item->post_title = $post->post_title;
+		$scan_item->post_url = get_permalink($post_id);
+		$scan_item->status = 'pending';
+		$scan_item->scan_method = 'client';
+		$scan_item->created_at = current_time('mysql');
+
+		$scan_item_id = \ClearA11y\Database\Scan_Item_Repository::insert($scan_item);
+
+		if (!$scan_item_id) {
+			error_log('[ClearA11y Metabox] Failed to create scan item');
+			wp_send_json_error(['message' => 'Failed to create scan item']);
+		}
+
+		// Create job for parallel processing
+		global $wpdb;
+		$jobs_table = \ClearA11y\Database\Schema::get_table_name('scan_jobs');
+		$url = get_permalink($post_id);
+
+		$result = $wpdb->insert(
+			$jobs_table,
 			[
-				'cleara11y_scan' => $result['token'],
-				'cleara11y_scanning' => '1',
+				'site_id' => get_current_blog_id(),
+				'url' => $url,
+				'post_id' => $post_id,
+				'scan_id' => $scan_id,
+				'status' => 'pending',
+				'priority' => 50, // Higher priority for individual scans
+				'created_at' => current_time('mysql'),
 			],
-			get_permalink($post_id)
+			['%d', '%s', '%d', '%d', '%s', '%d', '%s']
 		);
 
-		wp_send_json_success([
-			'scan_url' => $scan_url,
-			'token' => $result['token'],
-		]);
+		if (!$result) {
+			error_log('[ClearA11y Metabox] Failed to create job');
+			wp_send_json_error(['message' => 'Failed to queue scan']);
+		}
+
+		// Update scan status to in_progress
+		$wpdb->update(
+			\ClearA11y\Database\Schema::get_table_name('scans'),
+			[
+				'status' => 'in_progress',
+				'started_at' => current_time('mysql'),
+			],
+			['id' => $scan_id],
+			['%s', '%s'],
+			['%d']
+		);
+
+		error_log('[ClearA11y Metabox] Scan queued successfully - scan_id: ' . $scan_id);
+
+		$response_data = [
+			'queued' => true,
+			'scan_id' => $scan_id,
+			'scan_item_id' => $scan_item_id,
+			'post_id' => $post_id,
+			'message' => 'Scan added to queue',
+		];
+
+		error_log('[ClearA11y Metabox] Response data: ' . wp_json_encode($response_data));
+
+		wp_send_json_success($response_data);
 	}
 
 	/**

@@ -100,6 +100,42 @@
 			});
 			console.log('[ClearA11y BG] Axe-core complete, found', results.violations?.length || 0, 'violations');
 
+			// Filter out ClearA11y plugin elements from results
+			if (results.violations && results.violations.length > 0) {
+				const originalCount = results.violations.length;
+
+				results.violations.forEach(violation => {
+					const beforeNodeCount = violation.nodes.length;
+					violation.nodes = violation.nodes.filter(node => {
+						if (!node.target || node.target.length === 0) return true;
+						for (const targetPath of node.target) {
+							if (!Array.isArray(targetPath)) continue;
+							const selectorPath = targetPath.join(' ');
+							const isClearA11yElement = [
+								selectorPath.includes('[data-cleara11y-plugin]'),
+								selectorPath.includes('.cleara11y-panel'),
+								selectorPath.includes('.cleara11y-backdrop'),
+								selectorPath.includes('.cleara11y-summary'),
+								selectorPath.includes('.cleara11y-stat'),
+								selectorPath.includes('.cleara11y-filter'),
+								selectorPath.includes('.cleara11y-panel-')
+							].some(check => check);
+							if (isClearA11yElement) {
+								console.log('[ClearA11y BG] Filtered ClearA11y element:', selectorPath);
+								return false;
+							}
+						}
+						return true;
+					});
+					if (violation.nodes.length !== beforeNodeCount) {
+						console.log('[ClearA11y BG] Filtered nodes from violation:', violation.id);
+					}
+				});
+
+				results.violations = results.violations.filter(v => v.nodes.length > 0);
+				console.log('[ClearA11y BG] Filtered out', originalCount - results.violations.length, 'ClearA11y violations');
+			}
+
 			// Extract evidence from results
 			console.log('[ClearA11y BG] Extracting violation evidence...');
 			console.log('[ClearA11y BG] extractEvidenceFromAxeResults function:', typeof extractEvidenceFromAxeResults);

@@ -693,6 +693,14 @@ class Admin {
 			CLEARA11Y_VERSION
 		);
 
+		// Enqueue admin CSS (for dismiss UI and bulk actions)
+		wp_enqueue_style(
+			'cleara11y-admin',
+			CLEARA11Y_PLUGIN_URL . 'assets/css/cleara11y-admin.css',
+			[],
+			CLEARA11Y_VERSION
+		);
+
 		// Get the correct REST API base URL
 		$rest_url = get_rest_url();
 
@@ -723,6 +731,18 @@ class Admin {
 					'error' => __('Error loading issues.', 'cleara11y'),
 					'confirmDismiss' => __('Are you sure you want to dismiss this issue?', 'cleara11y'),
 					'confirmUndismiss' => __('Are you sure you want to undismiss this issue?', 'cleara11y'),
+					'dismissComment' => __('Comment (optional):', 'cleara11y'),
+					'dismissPlaceholder' => __('Why are you dismissing this issue?', 'cleara11y'),
+					'dismiss' => __('Dismiss', 'cleara11y'),
+					'cancel' => __('Cancel', 'cleara11y'),
+					'confirmBulkDismiss' => __('Dismiss selected issues?', 'cleara11y'),
+					'bulkDismissComment' => __('Enter a comment for all issues (optional):', 'cleara11y'),
+					'dismissed' => __('Dismissed', 'cleara11y'),
+					'issues' => __('issue(s)', 'cleara11y'),
+					'selected' => __('selected', 'cleara11y'),
+					'noSelection' => __('Please select at least one issue.', 'cleara11y'),
+					'dismissedBy' => __('Dismissed by:', 'cleara11y'),
+					'dismissedAt' => __('Date:', 'cleara11y'),
 				],
 			]);
 		} elseif ($is_issue_types_page) {

@@ -462,4 +462,77 @@ class Issue {
 			'comment' => $this->dismissal_comment,
 		];
 	}
+
+	/**
+	 * Convert issue to array for JSON serialization.
+	 *
+	 * @return array Issue data as array.
+	 */
+	public function to_array(): array {
+		$user = $this->dismissed_by ? get_userdata($this->dismissed_by) : null;
+
+		return [
+			'id' => $this->id,
+			'scan_id' => $this->scan_id,
+			'scan_item_id' => $this->scan_item_id,
+			'post_id' => $this->post_id,
+			'rule_id' => $this->rule_id,
+			'rule_type' => $this->rule_type,
+			'severity' => $this->severity,
+			'impact' => $this->impact,
+			'selector' => $this->selector,
+			'html' => $this->html,
+			'message' => $this->message,
+			'help_text' => $this->help_text,
+			'help_url' => $this->help_url,
+			'wcag_criterion' => $this->wcag_criterion,
+			'dismissed' => $this->dismissed,
+			'dismissed_by' => $this->dismissed_by,
+			'dismissed_by_name' => $user ? $user->display_name : null,
+			'dismissed_at' => $this->dismissed_at,
+			'dismissal_comment' => $this->dismissal_comment,
+			'dismissed_global' => $this->dismissed_global ?? false,
+			'created_at' => $this->created_at,
+			// Evidence fields
+			'selector_score' => $this->selector_score,
+			'selector_match_count' => $this->selector_match_count,
+			'xpath' => $this->xpath,
+			'dom_path' => $this->dom_path,
+			'ancestor_chain' => $this->ancestor_chain,
+			'accessible_name' => $this->accessible_name,
+			'inner_text_snippet' => $this->inner_text_snippet,
+			'bounding_box' => $this->bounding_box,
+			'computed_style' => $this->computed_style,
+			'fingerprint_strict' => $this->fingerprint_strict,
+			'fingerprint_loose' => $this->fingerprint_loose,
+			'signature_version' => $this->signature_version,
+			'node_evidence' => $this->node_evidence,
+		];
+	}
+
+	/**
+	 * Get detailed dismissal information with user data.
+	 *
+	 * @return array Dismissal info with user details.
+	 */
+	public function get_dismissal_details(): array {
+		if (!$this->dismissed) {
+			return [
+				'dismissed' => false,
+			];
+		}
+
+		$user = $this->dismissed_by ? get_userdata($this->dismissed_by) : null;
+
+		return [
+			'dismissed' => true,
+			'dismissed_by' => $user ? [
+				'id' => $user->ID,
+				'name' => $user->display_name,
+				'email' => $user->user_email,
+			] : null,
+			'dismissed_at' => $this->dismissed_at,
+			'comment' => $this->dismissal_comment,
+		];
+	}
 }

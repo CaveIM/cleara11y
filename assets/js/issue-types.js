@@ -102,10 +102,7 @@ document.addEventListener('DOMContentLoaded', function() {
 		},
 
 		async loadData() {
-			await Promise.all([
-				this.loadIssueTypes(),
-				this.loadStats(),
-			]);
+			await this.loadIssueTypes();
 		},
 
 		async loadIssueTypes() {
@@ -136,26 +133,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
 				this.renderIssueTypes();
 				this.updateCounts();
+				this.renderStats(data.counts);
 			} catch (error) {
 				console.error('Error loading issue types:', error);
 				this.renderError();
-			}
-		},
-
-		async loadStats() {
-			try {
-				const response = await fetch(`${this.apiUrl}issues/stats`, {
-					headers: {
-						'X-WP-Nonce': this.nonce,
-					},
-				});
-
-				if (!response.ok) return;
-
-				const stats = await response.json();
-				this.renderStats(stats);
-			} catch (error) {
-				console.error('Error loading stats:', error);
 			}
 		},
 
@@ -355,7 +336,7 @@ document.addEventListener('DOMContentLoaded', function() {
 						'Content-Type': 'application/json',
 					},
 					body: JSON.stringify({
-						ignored: !ignored,
+						ignored: ignored,
 						comment: comment,
 					}),
 				});
@@ -363,7 +344,6 @@ document.addEventListener('DOMContentLoaded', function() {
 				if (!response.ok) throw new Error('Failed to update global ignore');
 
 				await this.loadIssueTypes();
-				await this.loadStats();
 				this.closeModals();
 			} catch (error) {
 				console.error('Error updating global ignore:', error);
@@ -377,23 +357,19 @@ document.addEventListener('DOMContentLoaded', function() {
 			});
 		},
 
-		renderStats(stats) {
+		renderStats(counts) {
 			this.elements.statsGrid.innerHTML = `
 				<div class="cleara11y-stat-card">
-					<div class="stat-label">Critical</div>
-					<div class="stat-value" style="color: #f66565;">${stats.critical || 0}</div>
+					<div class="stat-label">Active Issues</div>
+					<div class="stat-value">${counts.active || 0}</div>
 				</div>
 				<div class="cleara11y-stat-card">
-					<div class="stat-label">Moderate</div>
-					<div class="stat-value" style="color: #f5a623;">${stats.moderate || 0}</div>
-				</div>
-				<div class="cleara11y-stat-card">
-					<div class="stat-label">Minor</div>
-					<div class="stat-value" style="color: #6dd4b6;">${stats.minor || 0}</div>
+					<div class="stat-label">Globally Ignored</div>
+					<div class="stat-value">${counts['dismissed-global'] || 0}</div>
 				</div>
 				<div class="cleara11y-stat-card">
 					<div class="stat-label">Total Issues</div>
-					<div class="stat-value">${stats.active || 0}</div>
+					<div class="stat-value">${counts.all || 0}</div>
 				</div>
 			`;
 		},

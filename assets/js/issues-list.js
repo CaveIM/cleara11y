@@ -91,6 +91,16 @@
 				}
 			});
 
+			// Bulk dismiss action
+			document.getElementById('cleara11y-bulk-dismiss').addEventListener('click', () => {
+				const selectedIssues = this.getSelectedIssueIds();
+				if (selectedIssues.length === 0) {
+					alert(cleara11yData.strings?.noSelection || 'Please select at least one issue.');
+					return;
+				}
+				this.bulkDismissIssues(selectedIssues);
+			});
+
 			// Modal close handlers
 			this.setupModalHandlers();
 		},
@@ -132,11 +142,12 @@
 
 				const stats = await response.json();
 
-				// Update stats display
-				document.getElementById('cleara11y-total-issues').textContent = stats.active || 0;
-				document.getElementById('cleara11y-critical-issues').textContent = stats.critical || 0;
-				document.getElementById('cleara11y-moderate-issues').textContent = stats.moderate || 0;
-				document.getElementById('cleara11y-minor-issues').textContent = stats.minor || 0;
+				// Update stats display with new nested structure
+				document.getElementById('cleara11y-total-issues').textContent = stats.active?.total || 0;
+				document.getElementById('cleara11y-critical-issues').textContent = stats.active?.critical || 0;
+				document.getElementById('cleara11y-moderate-issues').textContent = stats.active?.moderate || 0;
+				document.getElementById('cleara11y-minor-issues').textContent = stats.active?.minor || 0;
+				document.getElementById('cleara11y-dismissed-issues').textContent = stats.dismissed || 0;
 
 			} catch (error) {
 				console.error('[ClearA11y Issues List] Error loading stats:', error);
@@ -235,6 +246,7 @@
 				return `
 					<div class="cleara11y-issue-row" data-issue-id="${issue.id}" style="padding: 15px; border-bottom: 1px solid #c3c4c7; ${isDismissed ? 'opacity: 0.6;' : ''}">
 						<div style="display: flex; justify-content: space-between; align-items: start; gap: 20px;">
+							<input type="checkbox" class="cleara11y-issue-checkbox" data-issue-id="${issue.id}" style="margin-top: 4px;">
 							<div style="flex: 1;">
 								<div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
 									<h4 style="margin: 0; font-size: 14px;">
@@ -259,10 +271,11 @@
 										<strong>Selector:</strong> <code style="background: #f0f0f1; padding: 2px 6px; border-radius: 3px;">${this.escapeHtml(issue.selector)}</code>
 									</div>
 								` : ''}
-								${isDismissed && issue.dismissal_comment ? `
-									<div style="margin-top: 8px; padding: 8px; background: #f0f0f1; border-left: 3px solid #646970; border-radius: 3px;">
+								${isDismissed ? `
+									<div class="cleara11y-dismissal-info" style="margin-top: 8px; padding: 10px; background: #f0f0f1; border-left: 3px solid #646970; border-radius: 3px;">
 										<span style="font-size: 11px; color: #646970;">
-											<strong>Dismissed:</strong> ${issue.dismissed_at ? new Date(issue.dismissed_at).toLocaleDateString() : ''}
+											<strong>${cleara11yData.strings?.dismissedBy || 'Dismissed by:'}</strong> ${this.escapeHtml(issue.dismissed_by_name || 'Unknown')}
+											${issue.dismissed_at ? `<br><strong>${cleara11yData.strings?.dismissedAt || 'Date:'}</strong> ${new Date(issue.dismissed_at).toLocaleString()}` : ''}
 											${issue.dismissal_comment ? `<br><em>"${this.escapeHtml(issue.dismissal_comment)}"</em>` : ''}
 										</span>
 									</div>
@@ -351,6 +364,32 @@
 					this.undismissIssue(issueId);
 				});
 			});
+
+			// Issue checkboxes - update bulk actions bar
+			document.querySelectorAll('.cleara11y-issue-checkbox').forEach(checkbox => {
+				checkbox.addEventListener('change', () => {
+					this.updateBulkActionsBar();
+				});
+			});
+
+			// Initial update of bulk actions bar
+			this.updateBulkActionsBar();
+		},
+
+		/**
+		 * Update the bulk actions bar visibility and count
+		 */
+		updateBulkActionsBar() {
+			const bulkActionsBar = document.querySelector('.cleara11y-bulk-actions');
+			const selectedCount = this.getSelectedIssueIds().length;
+			const countSpan = document.querySelector('.cleara11y-selected-count');
+
+			if (selectedCount > 0) {
+				bulkActionsBar.style.display = 'flex';
+				countSpan.textContent = `${selectedCount} ${cleara11yData.strings?.selected || 'selected'}`;
+			} else {
+				bulkActionsBar.style.display = 'none';
+			}
 		},
 
 		/**
@@ -388,10 +427,61 @@
 		/**
 		 * Dismiss an issue
 		 */
-		async dismissIssue(issueId) {
-			const comment = prompt('Enter a comment (optional):');
-			if (comment === null) return; // User cancelled
+		dismissIssue(issueId, comment = '') {
+			this.showDismissUI(issueId, comment);
+		},
 
+		/**
+		 * Show inline dismiss UI
+		 */
+		showDismissUI(issueId, initialComment = '') {
+			const issueRow = document.querySelector(`[data-issue-id="${issueId}"]`);
+			if (!issueRow) return;
+
+			// Remove any existing dismiss UI
+			const existingUI = issueRow.querySelector('.cleara11y-dismiss-ui');
+			if (existingUI) {
+				existingUI.remove();
+				return;
+			}
+
+			// Create dismiss UI
+			const dismissUI = document.createElement('div');
+			dismissUI.className = 'cleara11y-dismiss-ui';
+			dismissUI.innerHTML = `
+				<div class="cleara11y-dismiss-ui-content">
+					<label for="dismiss-comment-${issueId}">${cleara11yData.strings?.dismissComment || 'Comment (optional):'}</label>
+					<textarea id="dismiss-comment-${issueId}" rows="3" placeholder="${cleara11yData.strings?.dismissPlaceholder || 'Why are you dismissing this issue?'}">${this.escapeHtml(initialComment)}</textarea>
+					<div class="cleara11y-dismiss-ui-actions">
+						<button type="button" class="button button-primary cleara11y-confirm-dismiss">${cleara11yData.strings?.dismiss || 'Dismiss'}</button>
+						<button type="button" class="button cleara11y-cancel-dismiss">${cleara11yData.strings?.cancel || 'Cancel'}</button>
+					</div>
+				</div>
+			`;
+
+			// Insert after actions
+			const actions = issueRow.querySelector('.cleara11y-issue-actions');
+			actions.after(dismissUI);
+
+			// Focus textarea
+			const textarea = document.getElementById(`dismiss-comment-${issueId}`);
+			textarea.focus();
+
+			// Setup handlers
+			dismissUI.querySelector('.cleara11y-confirm-dismiss').addEventListener('click', () => {
+				const comment = textarea.value;
+				this.performDismiss(issueId, comment);
+			});
+
+			dismissUI.querySelector('.cleara11y-cancel-dismiss').addEventListener('click', () => {
+				dismissUI.remove();
+			});
+		},
+
+		/**
+		 * Perform the actual dismiss API call
+		 */
+		async performDismiss(issueId, comment) {
 			try {
 				const response = await fetch(API_URL + 'issues/' + issueId + '/dismiss', {
 					method: 'POST',
@@ -440,6 +530,54 @@
 			} catch (error) {
 				console.error('[ClearA11y Issues List] Error undismissing issue:', error);
 				alert('Error undismissing issue: ' + error.message);
+			}
+		},
+
+		/**
+		 * Get selected issue IDs from checkboxes
+		 */
+		getSelectedIssueIds() {
+			const checkboxes = document.querySelectorAll('.cleara11y-issue-checkbox:checked');
+			return Array.from(checkboxes).map(cb => parseInt(cb.dataset.issueId));
+		},
+
+		/**
+		 * Bulk dismiss multiple issues
+		 */
+		async bulkDismissIssues(issueIds) {
+			if (!confirm(cleara11yData.strings?.confirmBulkDismiss || `Dismiss ${issueIds.length} issue(s)?`)) {
+				return;
+			}
+
+			const comment = prompt(cleara11yData.strings?.bulkDismissComment || 'Enter a comment for all issues (optional):');
+			if (comment === null) return; // User cancelled
+
+			try {
+				const response = await fetch(API_URL + 'issues/bulk-dismiss', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'X-WP-Nonce': NONCE
+					},
+					body: JSON.stringify({
+						issue_ids: issueIds,
+						comment: comment || ''
+					})
+				});
+
+				if (!response.ok) {
+					throw new Error('Failed to dismiss issues');
+				}
+
+				const result = await response.json();
+				alert(result.message || `${cleara11yData.strings?.dismissed || 'Dismissed'} ${result.dismissed_count || 0} ${cleara11yData.strings?.issues || 'issue(s)'}.`);
+
+				this.loadIssues();
+				this.loadStats();
+
+			} catch (error) {
+				console.error('[ClearA11y Issues List] Error bulk dismissing:', error);
+				alert('Error: ' + error.message);
 			}
 		},
 

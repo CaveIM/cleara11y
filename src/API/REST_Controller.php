@@ -290,7 +290,7 @@ class REST_Controller {
 			[
 				'methods' => 'POST',
 				'callback' => [$this, 'dismiss_issue'],
-				'permission_callback' => [$this, 'manage_options_permission'],
+				'permission_callback' => [$this, 'can_dismiss_issues'],
 				'args' => [
 					'id' => [
 						'required' => true,
@@ -310,11 +310,34 @@ class REST_Controller {
 			[
 				'methods' => 'POST',
 				'callback' => [$this, 'undismiss_issue'],
-				'permission_callback' => [$this, 'manage_options_permission'],
+				'permission_callback' => [$this, 'can_dismiss_issues'],
 				'args' => [
 					'id' => [
 						'required' => true,
 						'type' => 'integer',
+					],
+				],
+			]
+		);
+
+		// Bulk dismiss endpoint
+		register_rest_route(
+			self::NAMESPACE,
+			'/issues/bulk-dismiss',
+			[
+				'methods' => 'POST',
+				'callback' => [$this, 'bulk_dismiss_issues'],
+				'permission_callback' => [$this, 'can_dismiss_issues'],
+				'args' => [
+					'issue_ids' => [
+						'required' => true,
+						'type' => 'array',
+						'items' => ['type' => 'integer'],
+						'description' => 'Array of issue IDs to dismiss.',
+					],
+					'comment' => [
+						'type' => 'string',
+						'description' => 'Dismissible comment.',
 					],
 				],
 			]
@@ -1085,8 +1108,10 @@ class REST_Controller {
 		$result = Issue_Repository::dismiss($issue_id, $user_id, $comment);
 
 		if ($result) {
+			$updated_issue = Issue_Repository::get_by_id($issue_id);
 			return rest_ensure_response([
 				'message' => 'Issue dismissed successfully.',
+				'issue' => $updated_issue ? $updated_issue->to_array() : null,
 			]);
 		}
 
@@ -1107,14 +1132,55 @@ class REST_Controller {
 		$result = Issue_Repository::undismiss($issue_id);
 
 		if ($result) {
+			$updated_issue = Issue_Repository::get_by_id($issue_id);
 			return rest_ensure_response([
 				'message' => 'Issue undismissed successfully.',
+				'issue' => $updated_issue ? $updated_issue->to_array() : null,
 			]);
 		}
 
 		return rest_ensure_response(
 			new \WP_Error('undismiss_failed', 'Failed to undismiss issue.', ['status' => 500])
 		);
+	}
+
+	/**
+	 * Bulk dismiss multiple issues.
+	 *
+	 * @param \WP_REST_Request $request REST request object.
+	 * @return \WP_REST_Response
+	 */
+	public function bulk_dismiss_issues(\WP_REST_Request $request): \WP_REST_Response {
+		$issue_ids = $request->get_param('issue_ids');
+		$comment = $request->get_param('comment') ?? '';
+		$user_id = get_current_user_id();
+
+		if (empty($issue_ids) || !is_array($issue_ids)) {
+			return rest_ensure_response(
+				new \WP_Error('invalid_params', 'Issue IDs array is required.', ['status' => 400])
+			);
+		}
+
+		$dismissed_count = 0;
+		$failed_count = 0;
+
+		foreach ($issue_ids as $issue_id) {
+			$result = Issue_Repository::dismiss((int) $issue_id, $user_id, $comment);
+			if ($result) {
+				$dismissed_count++;
+			} else {
+				$failed_count++;
+			}
+		}
+
+		return rest_ensure_response([
+			'message' => sprintf(
+				'Dismissed %d issue(s).',
+				$dismissed_count
+			),
+			'dismissed_count' => $dismissed_count,
+			'failed_count' => $failed_count,
+		]);
 	}
 
 	/**
@@ -1208,6 +1274,22 @@ class REST_Controller {
 	 */
 	public function manage_options_permission(\WP_REST_Request $request): bool {
 		return current_user_can('manage_options');
+	}
+
+	/**
+	 * Check if current user can dismiss issues.
+	 *
+	 * @return bool True if user can dismiss issues.
+	 */
+	public function can_dismiss_issues(): bool {
+		/**
+		 * Filter whether the current user can dismiss issues.
+		 *
+		 * @since 1.5.0
+		 *
+		 * @param bool $can_dismiss True if user can dismiss issues.
+		 */
+		return apply_filters('cleara11y_dismiss_permission', current_user_can('manage_options'));
 	}
 
 	/**
@@ -1702,12 +1784,18 @@ class REST_Controller {
 			'total' => 0,
 		];
 
-		// Convert to integers
-		foreach ($stats as $key => $value) {
-			$stats[$key] = (int) $value;
-		}
+		// Convert to integers and restructure response
+		$result = [
+			'active' => [
+				'critical' => (int) $stats['critical'],
+				'moderate' => (int) $stats['moderate'],
+				'minor' => (int) $stats['minor'],
+				'total' => (int) $stats['active'],
+			],
+			'dismissed' => (int) $stats['dismissed'],
+		];
 
-		return rest_ensure_response($stats);
+		return rest_ensure_response($result);
 	}
 
 	/**
@@ -1980,15 +2068,34 @@ class REST_Controller {
 
 		$issue_types = $wpdb->get_results($query);
 
-		// Get counts for status tabs
+		// Build WHERE clause for counts (without status filter - counts should always be global)
+		$count_where = ['1=1'];
+		$count_params = [];
+
+		// Apply severity filter to counts
+		if (!empty($severity)) {
+			$count_where[] = 'severity = %s';
+			$count_params[] = $severity;
+		}
+
+		// Apply search filter to counts
+		if (!empty($search)) {
+			$count_where[] = '(rule_id LIKE %s OR message LIKE %s)';
+			$count_params[] = '%' . $wpdb->esc_like($search) . '%';
+			$count_params[] = '%' . $wpdb->esc_like($search) . '%';
+		}
+
+		$count_where_clause = 'WHERE ' . implode(' AND ', $count_where);
+
+		// Get counts for status tabs (global counts, not filtered by current status tab)
 		$count_query = $wpdb->prepare(
 			"SELECT
-				COUNT(DISTINCT rule_id) as total_types,
 				SUM(CASE WHEN dismissed = 0 AND dismissed_global = 0 THEN 1 ELSE 0 END) as active_issues,
-				SUM(CASE WHEN dismissed_global = 1 THEN 1 ELSE 0 END) as globally_ignored_issues
+				SUM(CASE WHEN dismissed_global = 1 THEN 1 ELSE 0 END) as globally_ignored_issues,
+				COUNT(*) as total_issues
 			FROM `{$issues_table}`
-			{$where_clause}",
-			$where_params
+			{$count_where_clause}",
+			$count_params
 		);
 
 		$counts = $wpdb->get_row($count_query, ARRAY_A);
@@ -2076,6 +2183,11 @@ class REST_Controller {
 		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
 		$user_id = get_current_user_id();
 
+		// Debug logging
+		error_log('[ClearA11y Debug] Global ignore request - Rule ID: ' . $rule_id);
+		error_log('[ClearA11y Debug] Global ignore request - Ignored: ' . ($ignored ? 'true' : 'false'));
+		error_log('[ClearA11y Debug] Global ignore request - Comment: ' . $comment);
+
 		if ($ignored) {
 			// Set global ignore
 			$wpdb->query(
@@ -2093,11 +2205,13 @@ class REST_Controller {
 			);
 
 			$affected = $wpdb->rows_affected;
+			error_log('[ClearA11y Debug] Global ignore - Affected rows: ' . $affected);
 
 			return rest_ensure_response([
 				'success' => true,
 				'message' => sprintf('Globally ignored %d issues.', $affected),
 				'affected' => $affected,
+				'rule_id' => $rule_id,
 			]);
 		} else {
 			// Remove global ignore
@@ -2114,11 +2228,13 @@ class REST_Controller {
 			);
 
 			$affected = $wpdb->rows_affected;
+			error_log('[ClearA11y Debug] Global unignore - Affected rows: ' . $affected);
 
 			return rest_ensure_response([
 				'success' => true,
 				'message' => sprintf('Restored %d issues from global ignore.', $affected),
 				'affected' => $affected,
+				'rule_id' => $rule_id,
 			]);
 		}
 	}

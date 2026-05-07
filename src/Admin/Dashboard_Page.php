@@ -65,6 +65,17 @@ class Dashboard_Page {
 				<!-- Stats Overview -->
 				<div class="cleara11y-card cleara11y-stats-overview">
 					<h2><?php esc_html_e('Site Health', 'cleara11y'); ?></h2>
+					<?php if ($stats['last_scan_date']) : ?>
+					<div class="cleara11y-last-updated">
+						<?php
+						printf(
+							/* translators: %s: last scan date */
+							esc_html__('Overall stats from all completed scans. Last scan: %s', 'cleara11y'),
+							esc_html(date('M j, Y g:i A', strtotime($stats['last_scan_date'])))
+						);
+						?>
+					</div>
+					<?php endif; ?>
 					<div class="cleara11y-stats-grid">
 						<div class="cleara11y-stat-box">
 							<div class="cleara11y-stat-value cleara11y-stat-critical" id="cleara11y-total-critical"><?php echo esc_html($stats['total_critical']); ?></div>
@@ -86,6 +97,23 @@ class Dashboard_Page {
 				</div>
 
 				<!-- Quick Actions -->
+
+					<!-- Score Card -->
+					<div class="cleara11y-card cleara11y-score-card">
+						<h2><?php esc_html_e('Overall Accessibility Score', 'cleara11y'); ?></h2>
+						<div class="cleara11y-score-display">
+							<div class="cleara11y-score-grade <?php echo esc_attr($stats['score_grade_class']); ?>">
+								<?php echo esc_html($stats['score_grade']); ?>
+							</div>
+							<div class="cleara11y-score-percentage">
+								<?php echo esc_html($stats['pass_percentage']); ?>% <?php esc_html_e('Pass Rate', 'cleara11y'); ?>
+							</div>
+							<div class="cleara11y-score-details">
+								<span class="cleara11y-score-pass"><?php echo esc_html($stats['rules_passed']); ?> <?php esc_html_e('rules passed', 'cleara11y'); ?></span>
+								<span class="cleara11y-score-fail"><?php echo esc_html($stats['rules_failed']); ?> <?php esc_html_e('rules failed', 'cleara11y'); ?></span>
+							</div>
+						</div>
+					</div>
 				<div class="cleara11y-card cleara11y-quick-actions">
 					<h2><?php esc_html_e('Quick Actions', 'cleara11y'); ?></h2>
 					<div class="cleara11y-actions-grid">
@@ -177,20 +205,88 @@ class Dashboard_Page {
 	 * @return array
 	 */
 	private static function get_stats(): array {
-		$latest_scan = \ClearA11y\Database\Scan_Repository::get_latest_completed();
+		global $wpdb;
 
 		$stats = [
 			'total_critical' => 0,
 			'total_moderate' => 0,
 			'total_minor' => 0,
 			'total_pages' => 0,
+			'pass_percentage' => 0,
+			'fail_percentage' => 100,
+			'score_grade' => '-',
+			'score_grade_class' => 'cleara11y-grade-unknown',
+			'rules_passed' => 0,
+			'rules_failed' => 0,
+			'last_scan_date' => null,
 		];
 
-		if ($latest_scan) {
-			$stats['total_critical'] = $latest_scan->critical_issues;
-			$stats['total_moderate'] = $latest_scan->moderate_issues;
-			$stats['total_minor'] = $latest_scan->minor_issues;
-			$stats['total_pages'] = $latest_scan->scanned_items;
+		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
+		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
+		$scans_table = \ClearA11y\Database\Schema::get_table_name('scans');
+
+		// Get active issues (excluding dismissed and globally ignored)
+		$active_issues = $wpdb->get_results(
+			"SELECT severity, COUNT(*) as count
+			FROM `{$issues_table}`
+			WHERE dismissed = 0 AND dismissed_global = 0
+			GROUP BY severity",
+			ARRAY_A
+		);
+
+		foreach ($active_issues as $row) {
+			$stats['total_' . $row['severity']] = (int) $row['count'];
+		}
+
+		// Get unique scanned pages
+		$scanned_pages = $wpdb->get_var(
+			"SELECT COUNT(DISTINCT post_id)
+			FROM `{$scan_items_table}`
+			WHERE status = 'completed'"
+		);
+		$stats['total_pages'] = (int) $scanned_pages;
+
+		// Get last scan date
+		$last_scan = $wpdb->get_row(
+			"SELECT created_at FROM `{$scans_table}`
+			WHERE status = 'completed'
+			ORDER BY completed_at DESC, created_at DESC
+			LIMIT 1"
+		);
+
+		if ($last_scan) {
+			$stats['last_scan_date'] = $last_scan->created_at;
+		}
+
+		// Calculate aggregate scoring from all completed scan items
+		$scoring_data = $wpdb->get_row(
+			"SELECT
+				SUM(rules_checked) as total_rules,
+				SUM(rules_passed) as total_passed,
+				SUM(rules_failed) as total_failed,
+				SUM(rules_incomplete) as total_incomplete
+			FROM `{$scan_items_table}`
+			WHERE status = 'completed'"
+		, ARRAY_A);
+
+		if ($scoring_data) {
+			$total_rules = (int) ($scoring_data['total_rules'] ?? 0);
+			$total_passed = (int) ($scoring_data['total_passed'] ?? 0);
+			$total_failed = (int) ($scoring_data['total_failed'] ?? 0);
+			$total_incomplete = (int) ($scoring_data['total_incomplete'] ?? 0);
+
+			$completed_rules = $total_rules - $total_incomplete;
+			$pass_percentage = $completed_rules > 0 ? round(($total_passed / $completed_rules) * 100, 2) : 0;
+			$fail_percentage = $completed_rules > 0 ? round(($total_failed / $completed_rules) * 100, 2) : 100;
+
+			$grade = \ClearA11y\Services\Scoring_Service::calculate_grade($pass_percentage);
+
+			$stats['pass_percentage'] = $pass_percentage;
+			$stats['fail_percentage'] = $fail_percentage;
+			$stats['score_grade'] = $grade;
+			$stats['score_grade_class'] = \ClearA11y\Services\Scoring_Service::get_grade_class($grade);
+			$stats['rules_passed'] = $total_passed;
+			$stats['rules_failed'] = $total_failed;
 		}
 
 		return $stats;

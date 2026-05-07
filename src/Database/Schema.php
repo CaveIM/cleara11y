@@ -435,4 +435,194 @@ class Schema {
 
 		return $created === $table_name;
 	}
+
+	/**
+	 * Add scoring columns to scan_items table (for existing installations).
+	 *
+	 * @return bool True if successful.
+	 */
+	public static function add_scoring_columns(): bool {
+		global $wpdb;
+
+		$table = self::get_table_name('scan_items');
+
+		// Check if pass_percentage column exists (if yes, scoring columns already added)
+		$column_exists = $wpdb->get_var(
+			"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+			WHERE TABLE_SCHEMA = DATABASE()
+			AND TABLE_NAME = '{$table}'
+			AND COLUMN_NAME = 'pass_percentage'"
+		);
+
+		if ($column_exists) {
+			return true; // Already migrated
+		}
+
+		// Add new columns for scoring
+		$columns = [
+			"rules_checked INT(11) NOT NULL DEFAULT 0",
+			"rules_passed INT(11) NOT NULL DEFAULT 0",
+			"rules_failed INT(11) NOT NULL DEFAULT 0",
+			"rules_incomplete INT(11) NOT NULL DEFAULT 0",
+			"pass_percentage DECIMAL(5,2) NOT NULL DEFAULT 0.00",
+			"fail_percentage DECIMAL(5,2) NOT NULL DEFAULT 0.00",
+			"score_grade VARCHAR(1) DEFAULT NULL",
+			"rules_checked_list LONGTEXT DEFAULT NULL",
+			"rules_passed_list LONGTEXT DEFAULT NULL",
+			"rules_failed_list LONGTEXT DEFAULT NULL",
+			"rules_incomplete_list LONGTEXT DEFAULT NULL",
+		];
+
+		foreach ($columns as $column) {
+			$result = $wpdb->query("ALTER TABLE `{$table}` ADD COLUMN {$column}");
+			if ($result === false) {
+				error_log("ClearA11y: Failed to add column {$column} to {$table}");
+				return false;
+			}
+		}
+
+		// Add indexes for scoring
+		$indexes = [
+			"ADD INDEX pass_percentage (pass_percentage)",
+			"ADD INDEX score_grade (score_grade)",
+		];
+
+		foreach ($indexes as $index) {
+			// Check if index exists first
+			$index_name = preg_match('/INDEX\s+(\w+)/', $index, $matches) ? $matches[1] : '';
+			if ($index_name) {
+				$index_exists = $wpdb->get_var(
+					"SHOW INDEX FROM `{$table}` WHERE Key_name = '{$index_name}'"
+				);
+				if (!$index_exists) {
+					$wpdb->query("ALTER TABLE `{$table}` {$index}");
+				}
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Recalculate scoring data for existing completed scan items.
+	 * This uses stored issue data to estimate scoring (won't be as accurate as a full re-scan).
+	 *
+	 * @return array {
+	 *     @type int $processed Number of scan items processed.
+	 *     @type int $updated  Number of scan items updated.
+	 *     @type string $message Result message.
+	 * }
+	 */
+	public static function recalculate_scoring_data(): array {
+		global $wpdb;
+
+		$scan_items_table = self::get_table_name('scan_items');
+		$issues_table = self::get_table_name('issues');
+
+		// Get all completed scan items that don't have scoring data yet
+		$scan_items = $wpdb->get_results(
+			"SELECT * FROM `{$scan_items_table}`
+			WHERE status = 'completed'
+			AND rules_checked = 0
+			ORDER BY id ASC
+			LIMIT 500"
+		);
+
+		if (empty($scan_items)) {
+			return [
+				'processed' => 0,
+				'updated' => 0,
+				'message' => 'No scan items need scoring recalculation.',
+			];
+		}
+
+		$processed = 0;
+		$updated = 0;
+
+		foreach ($scan_items as $item) {
+			$processed++;
+
+			// Get all issues for this scan item, grouped by rule_id
+			$issues = $wpdb->get_results($wpdb->prepare(
+				"SELECT rule_id, severity FROM `{$issues_table}`
+				WHERE scan_item_id = %d
+				GROUP BY rule_id",
+				$item->id
+			));
+
+			$failed_rules = [];
+			foreach ($issues as $issue) {
+				$failed_rules[] = $issue->rule_id;
+			}
+
+			// For now, we can only determine failed rules from stored issues
+			// We don't have complete data for passed/incomplete/inapplicable rules
+			// So we'll calculate based on what we know
+			$total_rules = count($failed_rules);
+			$passed_rules = 0; // Unknown without re-scan
+			$failed_rules_count = $total_rules;
+			$incomplete_count = 0; // Unknown without re-scan
+
+			// Calculate pass percentage (assume failed rules are the only ones we know about)
+			// This is a conservative estimate - actual score might be better
+			$completed_rules = $total_rules - $incomplete_count;
+			$pass_percentage = $completed_rules > 0 ? 0 : 100; // All known rules failed
+			$fail_percentage = $completed_rules > 0 ? 100 : 0;
+
+			// Get grade
+			$grade = self::calculate_grade_from_percentage($pass_percentage);
+
+			// Update scan item
+			$update_result = $wpdb->update(
+				$scan_items_table,
+				[
+					'rules_checked' => $total_rules,
+					'rules_passed' => $passed_rules,
+					'rules_failed' => $failed_rules_count,
+					'rules_incomplete' => $incomplete_count,
+					'pass_percentage' => $pass_percentage,
+					'fail_percentage' => $fail_percentage,
+					'score_grade' => $grade,
+					'rules_failed_list' => !empty($failed_rules) ? wp_json_encode($failed_rules) : null,
+				],
+				['id' => $item->id],
+				['%d', '%d', '%d', '%d', '%f', '%f', '%s', '%s'],
+				['%d']
+			);
+
+			if ($update_result !== false) {
+				$updated++;
+			}
+		}
+
+		return [
+			'processed' => $processed,
+			'updated' => $updated,
+			'message' => sprintf(
+				'Processed %d scan items, updated %d with scoring data.',
+				$processed,
+				$updated
+			),
+		];
+	}
+
+	/**
+	 * Calculate letter grade from pass percentage.
+	 *
+	 * @param float $pass_percentage Pass percentage (0-100).
+	 * @return string Letter grade (A-F).
+	 */
+	private static function calculate_grade_from_percentage(float $pass_percentage): string {
+		if ($pass_percentage >= 95) {
+			return 'A';
+		} elseif ($pass_percentage >= 85) {
+			return 'B';
+		} elseif ($pass_percentage >= 70) {
+			return 'C';
+		} elseif ($pass_percentage >= 50) {
+			return 'D';
+		} else {
+			return 'F';
+		}
+	}
 }

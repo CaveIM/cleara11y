@@ -438,3 +438,80 @@
 .cleara11y-queue-close:hover {
 	background: rgba(0, 112, 23, 0.1);
 }
+
+/* Score Card */
+.cleara11y-score-card {
+	grid-column: span 12;
+}
+
+@media (min-width: 1200px) {
+	.cleara11y-score-card {
+		grid-column: span 4;
+	}
+}
+
+.cleara11y-score-display {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 15px;
+	padding: 20px 10px;
+}
+
+.cleara11y-score-grade {
+	width: 80px;
+	height: 80px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 2.5em;
+	font-weight: bold;
+	border-radius: 50%;
+	color: #fff;
+}
+
+.cleara11y-grade-a {
+	background: #007017;
+}
+
+.cleara11y-grade-b {
+	background: #0073aa;
+}
+
+.cleara11y-grade-c {
+	background: #f56e28;
+}
+
+.cleara11y-grade-d {
+	background: #d63638;
+}
+
+.cleara11y-grade-f {
+	background: #000;
+}
+
+.cleara11y-grade-unknown {
+	background: #646970;
+}
+
+.cleara11y-score-percentage {
+	font-size: 1.5em;
+	font-weight: 600;
+	color: #1d2327;
+}
+
+.cleara11y-score-details {
+	display: flex;
+	gap: 20px;
+	font-size: 0.9em;
+}
+
+.cleara11y-score-pass {
+	color: #007017;
+	font-weight: 500;
+}
+
+.cleara11y-score-fail {
+	color: #d63638;
+	font-weight: 500;
+}

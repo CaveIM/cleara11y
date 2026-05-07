@@ -50,12 +50,29 @@ class Scan_Item_Repository {
 			'error_message' => $item->error_message,
 			'scanned_at' => $item->scanned_at,
 			'created_at' => $item->created_at ?? current_time('mysql'),
+			// Scoring fields
+			'rules_checked' => $item->rules_checked ?? 0,
+			'rules_passed' => $item->rules_passed ?? 0,
+			'rules_failed' => $item->rules_failed ?? 0,
+			'rules_incomplete' => $item->rules_incomplete ?? 0,
+			'pass_percentage' => $item->pass_percentage ?? 0.0,
+			'fail_percentage' => $item->fail_percentage ?? 0.0,
+			'score_grade' => $item->score_grade ?? null,
+			'rules_checked_list' => $item->rules_checked_list ?? null,
+			'rules_passed_list' => $item->rules_passed_list ?? null,
+			'rules_failed_list' => $item->rules_failed_list ?? null,
+			'rules_incomplete_list' => $item->rules_incomplete_list ?? null,
+		];
+
+		$format = ['%d', '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d', '%s', '%s', '%s',
+			// Scoring format
+			'%d', '%d', '%d', '%d', '%f', '%f', '%s', '%s', '%s', '%s', '%s',
 		];
 
 		$result = $wpdb->insert(
 			self::get_table(),
 			$data,
-			['%d', '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d', '%s', '%s', '%s']
+			$format
 		);
 
 		return $result ? $wpdb->insert_id : false;
@@ -79,13 +96,30 @@ class Scan_Item_Repository {
 			'minor_issues' => $item->minor_issues,
 			'error_message' => $item->error_message,
 			'scanned_at' => $item->scanned_at,
+			// Scoring fields
+			'rules_checked' => $item->rules_checked ?? 0,
+			'rules_passed' => $item->rules_passed ?? 0,
+			'rules_failed' => $item->rules_failed ?? 0,
+			'rules_incomplete' => $item->rules_incomplete ?? 0,
+			'pass_percentage' => $item->pass_percentage ?? 0.0,
+			'fail_percentage' => $item->fail_percentage ?? 0.0,
+			'score_grade' => $item->score_grade ?? null,
+			'rules_checked_list' => $item->rules_checked_list ?? null,
+			'rules_passed_list' => $item->rules_passed_list ?? null,
+			'rules_failed_list' => $item->rules_failed_list ?? null,
+			'rules_incomplete_list' => $item->rules_incomplete_list ?? null,
+		];
+
+		$format = ['%s', '%s', '%d', '%d', '%d', '%d', '%s', '%s',
+			// Scoring format
+			'%d', '%d', '%d', '%d', '%f', '%f', '%s', '%s', '%s', '%s', '%s',
 		];
 
 		$result = $wpdb->update(
 			self::get_table(),
 			$data,
 			['id' => $item->id],
-			['%s', '%s', '%d', '%d', '%d', '%d', '%s', '%s'],
+			$format,
 			['%d']
 		);
 

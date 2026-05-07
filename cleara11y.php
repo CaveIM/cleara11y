@@ -34,7 +34,7 @@ define('CLEARA11Y_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('CLEARA11Y_PLUGIN_BASENAME', plugin_basename(__FILE__));
 
 // Database version constant.
-define('CLEARA11Y_DB_VERSION', '1.5.0');
+define('CLEARA11Y_DB_VERSION', '1.6.0');
 
 /**
  * PSR-4 Autoloader
@@ -224,6 +224,22 @@ class ClearA11y_Plugin {
 				update_option('cleara11y_db_version', '1.5.0');
 				add_action('admin_notices', function() {
 					echo '<div class="notice notice-success is-dismissible"><p>ClearA11y: Scan jobs table added for parallel scanning support!</p></div>';
+				});
+			}
+		}
+
+		// Need to run migration if version is older than 1.6.0
+		if (version_compare($current_db_version, '1.6.0', '<')) {
+			$result = \ClearA11y\Database\Schema::add_scoring_columns();
+
+			if ($result) {
+				update_option('cleara11y_db_version', '1.6.0');
+
+				// Recalculate scoring data for existing completed scans
+				$recalc_result = \ClearA11y\Database\Schema::recalculate_scoring_data();
+
+				add_action('admin_notices', function() use ($recalc_result) {
+					echo '<div class="notice notice-success is-dismissible"><p>ClearA11y: Scoring columns added! ' . esc_html($recalc_result['message']) . '</p></div>';
 				});
 			}
 		}

@@ -34,7 +34,7 @@ define('CLEARA11Y_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('CLEARA11Y_PLUGIN_BASENAME', plugin_basename(__FILE__));
 
 // Database version constant.
-define('CLEARA11Y_DB_VERSION', '1.6.0');
+define('CLEARA11Y_DB_VERSION', '1.7.0');
 
 /**
  * PSR-4 Autoloader
@@ -109,6 +109,8 @@ class ClearA11y_Plugin {
 		add_action('admin_init', [$this, 'handle_manual_recreate_tables']);
 		add_action('admin_init', [$this, 'run_database_migrations']);
 		add_action('admin_post_cleara11y_migrate_db', [$this, 'handle_manual_migration']);
+		// Test runner (development only)
+		add_action('admin_init', [$this, 'run_test_if_requested']);
 	}
 
 	/**
@@ -243,6 +245,18 @@ class ClearA11y_Plugin {
 				});
 			}
 		}
+
+			// Need to run migration if version is older than 1.7.0
+			if (version_compare($current_db_version, '1.7.0', '<')) {
+			$result = \ClearA11y\Database\Ignore_Schema::create_tables();
+
+			if ($result) {
+				update_option('cleara11y_db_version', '1.7.0');
+				add_action('admin_notices', function() {
+					echo '<div class="notice notice-success is-dismissible"><p>ClearA11y: Ignore system tables added successfully!</p></div>';
+				});
+			}
+			}
 	}
 
 	/**
@@ -297,6 +311,7 @@ class ClearA11y_Plugin {
 
 		// Initialize REST API
 		new ClearA11y\API\REST_Controller();
+			new ClearA11y\API\Ignore_REST_Controller();
 
 		// Initialize frontend scanner (checks for scan tokens)
 		new ClearA11y\Frontend\Scanner();
@@ -472,6 +487,23 @@ class ClearA11y_Plugin {
 			}
 		}
 	}
+
+		/**
+		 * Run test if requested via URL parameter (development only).
+		 */
+		public function run_test_if_requested(): void {
+			// Only run if specific parameter is set and user is admin
+			if (!isset($_GET['cleara11y_test_quick_ignore']) || !current_user_can('manage_options')) {
+				return;
+			}
+
+			// Require test file
+			$test_file = CLEARA11Y_PLUGIN_DIR . 'tests/test-quick-ignore.php';
+			if (file_exists($test_file)) {
+				require_once $test_file;
+				exit;
+			}
+		}
 }
 
 /**

@@ -731,14 +731,6 @@ class Admin {
 				true
 			);
 
-				// Enqueue toast notification styles
-				wp_enqueue_style(
-					'cleara11y-toast',
-					CLEARA11Y_PLUGIN_URL . 'assets/css/toast.css',
-					[],
-					CLEARA11Y_VERSION
-				);
-
 			// Localize issues list script
 			wp_localize_script('cleara11y-issues-list', 'cleara11yData', [
 				'apiUrl' => $rest_url . 'cleara11y/v1/',
@@ -764,12 +756,6 @@ class Admin {
 					'dismissedAt' => __('Date:', 'cleara11y'),
 				],
 			]);
-
-				// Localize ignore API data for quick ignore
-				wp_localize_script('cleara11y-issues-list', 'cleara11yIgnores', [
-					'apiUrl' => $rest_url . 'cleara11y/v1/ignores',
-					'nonce' => wp_create_nonce('wp_rest'),
-				]);
 		} elseif ($is_issue_types_page) {
 			// Enqueue issue types JavaScript
 			wp_enqueue_script(
@@ -816,28 +802,6 @@ class Admin {
 				// Include severity mapping for all axe-core rules
 				'severityMap' => \ClearA11y\Services\Rule_Severity_Map::get_severity_map(),
 			]);
-			} elseif ($is_ignores_page) {
-				// Enqueue ignores page JavaScript
-				wp_enqueue_script(
-					'cleara11y-ignores-page',
-					CLEARA11Y_PLUGIN_URL . 'assets/js/ignores-page.js',
-					['jquery', 'wp-api'],
-					rand(),
-					true
-				);
-
-				// Localize ignores page script
-				wp_localize_script('cleara11y-ignores-page', 'cleara11yIgnores', [
-					'apiUrl' => $rest_url . 'cleara11y/v1/ignores',
-					'nonce' => wp_create_nonce('wp_rest'),
-					'strings' => [
-						'confirmDelete' => __('Are you sure you want to delete this ignore rule? This action cannot be undone.', 'cleara11y'),
-						'confirmDisable' => __('Are you sure you want to disable this ignore rule?' , 'cleara11y'),
-						'deleteSuccess' => __('Ignore rule deleted.', 'cleara11y'),
-						'error' => __('An error occurred. Please try again.', 'cleara11y'),
-					],
-				]);
-
 		} else {
 			// Enqueue scanner orchestrator first (loaded but not executed directly)
 			wp_enqueue_script(

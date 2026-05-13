@@ -193,6 +193,8 @@ class Scan_Results_Processor {
 				$scan->status = 'completed';
 				$scan->completed_at = \current_time('mysql');
 				Scan_Repository::update($scan);
+					// Expire "until_next_scan" ignore rules for this page/post
+					self::expire_until_next_scan_rules($scan->post_id);
 			}
 		}
 
@@ -249,6 +251,8 @@ class Scan_Results_Processor {
 
 		if ($total_items === ($completed_items + $failed_items)) {
 			$scan->status = 'completed';
+					// Expire "until_next_scan" ignore rules for this page/post
+					self::expire_until_next_scan_rules($scan->post_id);
 			$scan->completed_at = \current_time('mysql');
 		}
 
@@ -353,3 +357,40 @@ class Scan_Results_Processor {
 		];
 	}
 }
+
+	/**
+	 * Expire "until_next_scan" ignore rules for a specific post.
+	 *
+	 * When a scan completes, all "until_next_scan" rules for that post
+	 * should be expired so that if issues still exist, they reappear.
+	 *
+	 * @param int $post_id The post ID that was scanned.
+	 * @return void
+	 */
+	private static function expire_until_next_scan_rules(int $post_id): void {
+		global $wpdb;
+
+		$ignore_rules_table = \ClearA11y\Database\Ignore_Schema::get_table_name('ignore_rules');
+
+		// Find all "until_next_scan" rules for this post/page
+		// We need to check the scope JSON for the post URL
+		$post = get_post($post_id);
+		if (!$post) {
+			return;
+		}
+
+		$post_url = get_permalink($post_id);
+
+		// Update rules to expire them
+		$wpdb->query(
+			$wpdb->prepare(
+				"UPDATE `{$ignore_rules_table}`
+				SET status = 'expired', updated_at = NOW()
+				WHERE status = 'active'
+				AND system_generated = 1
+				AND JSON_EXTRACT(duration, '$.duration_type') = 'until_next_scan'
+				AND JSON_EXTRACT(scope, '$.url') = %s",
+				$post_url
+			)
+		);
+	}

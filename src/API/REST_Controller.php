@@ -1692,6 +1692,8 @@ class REST_Controller {
 
 		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
 		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
+		$ignore_matches_table = \ClearA11y\Database\Ignore_Schema::get_table_name('violation_ignore_matches');
+		$ignore_rules_table = \ClearA11y\Database\Ignore_Schema::get_table_name('ignore_rules');
 
 		// Build WHERE clause
 		$where = ['1=1'];
@@ -1719,11 +1721,17 @@ class REST_Controller {
 			$where_params[] = $search_term;
 		}
 
+		// Exclude issues that have active ignore matches
+		$where[] = 'vim.id IS NULL';
+
 		$where_clause = implode(' AND ', $where);
 
 		// Get total count
 		$count_query = "SELECT COUNT(DISTINCT i.id) FROM `{$issues_table}` i
 					   INNER JOIN `{$scan_items_table}` si ON i.scan_item_id = si.id
+					   LEFT JOIN `{$ignore_matches_table}` vim ON i.id = vim.violation_id
+					   LEFT JOIN `{$ignore_rules_table}` ir ON vim.ignore_rule_id = ir.id AND ir.status = 'active'
+						   AND (ir.expires_at IS NULL OR ir.expires_at > NOW())
 					   WHERE {$where_clause}";
 		// @phpstan-ignore-next-line
 		$total = (int) $wpdb->get_var($wpdb->prepare($count_query, ...$where_params));
@@ -1732,6 +1740,9 @@ class REST_Controller {
 		$query = "SELECT i.*, si.post_title, si.post_url
 				 FROM `{$issues_table}` i
 				 INNER JOIN `{$scan_items_table}` si ON i.scan_item_id = si.id
+				 LEFT JOIN `{$ignore_matches_table}` vim ON i.id = vim.violation_id
+				 LEFT JOIN `{$ignore_rules_table}` ir ON vim.ignore_rule_id = ir.id AND ir.status = 'active'
+					 AND (ir.expires_at IS NULL OR ir.expires_at > NOW())
 				 WHERE {$where_clause}
 				 ORDER BY i.dismissed ASC, FIELD(i.severity, 'critical', 'moderate', 'minor'), i.id DESC
 				 LIMIT %d OFFSET %d";
@@ -1761,17 +1772,22 @@ class REST_Controller {
 		global $wpdb;
 
 		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
+		$ignore_matches_table = \ClearA11y\Database\Ignore_Schema::get_table_name('violation_ignore_matches');
+		$ignore_rules_table = \ClearA11y\Database\Ignore_Schema::get_table_name('ignore_rules');
 
-		// Get counts by severity (active only)
+		// Get counts by severity (active only, excluding ignored)
 		$counts = $wpdb->get_results(
 			"SELECT
-				SUM(CASE WHEN severity = 'critical' AND dismissed = 0 AND dismissed_global = 0 THEN 1 ELSE 0 END) as critical,
-				SUM(CASE WHEN severity = 'moderate' AND dismissed = 0 AND dismissed_global = 0 THEN 1 ELSE 0 END) as moderate,
-				SUM(CASE WHEN severity = 'minor' AND dismissed = 0 AND dismissed_global = 0 THEN 1 ELSE 0 END) as minor,
-				SUM(CASE WHEN dismissed = 0 AND dismissed_global = 0 THEN 1 ELSE 0 END) as active,
-				SUM(CASE WHEN dismissed = 1 OR dismissed_global = 1 THEN 1 ELSE 0 END) as dismissed,
+				SUM(CASE WHEN i.severity = 'critical' AND i.dismissed = 0 AND i.dismissed_global = 0 AND vim.id IS NULL THEN 1 ELSE 0 END) as critical,
+				SUM(CASE WHEN i.severity = 'moderate' AND i.dismissed = 0 AND i.dismissed_global = 0 AND vim.id IS NULL THEN 1 ELSE 0 END) as moderate,
+				SUM(CASE WHEN i.severity = 'minor' AND i.dismissed = 0 AND i.dismissed_global = 0 AND vim.id IS NULL THEN 1 ELSE 0 END) as minor,
+				SUM(CASE WHEN i.dismissed = 0 AND i.dismissed_global = 0 AND vim.id IS NULL THEN 1 ELSE 0 END) as active,
+				SUM(CASE WHEN i.dismissed = 1 OR i.dismissed_global = 1 THEN 1 ELSE 0 END) as dismissed,
 				COUNT(*) as total
-			FROM `{$issues_table}`",
+			FROM `{$issues_table}` i
+			LEFT JOIN `{$ignore_matches_table}` vim ON i.id = vim.violation_id
+			LEFT JOIN `{$ignore_rules_table}` ir ON vim.ignore_rule_id = ir.id AND ir.status = 'active'
+				AND (ir.expires_at IS NULL OR ir.expires_at > NOW())",
 			ARRAY_A
 		);
 

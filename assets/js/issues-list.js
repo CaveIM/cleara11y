@@ -17,7 +17,6 @@
 	let totalPages = 1;
 	let currentFilters = {
 		severity: '',
-		dismissed: 'active',
 		search: ''
 	};
 
@@ -45,12 +44,6 @@
 				this.loadIssues();
 			});
 
-			document.getElementById('cleara11y-filter-dismissed').addEventListener('change', (e) => {
-				currentFilters.dismissed = e.target.value;
-				currentPage = 1;
-				this.loadIssues();
-			});
-
 			// Search input (debounced)
 			let searchTimeout;
 			document.getElementById('cleara11y-search-issues').addEventListener('input', (e) => {
@@ -65,11 +58,9 @@
 			// Reset filters
 			document.getElementById('cleara11y-reset-filters').addEventListener('click', () => {
 				document.getElementById('cleara11y-filter-severity').value = '';
-				document.getElementById('cleara11y-filter-dismissed').value = 'active';
 				document.getElementById('cleara11y-search-issues').value = '';
 				currentFilters = {
 					severity: '',
-					dismissed: 'active',
 					search: ''
 				};
 				currentPage = 1;
@@ -89,16 +80,6 @@
 					currentPage++;
 					this.loadIssues();
 				}
-			});
-
-			// Bulk dismiss action
-			document.getElementById('cleara11y-bulk-dismiss').addEventListener('click', () => {
-				const selectedIssues = this.getSelectedIssueIds();
-				if (selectedIssues.length === 0) {
-					alert(cleara11yData.strings?.noSelection || 'Please select at least one issue.');
-					return;
-				}
-				this.bulkDismissIssues(selectedIssues);
 			});
 
 			// Modal close handlers
@@ -142,12 +123,11 @@
 
 				const stats = await response.json();
 
-				// Update stats display with new nested structure
+				// Update stats display
 				document.getElementById('cleara11y-total-issues').textContent = stats.active?.total || 0;
 				document.getElementById('cleara11y-critical-issues').textContent = stats.active?.critical || 0;
 				document.getElementById('cleara11y-moderate-issues').textContent = stats.active?.moderate || 0;
 				document.getElementById('cleara11y-minor-issues').textContent = stats.active?.minor || 0;
-				document.getElementById('cleara11y-dismissed-issues').textContent = stats.dismissed || 0;
 
 			} catch (error) {
 				console.error('[ClearA11y Issues List] Error loading stats:', error);
@@ -177,10 +157,6 @@
 
 				if (currentFilters.severity) {
 					params.append('severity', currentFilters.severity);
-				}
-
-				if (currentFilters.dismissed) {
-					params.append('dismissed', currentFilters.dismissed);
 				}
 
 				if (currentFilters.search) {
@@ -236,7 +212,6 @@
 			let html = '';
 
 			const renderIssue = (issue) => {
-				const isDismissed = !!issue.dismissed;
 				const severityColors = {
 					critical: '#d63638',
 					moderate: '#f56e28',
@@ -244,9 +219,8 @@
 				};
 
 				return `
-					<div class="cleara11y-issue-row" data-issue-id="${issue.id}" style="padding: 15px; border-bottom: 1px solid #c3c4c7; ${isDismissed ? 'opacity: 0.6;' : ''}">
+					<div class="cleara11y-issue-row" data-issue-id="${issue.id}" style="padding: 15px; border-bottom: 1px solid #c3c4c7;">
 						<div style="display: flex; justify-content: space-between; align-items: start; gap: 20px;">
-							<input type="checkbox" class="cleara11y-issue-checkbox" data-issue-id="${issue.id}" style="margin-top: 4px;">
 							<div style="flex: 1;">
 								<div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
 									<h4 style="margin: 0; font-size: 14px;">
@@ -255,7 +229,6 @@
 									<span class="cleara11y-issue-badge" style="background: ${severityColors[issue.severity]}; color: #fff; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600;">
 										${issue.severity}
 									</span>
-									${isDismissed ? '<span class="dashicons dashicons-hidden" style="color: #646970;" title="Dismissed"></span>' : ''}
 								</div>
 								<p style="margin: 0 0 8px 0; font-size: 13px; color: #646970;">
 									${this.escapeHtml(issue.message || issue.description || '')}
@@ -271,37 +244,16 @@
 										<strong>Selector:</strong> <code style="background: #f0f0f1; padding: 2px 6px; border-radius: 3px;">${this.escapeHtml(issue.selector)}</code>
 									</div>
 								` : ''}
-								${isDismissed ? `
-									<div class="cleara11y-dismissal-info" style="margin-top: 8px; padding: 10px; background: #f0f0f1; border-left: 3px solid #646970; border-radius: 3px;">
-										<span style="font-size: 11px; color: #646970;">
-											<strong>${cleara11yData.strings?.dismissedBy || 'Dismissed by:'}</strong> ${this.escapeHtml(issue.dismissed_by_name || 'Unknown')}
-											${issue.dismissed_at ? `<br><strong>${cleara11yData.strings?.dismissedAt || 'Date:'}</strong> ${new Date(issue.dismissed_at).toLocaleString()}` : ''}
-											${issue.dismissal_comment ? `<br><em>"${this.escapeHtml(issue.dismissal_comment)}"</em>` : ''}
-										</span>
-									</div>
-								` : ''}
 							</div>
 							<div class="cleara11y-issue-actions" style="display: flex; gap: 8px; align-items: center;">
 								<button type="button" class="button button-small cleara11y-view-issue" data-issue-id="${issue.id}">
-
+									<span class="dashicons dashicons-visibility" style="margin-top: 3px;"></span>
+									View
+								</button>
 								<button type="button" class="button button-small cleara11y-quick-ignore" data-issue-id="${issue.id}" data-selector="${this.escapeHtml(issue.selector || '')}" data-rule-id="${this.escapeHtml(issue.rule_id || '')}" title="Quick ignore - hide until next scan">
 									<span class="dashicons dashicons-dismiss" style="margin-top: 3px;"></span>
 									Quick Ignore
 								</button>
-									<span class="dashicons dashicons-visibility" style="margin-top: 3px;"></span>
-									View
-								</button>
-								${isDismissed ? `
-									<button type="button" class="button button-small cleara11y-undismiss-issue" data-issue-id="${issue.id}">
-										<span class="dashicons dashicons-undo" style="margin-top: 3px;"></span>
-										Undo
-									</button>
-								` : `
-									<button type="button" class="button button-small cleara11y-dismiss-issue" data-issue-id="${issue.id}">
-										<span class="dashicons dashicons-hidden" style="margin-top: 3px;"></span>
-										Dismiss
-									</button>
-								`}
 							</div>
 						</div>
 					</div>
@@ -354,56 +306,13 @@
 				});
 			});
 
-
-				// Quick Ignore buttons
-				document.querySelectorAll('.cleara11y-quick-ignore').forEach(btn => {
-					btn.addEventListener('click', (e) => {
-						const issueId = parseInt(e.currentTarget.dataset.issueId);
-						this.quickIgnoreIssue(issueId);
-					});
-				});
-
-			// Dismiss buttons
-			document.querySelectorAll('.cleara11y-dismiss-issue').forEach(btn => {
+			// Quick Ignore buttons
+			document.querySelectorAll('.cleara11y-quick-ignore').forEach(btn => {
 				btn.addEventListener('click', (e) => {
 					const issueId = parseInt(e.currentTarget.dataset.issueId);
-					this.dismissIssue(issueId);
+					this.quickIgnoreIssue(issueId);
 				});
 			});
-
-			// Undismiss buttons
-			document.querySelectorAll('.cleara11y-undismiss-issue').forEach(btn => {
-				btn.addEventListener('click', (e) => {
-					const issueId = parseInt(e.currentTarget.dataset.issueId);
-					this.undismissIssue(issueId);
-				});
-			});
-
-			// Issue checkboxes - update bulk actions bar
-			document.querySelectorAll('.cleara11y-issue-checkbox').forEach(checkbox => {
-				checkbox.addEventListener('change', () => {
-					this.updateBulkActionsBar();
-				});
-			});
-
-			// Initial update of bulk actions bar
-			this.updateBulkActionsBar();
-		},
-
-		/**
-		 * Update the bulk actions bar visibility and count
-		 */
-		updateBulkActionsBar() {
-			const bulkActionsBar = document.querySelector('.cleara11y-bulk-actions');
-			const selectedCount = this.getSelectedIssueIds().length;
-			const countSpan = document.querySelector('.cleara11y-selected-count');
-
-			if (selectedCount > 0) {
-				bulkActionsBar.style.display = 'flex';
-				countSpan.textContent = `${selectedCount} ${cleara11yData.strings?.selected || 'selected'}`;
-			} else {
-				bulkActionsBar.style.display = 'none';
-			}
 		},
 
 		/**
@@ -439,292 +348,135 @@
 		},
 
 		/**
-		 * Dismiss an issue
+		 * Quick ignore an issue
 		 */
-		dismissIssue(issueId, comment = '') {
-			this.showDismissUI(issueId, comment);
+		async quickIgnoreIssue(issueId) {
+			try {
+				const response = await fetch('/wp-json/cleara11y/v1/ignores/quick', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'X-WP-Nonce': typeof cleara11yIgnores !== 'undefined' ? cleara11yIgnores.nonce : NONCE
+					},
+					body: JSON.stringify({ violation_id: issueId })
+				});
+
+				if (!response.ok) {
+					throw new Error('Failed to quick ignore issue');
+				}
+
+				const data = await response.json();
+
+				// Show success toast with undo button
+				this.showToast(data.message || 'Issue ignored until next scan', data.id, 'quick-ignore');
+
+				// Reload issues
+				this.loadIssues();
+				this.loadStats();
+
+			} catch (error) {
+				console.error('[ClearA11y Issues List] Error quick ignoring issue:', error);
+				alert('Error quick ignoring issue: ' + error.message);
+			}
 		},
 
 		/**
-		 * Show inline dismiss UI
+		 * Show toast notification with optional undo button
 		 */
-		showDismissUI(issueId, initialComment = '') {
-			const issueRow = document.querySelector(`[data-issue-id="${issueId}"]`);
-			if (!issueRow) return;
-
-			// Remove any existing dismiss UI
-			const existingUI = issueRow.querySelector('.cleara11y-dismiss-ui');
-			if (existingUI) {
-				existingUI.remove();
-				return;
+		showToast(message, undoId = null, undoType = 'quick-ignore') {
+			// Remove existing toasts
+			const existingToast = document.querySelector('.cleara11y-toast');
+			if (existingToast) {
+				existingToast.remove();
 			}
 
-			// Create dismiss UI
-			const dismissUI = document.createElement('div');
-			dismissUI.className = 'cleara11y-dismiss-ui';
-			dismissUI.innerHTML = `
-				<div class="cleara11y-dismiss-ui-content">
-					<label for="dismiss-comment-${issueId}">${cleara11yData.strings?.dismissComment || 'Comment (optional):'}</label>
-					<textarea id="dismiss-comment-${issueId}" rows="3" placeholder="${cleara11yData.strings?.dismissPlaceholder || 'Why are you dismissing this issue?'}">${this.escapeHtml(initialComment)}</textarea>
-					<div class="cleara11y-dismiss-ui-actions">
-						<button type="button" class="button button-primary cleara11y-confirm-dismiss">${cleara11yData.strings?.dismiss || 'Dismiss'}</button>
-						<button type="button" class="button cleara11y-cancel-dismiss">${cleara11yData.strings?.cancel || 'Cancel'}</button>
-					</div>
+			// Create toast element
+			const toast = document.createElement('div');
+			toast.className = 'cleara11y-toast';
+			toast.innerHTML = `
+				<div class="cleara11y-toast-content">
+					<span class="cleara11y-toast-message">${message}</span>
+					${undoId ? `
+						<button type="button" class="button button-small cleara11y-toast-undo" data-undo-id="${undoId}" data-undo-type="${undoType}">
+							<span class="dashicons dashicons-undo" style="margin-top: 3px;"></span>
+							Undo
+						</button>
+					` : ''}
+					<button type="button" class="cleara11y-toast-close" aria-label="Close">
+						<span class="dashicons dashicons-no-alt"></span>
+					</button>
 				</div>
 			`;
 
-			// Insert after actions
-			const actions = issueRow.querySelector('.cleara11y-issue-actions');
-			actions.after(dismissUI);
+			// Add to page
+			document.body.appendChild(toast);
 
-			// Focus textarea
-			const textarea = document.getElementById(`dismiss-comment-${issueId}`);
-			textarea.focus();
-
-			// Setup handlers
-			dismissUI.querySelector('.cleara11y-confirm-dismiss').addEventListener('click', () => {
-				const comment = textarea.value;
-				this.performDismiss(issueId, comment);
+			// Animate in
+			requestAnimationFrame(() => {
+				toast.classList.add('cleara11y-toast-visible');
 			});
 
-			dismissUI.querySelector('.cleara11y-cancel-dismiss').addEventListener('click', () => {
-				dismissUI.remove();
-			});
-		},
+			// Auto-hide after 5 seconds if no undo button
+			if (!undoId) {
+				setTimeout(() => {
+					this.hideToast(toast);
+				}, 5000);
+			}
 
-		/**
-		 * Perform the actual dismiss API call
-		 */
-		async performDismiss(issueId, comment) {
-			try {
-				const response = await fetch(API_URL + 'issues/' + issueId + '/dismiss', {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						'X-WP-Nonce': NONCE
-					},
-					body: JSON.stringify({ comment: comment || '' })
+			// Attach event listeners
+			toast.querySelector('.cleara11y-toast-close')?.addEventListener('click', () => {
+				this.hideToast(toast);
+			});
+
+			if (undoId) {
+				toast.querySelector('.cleara11y-toast-undo')?.addEventListener('click', (e) => {
+					this.handleUndo(undoId, undoType);
 				});
-
-				if (!response.ok) {
-					throw new Error('Failed to dismiss issue');
-				}
-
-				// Reload issues
-				this.loadIssues();
-				this.loadStats();
-
-			} catch (error) {
-				console.error('[ClearA11y Issues List] Error dismissing issue:', error);
-				alert('Error dismissing issue: ' + error.message);
 			}
 		},
 
 		/**
-		 * Undismiss an issue
+		 * Hide toast notification
 		 */
-		async undismissIssue(issueId) {
-			try {
-				const response = await fetch(API_URL + 'issues/' + issueId + '/undismiss', {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						'X-WP-Nonce': NONCE
-					}
-				});
-
-				if (!response.ok) {
-					throw new Error('Failed to undismiss issue');
-				}
-
-				// Reload issues
-				this.loadIssues();
-				this.loadStats();
-
-			} catch (error) {
-				console.error('[ClearA11y Issues List] Error undismissing issue:', error);
-				alert('Error undismissing issue: ' + error.message);
+		hideToast(toast = null) {
+			const toastEl = toast || document.querySelector('.cleara11y-toast');
+			if (toastEl) {
+				toastEl.classList.remove('cleara11y-toast-visible');
+				setTimeout(() => {
+					toastEl.remove();
+				}, 300);
 			}
 		},
 
-			/**
-			 * Quick ignore an issue
-			 */
-			async quickIgnoreIssue(issueId) {
-				try {
-					const response = await fetch('/wp-json/cleara11y/v1/ignores/quick', {
+		/**
+		 * Handle undo action from toast
+		 */
+		async handleUndo(undoId, undoType) {
+			try {
+				if (undoType === 'quick-ignore') {
+					// Undo quick ignore
+					const response = await fetch(`/wp-json/cleara11y/v1/ignores/${undoId}/undo`, {
 						method: 'POST',
 						headers: {
-							'Content-Type': 'application/json',
 							'X-WP-Nonce': typeof cleara11yIgnores !== 'undefined' ? cleara11yIgnores.nonce : NONCE
-						},
-						body: JSON.stringify({ violation_id: issueId })
+						}
 					});
 
 					if (!response.ok) {
-						throw new Error('Failed to quick ignore issue');
+						throw new Error('Failed to undo quick ignore');
 					}
 
-					const data = await response.json();
-
-					// Show success toast with undo button
-					this.showToast(data.message || 'Issue ignored until next scan', data.id, 'quick-ignore');
-
-					// Reload issues
+					this.hideToast();
+					this.showToast('Quick ignore removed');
 					this.loadIssues();
 					this.loadStats();
 
-				} catch (error) {
-					console.error('[ClearA11y Issues List] Error quick ignoring issue:', error);
-					alert('Error quick ignoring issue: ' + error.message);
+				} else {
+					console.warn('Unknown undo type:', undoType);
 				}
-			},
-
-			/**
-			 * Show toast notification with optional undo button
-			 */
-			showToast(message, undoId = null, undoType = 'quick-ignore') {
-				// Remove existing toasts
-				const existingToast = document.querySelector('.cleara11y-toast');
-				if (existingToast) {
-					existingToast.remove();
-				}
-
-				// Create toast element
-				const toast = document.createElement('div');
-				toast.className = 'cleara11y-toast';
-				toast.innerHTML = `
-					<div class="cleara11y-toast-content">
-						<span class="cleara11y-toast-message">${message}</span>
-						${undoId ? `
-							<button type="button" class="button button-small cleara11y-toast-undo" data-undo-id="${undoId}" data-undo-type="${undoType}">
-								<span class="dashicons dashicons-undo" style="margin-top: 3px;"></span>
-								Undo
-							</button>
-						` : ''}
-						<button type="button" class="cleara11y-toast-close" aria-label="Close">
-							<span class="dashicons dashicons-no-alt"></span>
-						</button>
-					</div>
-				`;
-
-				// Add to page
-				document.body.appendChild(toast);
-
-				// Animate in
-				requestAnimationFrame(() => {
-					toast.classList.add('cleara11y-toast-visible');
-				});
-
-				// Auto-hide after 5 seconds if no undo button
-				if (!undoId) {
-					setTimeout(() => {
-						this.hideToast(toast);
-					}, 5000);
-				}
-
-				// Attach event listeners
-				toast.querySelector('.cleara11y-toast-close')?.addEventListener('click', () => {
-					this.hideToast(toast);
-				});
-
-				if (undoId) {
-					toast.querySelector('.cleara11y-toast-undo')?.addEventListener('click', (e) => {
-						this.handleUndo(undoId, undoType);
-					});
-				}
-			},
-
-			/**
-			 * Hide toast notification
-			 */
-			hideToast(toast = null) {
-				const toastEl = toast || document.querySelector('.cleara11y-toast');
-				if (toastEl) {
-					toastEl.classList.remove('cleara11y-toast-visible');
-					setTimeout(() => {
-						toastEl.remove();
-					}, 300);
-				}
-			},
-
-			/**
-			 * Handle undo action from toast
-			 */
-			async handleUndo(undoId, undoType) {
-				try {
-					if (undoType === 'quick-ignore') {
-						// Undo quick ignore
-						const response = await fetch(`/wp-json/cleara11y/v1/ignores/${undoId}/undo`, {
-							method: 'POST',
-							headers: {
-								'X-WP-Nonce': typeof cleara11yIgnores !== 'undefined' ? cleara11yIgnores.nonce : NONCE
-							}
-						});
-
-						if (!response.ok) {
-							throw new Error('Failed to undo quick ignore');
-						}
-
-						this.hideToast();
-						this.showToast('Quick ignore removed');
-						this.loadIssues();
-						this.loadStats();
-
-					} else {
-						console.warn('Unknown undo type:', undoType);
-					}
-				} catch (error) {
-					console.error('[ClearA11y Issues List] Error handling undo:', error);
-					alert('Error undoing action: ' + error.message);
-				}
-			},
-
-		/**
-		 * Get selected issue IDs from checkboxes
-		 */
-		getSelectedIssueIds() {
-			const checkboxes = document.querySelectorAll('.cleara11y-issue-checkbox:checked');
-			return Array.from(checkboxes).map(cb => parseInt(cb.dataset.issueId));
-		},
-
-		/**
-		 * Bulk dismiss multiple issues
-		 */
-		async bulkDismissIssues(issueIds) {
-			if (!confirm(cleara11yData.strings?.confirmBulkDismiss || `Dismiss ${issueIds.length} issue(s)?`)) {
-				return;
-			}
-
-			const comment = prompt(cleara11yData.strings?.bulkDismissComment || 'Enter a comment for all issues (optional):');
-			if (comment === null) return; // User cancelled
-
-			try {
-				const response = await fetch(API_URL + 'issues/bulk-dismiss', {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						'X-WP-Nonce': NONCE
-					},
-					body: JSON.stringify({
-						issue_ids: issueIds,
-						comment: comment || ''
-					})
-				});
-
-				if (!response.ok) {
-					throw new Error('Failed to dismiss issues');
-				}
-
-				const result = await response.json();
-				alert(result.message || `${cleara11yData.strings?.dismissed || 'Dismissed'} ${result.dismissed_count || 0} ${cleara11yData.strings?.issues || 'issue(s)'}.`);
-
-				this.loadIssues();
-				this.loadStats();
-
 			} catch (error) {
-				console.error('[ClearA11y Issues List] Error bulk dismissing:', error);
-				alert('Error: ' + error.message);
+				console.error('[ClearA11y Issues List] Error handling undo:', error);
+				alert('Error undoing action: ' + error.message);
 			}
 		},
 

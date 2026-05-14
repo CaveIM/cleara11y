@@ -109,7 +109,7 @@ class Fingerprint_Service {
 	 * @param string $url URL to normalize.
 	 * @return string Normalized URL.
 	 */
-	private static function normalize_url(string $url): string {
+	public static function normalize_url(string $url): string {
 		$url = strtolower($url);
 
 		// Remove protocol

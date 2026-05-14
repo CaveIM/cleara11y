@@ -463,15 +463,25 @@ class Admin {
 			[Issues_List_Page::class, 'render']
 		);
 
-		// Add Issue Types submenu page
+		// Add Ignores submenu page
 		add_submenu_page(
 			'cleara11y',
-			__('Issue Types', 'cleara11y'),
-			__('Issue Types', 'cleara11y'),
+			'Ignores',
+			'Ignores',
 			'manage_options',
-			'cleara11y-issue-types',
-			[Issue_Types_Page::class, 'render_page']
+			'cleara11y-ignores',
+			[Ignores_Page::class, 'render']
 		);
+
+		// // Add Issue Types submenu page
+		// add_submenu_page(
+		// 	'cleara11y',
+		// 	__('Issue Types', 'cleara11y'),
+		// 	__('Issue Types', 'cleara11y'),
+		// 	'manage_options',
+		// 	'cleara11y-issue-types',
+		// 	[Issue_Types_Page::class, 'render_page']
+		// );
 
 		// Add Issue Reference submenu page
 		add_submenu_page(
@@ -483,16 +493,6 @@ class Admin {
 			[Issue_Reference_Page::class, 'render_page']
 		);
 
-			// Add Ignores submenu page
-			add_submenu_page(
-				'cleara11y',
-				'Ignores',
-				'Ignores',
-				'manage_options',
-				'cleara11y-ignores',
-				[Ignores_Page::class, 'render']
-			);
-
 		// Add Settings submenu page
 		add_submenu_page(
 			'cleara11y',
@@ -503,15 +503,15 @@ class Admin {
 			[Settings_Page::class, 'render']
 		);
 
-		// Add Debug Tools submenu page
-		add_submenu_page(
-			'cleara11y',
-			__('Debug Tools', 'cleara11y'),
-			__('Debug Tools', 'cleara11y'),
-			'manage_options',
-			'cleara11y-debug',
-			[$this, 'render_debug_page']
-		);
+		// // Add Debug Tools submenu page
+		// add_submenu_page(
+		// 	'cleara11y',
+		// 	__('Debug Tools', 'cleara11y'),
+		// 	__('Debug Tools', 'cleara11y'),
+		// 	'manage_options',
+		// 	'cleara11y-debug',
+		// 	[$this, 'render_debug_page']
+		// );
 	}
 
 	/**

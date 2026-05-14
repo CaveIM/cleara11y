@@ -98,43 +98,34 @@ class Ignore_Matcher_Service {
 				return true;
 
 			case 'page':
-				// Check if issue's page URL matches
+				// Must match specific page URL
 				$scan_item = self::get_scan_item_for_issue($issue);
 				if (!$scan_item) {
 					return false;
 				}
-
-				$issue_url = $scan_item->post_url ?? '';
-				$rule_url = $scope['url'] ?? '';
-
-				return self::urls_match($issue_url, $rule_url);
+				return self::urls_match($scan_item->post_url ?? '', $scope['url'] ?? '');
 
 			case 'content_type':
-				// Check if issue's post type is in the list
+				// Must match post type
 				$scan_item = self::get_scan_item_for_issue($issue);
 				if (!$scan_item) {
 					return false;
 				}
-
 				$post_types = $scope['post_types'] ?? [];
-				return in_array($scan_item->post_type, $post_types, true);
+				return in_array($scan_item->post_type ?? '', $post_types, true);
 
 			case 'url_pattern':
-				// Check if issue's URL matches the pattern
+				// Must match URL pattern
 				$scan_item = self::get_scan_item_for_issue($issue);
 				if (!$scan_item) {
 					return false;
 				}
-
-				$issue_url = $scan_item->post_url ?? '';
 				$patterns = $scope['patterns'] ?? [];
-
 				foreach ($patterns as $pattern) {
-					if (self::url_matches_pattern($issue_url, $pattern)) {
+					if (self::url_matches_pattern($scan_item->post_url ?? '', $pattern)) {
 						return true;
 					}
 				}
-
 				return false;
 
 			default:
@@ -143,7 +134,7 @@ class Ignore_Matcher_Service {
 	}
 
 	/**
-	 * Check if issue matches rule's target criteria.
+	 * Check if issue matches rule's target.
 	 *
 	 * @param Issue      $issue Issue to check.
 	 * @param Ignore_Rule $rule  Ignore rule.
@@ -154,13 +145,13 @@ class Ignore_Matcher_Service {
 
 		switch ($target_type) {
 			case 'rule':
-				return self::matches_rule_target($issue, $rule);
-
-			case 'element':
-				return self::matches_element_target($issue, $rule);
+				return self::matches_rule_only($issue, $rule);
 
 			case 'rule_on_element':
-				return self::matches_rule_on_element_target($issue, $rule);
+				return self::matches_rule_on_element($issue, $rule);
+
+			case 'element':
+				return self::matches_element_only($issue, $rule);
 
 			default:
 				return null;
@@ -168,198 +159,138 @@ class Ignore_Matcher_Service {
 	}
 
 	/**
-	 * Check if issue matches rule target (ignore all instances of this rule).
+	 * Match: Rule only (any element with this rule).
 	 *
 	 * @param Issue      $issue Issue to check.
 	 * @param Ignore_Rule $rule  Ignore rule.
-	 * @return array|null Match result or null if no match.
+	 * @return array|null Match result or null.
 	 */
-	private static function matches_rule_target(Issue $issue, Ignore_Rule $rule): ?array {
+	private static function matches_rule_only(Issue $issue, Ignore_Rule $rule): ?array {
 		$rule_ids = $rule->rule_ids ?? [];
 
-		if (in_array($issue->rule_id, $rule_ids, true)) {
-			return [
-				'confidence' => self::CONFIDENCE['EXACT'],
-				'matched_by' => 'rule_id',
-			];
+		if (empty($rule_ids)) {
+			return null;
 		}
 
-		return null;
-	}
-
-	/**
-	 * Check if issue matches element target (ignore all issues on this element).
-	 *
-	 * @param Issue      $issue Issue to check.
-	 * @param Ignore_Rule $rule  Ignore rule.
-	 * @return array|null Match result or null if no match.
-	 */
-	private static function matches_element_target(Issue $issue, Ignore_Rule $rule): ?array {
-		$element_match = $rule->element_match ?? [];
-
-		// Try exact match first
-		if (self::element_matches_exact($issue, $element_match)) {
-			return [
-				'confidence' => self::CONFIDENCE['EXACT'],
-				'matched_by' => 'element_exact',
-			];
-		}
-
-		// Try fingerprint match
-		$element_fingerprint = $element_match['element_fingerprint'] ?? null;
-		if ($element_fingerprint && self::element_matches_fingerprint($issue, $element_fingerprint)) {
-			return [
-				'confidence' => self::CONFIDENCE['HIGH'],
-				'matched_by' => 'element_fingerprint',
-			];
-		}
-
-		// Try semantic match
-		$semantic_match = self::element_matches_semantic($issue, $element_match);
-		if ($semantic_match) {
-			return $semantic_match;
-		}
-
-		return null;
-	}
-
-	/**
-	 * Check if issue matches rule_on_element target.
-	 *
-	 * @param Issue      $issue Issue to check.
-	 * @param Ignore_Rule $rule  Ignore rule.
-	 * @return array|null Match result or null if no match.
-	 */
-	private static function matches_rule_on_element_target(Issue $issue, Ignore_Rule $rule): ?array {
-		// First check rule match
-		$rule_ids = $rule->rule_ids ?? [];
 		if (!in_array($issue->rule_id, $rule_ids, true)) {
 			return null;
 		}
 
-		// Then check element match
+		return [
+			'confidence' => self::CONFIDENCE['HIGH'],
+			'matched_by' => 'rule_only',
+		];
+	}
+
+	/**
+	 * Match: Rule on specific element.
+	 *
+	 * @param Issue      $issue Issue to check.
+	 * @param Ignore_Rule $rule  Ignore rule.
+	 * @return array|null Match result or null.
+	 */
+	private static function matches_rule_on_element(Issue $issue, Ignore_Rule $rule): ?array {
+		$rule_ids = $rule->rule_ids ?? [];
+
+		if (empty($rule_ids) || !in_array($issue->rule_id, $rule_ids, true)) {
+			return null;
+		}
+
 		$element_match = $rule->element_match ?? [];
 
-		// Try exact match first
-		if (self::element_matches_exact($issue, $element_match)) {
-			return [
-				'confidence' => self::CONFIDENCE['EXACT'],
-				'matched_by' => 'rule_on_element_exact',
-			];
+		if (empty($element_match)) {
+			return null;
 		}
 
-		// Try fingerprint match
-		$element_fingerprint = $element_match['element_fingerprint'] ?? null;
-		if ($element_fingerprint && self::element_matches_fingerprint($issue, $element_fingerprint)) {
-			return [
-				'confidence' => self::CONFIDENCE['HIGH'],
-				'matched_by' => 'rule_on_element_fingerprint',
-			];
-		}
-
-		// Try selector match for quick ignores
-		$selector = $element_match['css_selector'] ?? null;
-		if ($selector && self::selectors_match($issue->selector ?? '', $selector)) {
-			return [
-				'confidence' => self::CONFIDENCE['HIGH'],
-				'matched_by' => 'rule_on_element_selector',
-			];
-		}
-
-		return null;
+		return self::matches_element_data($issue, $element_match);
 	}
 
 	/**
-	 * Check if element matches exactly (by selector or fingerprint).
+	 * Match: Element only (all rules on this element).
 	 *
-	 * @param Issue $issue          Issue to check.
-	 * @param array $element_match Element match criteria.
-	 * @return bool True if exact match.
+	 * @param Issue      $issue Issue to check.
+	 * @param Ignore_Rule $rule  Ignore rule.
+	 * @return array|null Match result or null.
 	 */
-	private static function element_matches_exact(Issue $issue, array $element_match): bool {
-		// Check selector
-		$selector = $element_match['css_selector'] ?? null;
-		if ($selector && self::selectors_match($issue->selector ?? '', $selector)) {
-			return true;
+	private static function matches_element_only(Issue $issue, Ignore_Rule $rule): ?array {
+		$element_match = $rule->element_match ?? [];
+
+		if (empty($element_match)) {
+			return null;
 		}
 
-		// Check selector fingerprint
-		$selector_fingerprint = $element_match['selector_fingerprint'] ?? null;
-		if ($selector_fingerprint && $issue->fingerprint_strict === $selector_fingerprint) {
-			return true;
-		}
-
-		return false;
+		return self::matches_element_data($issue, $element_match);
 	}
 
 	/**
-	 * Check if element matches by fingerprint.
+	 * Match issue against element data.
 	 *
-	 * @param Issue  $issue              Issue to check.
-	 * @param string $element_fingerprint Element fingerprint to match.
-	 * @return bool True if fingerprint matches.
+	 * @param Issue $issue Issue to check.
+	 * @param array $element_match Element match data from rule.
+	 * @return array|null Match result or null.
 	 */
-	private static function element_matches_fingerprint(Issue $issue, string $element_fingerprint): bool {
-		// Check if we have the fingerprint stored
-		if ($issue->fingerprint_loose === $element_fingerprint) {
-			return true;
-		}
-
-		// Try generating from available data
-		$fingerprints = Fingerprint_Service::generate_from_issue($issue);
-		return in_array($element_fingerprint, $fingerprints, true);
-	}
-
-	/**
-	 * Check if element matches semantically.
-	 *
-	 * @param Issue $issue          Issue to check.
-	 * @param array $element_match Element match criteria.
-	 * @return array|null Match result or null if no match.
-	 */
-	private static function element_matches_semantic(Issue $issue, array $element_match): ?array {
+	private static function matches_element_data(Issue $issue, array $element_match): ?array {
 		$matches = 0;
 		$total_checks = 0;
 
-		// Check tag name
-		if (!empty($element_match['tag_name'])) {
+		// Check selector (direct match or fingerprint)
+		if (!empty($element_match['css_selector'])) {
 			$total_checks++;
-			// Extract tag from selector
-			if (preg_match('/^([a-z][a-z0-9]*)/i', $issue->selector ?? '', $matches)) {
-				if (strtolower($matches[1]) === strtolower($element_match['tag_name'])) {
-					$matches++;
-				}
-			}
-		}
 
-		// Check accessible name
-		if (!empty($element_match['accessible_name']) && !empty($issue->accessible_name)) {
-			$total_checks++;
-			if (strtolower(trim($issue->accessible_name)) === strtolower(trim($element_match['accessible_name']))) {
+			if (self::selectors_match($issue->selector, $element_match['css_selector'])) {
 				$matches++;
 			}
 		}
 
-		// Check role
-		if (!empty($element_match['role'])) {
-			// We'd need to extract role from evidence
-			// For now, skip this check
+		// Check selector fingerprint
+		if (!empty($element_match['selector_fingerprint'])) {
+			$total_checks++;
+
+			$issue_fp = \ClearA11y\Services\Fingerprint_Service::generate_selector_fingerprint($issue->selector ?? '');
+			if ($issue_fp === $element_match['selector_fingerprint']) {
+				$matches++;
+			}
+		}
+
+		// Check element fingerprint
+		if (!empty($element_match['element_fingerprint'])) {
+			$total_checks++;
+
+			$issue_element_fp = self::get_issue_element_fingerprint($issue);
+			if ($issue_element_fp === $element_match['element_fingerprint']) {
+				$matches++;
+			}
 		}
 
 		// Check class list
-		if (!empty($element_match['class_list']) && !empty($issue->selector)) {
+		if (!empty($element_match['class_list'])) {
 			$total_checks++;
+
 			$rule_classes = $element_match['class_list'];
-			$has_all_classes = true;
+			$issue_classes = self::extract_classes_from_selector($issue->selector ?? '');
 
-			foreach ($rule_classes as $class) {
-				if (!strpos($issue->selector, '.' . $class)) {
-					$has_all_classes = false;
-					break;
-				}
+			// Check if all rule classes are present in issue
+			if (array_intersect($rule_classes, $issue_classes) === $rule_classes) {
+				$matches++;
 			}
+		}
 
-			if ($has_all_classes && !empty($rule_classes)) {
+		// Check tag name
+		if (!empty($element_match['tag_name'])) {
+			$total_checks++;
+
+			$issue_tag = self::extract_tag_from_selector($issue->selector ?? '');
+			if (strtolower($issue_tag) === strtolower($element_match['tag_name'])) {
+				$matches++;
+			}
+		}
+
+		// Check accessible name
+		if (!empty($element_match['accessible_name'])) {
+			$total_checks++;
+
+			$issue_name = $issue->accessible_name ?? '';
+			if (strtolower($issue_name) === strtolower($element_match['accessible_name'])) {
 				$matches++;
 			}
 		}
@@ -369,7 +300,7 @@ class Ignore_Matcher_Service {
 			$total_checks++;
 			$rule_ancestors = is_array($element_match['ancestor_chain'])
 				? $element_match['ancestor_chain']
-				: json_decode($element_match['ancestor_chain'], true) ?: [];
+				: (json_decode($element_match['ancestor_chain'], true) ?: []);
 
 			if (!empty($rule_ancestors)) {
 				$issue_ancestors = $issue->ancestor_chain ? json_decode($issue->ancestor_chain, true) : [];
@@ -539,14 +470,14 @@ class Ignore_Matcher_Service {
 				$placeholders = implode(',', array_fill(0, count($rule_ids), '%s'));
 				$where[] = "i.rule_id IN ({$placeholders})";
 				$where_params = array_merge($where_params, $rule_ids);
-			}
 
-			// For element matching in preview, we'll use selector if available
-			$element_match = $rule->element_match ?? [];
-			$selector = $element_match['css_selector'] ?? null;
-			if ($selector) {
-				$where[] = 'i.selector = %s';
-				$where_params[] = $selector;
+				// For element matching in preview, we'll use selector if available
+				$element_match = $rule->element_match ?? [];
+				$selector = $element_match['css_selector'] ?? null;
+				if ($selector) {
+					$where[] = 'i.selector = %s';
+					$where_params[] = $selector;
+				}
 			}
 		}
 
@@ -588,5 +519,60 @@ class Ignore_Matcher_Service {
 			'issues' => $issue_count,
 			'pages' => $page_count,
 		];
+	}
+
+	/**
+	 * Get element fingerprint for an issue.
+	 *
+	 * @param Issue $issue Issue.
+	 * @return string Element fingerprint.
+	 */
+	private static function get_issue_element_fingerprint(Issue $issue): string {
+		// Try to get fingerprint from existing data
+		if ($issue->node_evidence) {
+			$evidence = json_decode($issue->node_evidence, true);
+			$node_data = $evidence['node_evidence'] ?? [];
+
+			if (!empty($node_data)) {
+				return \ClearA11y\Services\Fingerprint_Service::generate_element_fingerprint($node_data);
+			}
+		}
+
+		// Generate from issue fields
+		$node_data = [
+			'tag_name' => self::extract_tag_from_selector($issue->selector ?? ''),
+			'role' => $issue->role ?? '',
+			'accessible_name' => $issue->accessible_name ?? '',
+			'inner_text_snippet' => $issue->inner_text_snippet ?? '',
+			'ancestor_chain' => $issue->ancestor_chain ? json_decode($issue->ancestor_chain, true) : [],
+			'class_list' => self::extract_classes_from_selector($issue->selector ?? ''),
+			'xpath' => $issue->xpath ?? '',
+		];
+
+		return \ClearA11y\Services\Fingerprint_Service::generate_element_fingerprint($node_data);
+	}
+
+	/**
+	 * Extract classes from a CSS selector.
+	 *
+	 * @param string $selector CSS selector.
+	 * @return array Array of class names.
+	 */
+	private static function extract_classes_from_selector(string $selector): array {
+		preg_match_all('/\.([\w-]+)/', $selector, $matches);
+		return $matches[1] ?? [];
+	}
+
+	/**
+	 * Extract tag name from a CSS selector.
+	 *
+	 * @param string $selector CSS selector.
+	 * @return string Tag name or empty string.
+	 */
+	private static function extract_tag_from_selector(string $selector): string {
+		if (preg_match('/^[a-z][a-z0-9]*/i', $selector, $matches)) {
+			return $matches[0];
+		}
+		return '';
 	}
 }

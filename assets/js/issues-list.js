@@ -352,7 +352,7 @@
 		 */
 		async quickIgnoreIssue(issueId) {
 			try {
-				const response = await fetch('/wp-json/cleara11y/v1/ignores/quick', {
+				const response = await fetch(API_URL + 'ignores/quick', {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
@@ -455,7 +455,7 @@
 			try {
 				if (undoType === 'quick-ignore') {
 					// Undo quick ignore
-					const response = await fetch(`/wp-json/cleara11y/v1/ignores/${undoId}/undo`, {
+					const response = await fetch(`${API_URL}ignores/${undoId}/undo`, {
 						method: 'POST',
 						headers: {
 							'X-WP-Nonce': typeof cleara11yIgnores !== 'undefined' ? cleara11yIgnores.nonce : NONCE

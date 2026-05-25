@@ -714,6 +714,14 @@ class Admin {
 
 		// Enqueue the appropriate JavaScript
 		if ($is_issues_page) {
+			// Enqueue toast CSS for notifications
+			wp_enqueue_style(
+				'cleara11y-toast',
+				CLEARA11Y_PLUGIN_URL . 'assets/css/toast.css',
+				[],
+				CLEARA11Y_VERSION
+			);
+
 			// Enqueue issues list JavaScript
 			wp_enqueue_script(
 				'cleara11y-issues-list',

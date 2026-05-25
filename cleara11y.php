@@ -3,7 +3,7 @@
  * Plugin Name: ClearA11y
  * Plugin URI: https://github.com/caveim/cleara11y
  * Description: WordPress accessibility plugin that scans published content for WCAG 2.1 AA compliance issues using hybrid client-side (axe-core) and server-side (PHP) scanning.
- * Version: 1.4.0
+ * Version: 1.6.1
  * Author: caveim
  * Author URI: https://github.com/caveim
  * License: GPL-2.0-or-later
@@ -22,7 +22,7 @@ if (! defined('ABSPATH')) {
 }
 
 // Plugin version constant.
-define('CLEARA11Y_VERSION', '1.1.3');
+define('CLEARA11Y_VERSION', '1.6.1');
 
 // Plugin directory path constant.
 define('CLEARA11Y_PLUGIN_DIR', plugin_dir_path(__FILE__));

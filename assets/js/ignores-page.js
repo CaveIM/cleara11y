@@ -4,6 +4,63 @@
 (function($) {
 	'use strict';
 
+	// Rule titles mapping for human-readable display
+	const ruleTitles = {
+		// WCAG 2.1 Level A
+		'color-contrast': 'Links must have discernible text',
+		'image-alt': 'Images must have alternate text',
+		'label': 'Form field must have a label',
+		'button-name': 'Buttons must have discernible text',
+		'link-name': 'Links must have discernible text',
+		'list': 'Lists must be properly structured',
+		'listitem': 'List items must be in list containers',
+		// WCAG 2.1 Level AA
+		'aria-roles': 'ARIA roles must be valid',
+		'aria-allowed-attr': 'ARIA attributes must be valid for the role',
+		'aria-required-attr': 'Required ARIA attributes must be present',
+		'aria-required-children': 'Elements with ARIA roles must have required children',
+		'aria-valid-attr-value': 'ARIA attribute values must be valid',
+		'aria-valid-attr': 'ARIA attributes must be valid',
+		'aria-unsupported-elements': 'ARIA must not be used on unsupported elements',
+		'duplicate-id': 'Elements must have unique id attributes',
+		'heading-order': 'Headings must be in logical order',
+		'empty-heading': 'Headings must not be empty',
+		'landmark-one-main': 'Page must have one main landmark',
+		'landmark-unique': 'Landmarks must have unique labels',
+		region: 'Page must have landmark regions',
+		// Form and input rules
+		'select-name': 'Form select must have a label',
+		'textbox-label': 'Text input must have a label',
+		'textarea-label': 'Textarea must have a label',
+		'checkbox-label': 'Checkbox must have a label',
+		'radio-label': 'Radio button must have a label',
+		// Table rules
+		'table-duplicate-name': 'Tables must not have duplicate names',
+		'th-has-data-cells': 'Table headers must have data cells',
+		'td-headers-attr': 'Table cells must use headers attribute correctly',
+		// Language and text rules
+		'has-lang': 'Page must have valid language attribute',
+		'valid-lang': 'Language attribute must have valid value',
+		// Media rules
+		'video-caption': 'Videos must have captions',
+		'audio-description': 'Audio content must have description',
+		// Focus rules
+		'focus-order-semantics': 'Focus must follow logical order',
+		'tabindex': 'tabindex attribute must be used correctly',
+		// Frame rules
+		'title-unique': 'Frames must have unique titles',
+		'frame-title': 'Frames must have title attribute',
+		// Other rules
+		'bypass': 'Page must have skip navigation link',
+		'document-title': 'Page must have title',
+		'meta-viewport': 'Viewport meta tag must be set correctly',
+		'html-has-lang': 'HTML element must have lang attribute',
+		'page-has-heading-one': 'Page must have at least one h1',
+		'scope-valid': 'Scope attribute must be used correctly',
+		// Default fallback
+		'unknown': 'Unknown accessibility rule'
+	};
+
 	// State
 	const state = {
 		currentTab: 'active',
@@ -127,45 +184,64 @@
 		let html = '';
 		rules.forEach(function(rule) {
 			html += '<tr>';
-			html += '<td>';
-			html += '<div class="cleara11y-rule-label' + (rule.system_generated ? ' system-generated' : '') + '">';
-			html += esc_html(rule.label || 'Ignore Rule');
+
+			// Ignore Rule column (30%) - Shows rule titles and IDs
+			html += '<td style="width: 30%;">';
+			// Show readable titles
+			html += '<div style="margin-bottom: 5px; font-size: 13px; color: #646970;">';
+			html += '<strong>Rule:</strong> ' + esc_html(rule.rule_ids.map(function(id) {
+				return ruleTitles[id] || id;
+			}).join(', '));
 			html += '</div>';
-			if (rule.element_match && rule.element_match.css_selector) {
-				html += '<div class="cleara11y-rule-target">' + esc_html(rule.element_match.css_selector) + '</div>';
-			}
+			// Show rule IDs
+			html += '<div style="font-size: 11px; color: #646970;">';
+			html += '<strong>rule-id:</strong> ' + esc_html(rule.rule_ids.join(', '));
+			html += '</div>';
+			// Show note if available
 			if (rule.note) {
 				html += '<div class="cleara11y-note">' + esc_html(rule.note) + '</div>';
 			}
 			html += '</td>';
 
-			html += '<td>';
-			html += '<span class="cleara11y-target-badge">' + esc_html(rule.target_type) + '</span>';
+			// Target column (15%) - Shows target type and selector
+			html += '<td style="width: 15%;">';
+			html += '<div>' + esc_html(rule.target_type) + '</div>';
+			// Show selector if available
+			if (rule.element_match && rule.element_match.css_selector) {
+				html += '<div style="font-size: 11px; color: #646970; margin-top: 3px; word-break: break-all;">';
+				html += esc_html(rule.element_match.css_selector);
+				html += '</div>';
+			}
 			html += '</td>';
 
-			html += '<td>';
+			// Scope column (15%) - Shows scope type and details
+			html += '<td style="width: 15%;">';
 			html += '<div class="cleara11y-rule-scope">' + esc_html(getScopeLabel(rule.scope)) + '</div>';
 			html += '</td>';
 
-			html += '<td>';
+			// Duration column (10%)
+			html += '<td style="width: 10%;">';
 			html += '<span class="cleara11y-rule-duration cleara11y-duration-' + rule.duration.duration_type + '">';
 			html += esc_html(getDurationLabel(rule.duration));
 			html += '</span>';
 			html += '</td>';
 
-			html += '<td>';
+			// Reason column (10%)
+			html += '<td style="width: 10%;">';
 			if (rule.reason_category) {
 				html += '<span class="cleara11y-reason-category">' + esc_html(rule.reason_category) + '</span>';
 			}
 			html += '</td>';
 
-			html += '<td>';
+			// Created By column (10%)
+			html += '<td style="width: 10%;">';
 			html += esc_html(rule.created_by_name || 'System');
 			html += '<br>';
 			html += '<small>' + formatDate(rule.created_at) + '</small>';
 			html += '</td>';
 
-			html += '<td>';
+			// Actions column (10%)
+			html += '<td style="width: 10%;">';
 			html += '<div class="cleara11y-row-actions">';
 			html += '<button type="button" class="button button-small cleara11y-view-ignore" data-id="' + rule.id + '">';
 			html += 'View';
@@ -272,7 +348,7 @@
 	}
 
 	function showEmptyState() {
-		const emptyTemplate = $('#cleara11y-empty-state-template').html();
+		let emptyTemplate = $('#cleara11y-empty-state-template').html();
 		let message = '';
 
 		switch (state.currentStatus) {

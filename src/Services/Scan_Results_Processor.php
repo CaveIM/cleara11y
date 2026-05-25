@@ -106,6 +106,9 @@ class Scan_Results_Processor {
 			}
 		}
 
+		// Calculate scoring data
+		$scoring_data = Scoring_Service::calculate_score($results);
+
 		// Update scan item with results
 		$scan_item->status = 'completed';
 		$scan_item->total_issues = $issues_inserted;
@@ -113,6 +116,19 @@ class Scan_Results_Processor {
 		$scan_item->moderate_issues = $severity_counts['moderate'];
 		$scan_item->minor_issues = $severity_counts['minor'];
 		$scan_item->scanned_at = \current_time('mysql');
+
+		// Add scoring data to scan item
+		$scan_item->rules_checked = $scoring_data['total_rules'];
+		$scan_item->rules_passed = $scoring_data['passed_count'];
+		$scan_item->rules_failed = $scoring_data['failed_count'];
+		$scan_item->rules_incomplete = $scoring_data['incomplete_count'];
+		$scan_item->pass_percentage = $scoring_data['pass_percentage'];
+		$scan_item->fail_percentage = $scoring_data['fail_percentage'];
+		$scan_item->score_grade = $scoring_data['grade'];
+		$scan_item->rules_checked_list = !empty($scoring_data['rules_checked']) ? wp_json_encode($scoring_data['rules_checked']) : null;
+		$scan_item->rules_passed_list = !empty($scoring_data['rules_passed']) ? wp_json_encode($scoring_data['rules_passed']) : null;
+		$scan_item->rules_failed_list = !empty($scoring_data['rules_failed']) ? wp_json_encode($scoring_data['rules_failed']) : null;
+		$scan_item->rules_incomplete_list = !empty($scoring_data['rules_incomplete']) ? wp_json_encode($scoring_data['rules_incomplete']) : null;
 
 		Scan_Item_Repository::update($scan_item);
 
@@ -125,7 +141,7 @@ class Scan_Results_Processor {
 			\ClearA11y\Services\Scan_Token_Manager::delete_token($token);
 		}
 
-		\do_action('cleara11y_scan_results_processed', $scan_item, $results, $severity_counts);
+		\do_action('cleara11y_scan_results_processed', $scan_item, $results, $severity_counts, $scoring_data);
 
 		return [
 			'success' => true,
@@ -136,6 +152,7 @@ class Scan_Results_Processor {
 				'moderate' => $severity_counts['moderate'],
 				'minor' => $severity_counts['minor'],
 			],
+			'scoring' => Scoring_Service::format_for_display($scoring_data),
 		];
 	}
 
@@ -176,6 +193,11 @@ class Scan_Results_Processor {
 				$scan->status = 'completed';
 				$scan->completed_at = \current_time('mysql');
 				Scan_Repository::update($scan);
+
+				// Expire "until_next_scan" ignore rules for this page/post (only if post_id exists)
+				if (isset($scan->post_id) && $scan->post_id !== null) {
+					self::expire_until_next_scan_rules((int) $scan->post_id);
+				}
 			}
 		}
 
@@ -232,6 +254,12 @@ class Scan_Results_Processor {
 
 		if ($total_items === ($completed_items + $failed_items)) {
 			$scan->status = 'completed';
+
+			// Expire "until_next_scan" ignore rules for this page/post (only if post_id exists)
+			if (isset($scan->post_id) && $scan->post_id !== null) {
+				self::expire_until_next_scan_rules((int) $scan->post_id);
+			}
+
 			$scan->completed_at = \current_time('mysql');
 		}
 
@@ -331,7 +359,45 @@ class Scan_Results_Processor {
 				'moderate' => $scan_item->moderate_issues,
 				'minor' => $scan_item->minor_issues,
 			],
+			'scoring' => $scan_item->get_scoring_data(),
 			'issues' => array_values($grouped),
 		];
+	}
+
+	/**
+	 * Expire "until_next_scan" ignore rules for a specific post.
+	 *
+	 * When a scan completes, all "until_next_scan" rules for that post
+	 * should be expired so that if issues still exist, they reappear.
+	 *
+	 * @param int $post_id The post ID that was scanned.
+	 * @return void
+	 */
+	private static function expire_until_next_scan_rules(int $post_id): void {
+		global $wpdb;
+
+		$ignore_rules_table = \ClearA11y\Database\Ignore_Schema::get_table_name('ignore_rules');
+
+		// Find all "until_next_scan" rules for this post/page
+		// We need to check the scope JSON for the post URL
+		$post = get_post($post_id);
+		if (!$post) {
+			return;
+		}
+
+		$post_url = get_permalink($post_id);
+
+		// Update rules to expire them
+		$wpdb->query(
+			$wpdb->prepare(
+				"UPDATE `{$ignore_rules_table}`
+				SET status = 'expired', updated_at = NOW()
+				WHERE status = 'active'
+				AND system_generated = 1
+				AND JSON_EXTRACT(duration, '$.duration_type') = 'until_next_scan'
+				AND JSON_EXTRACT(scope, '$.url') = %s",
+				$post_url
+			)
+		);
 	}
 }

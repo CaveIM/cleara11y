@@ -463,15 +463,25 @@ class Admin {
 			[Issues_List_Page::class, 'render']
 		);
 
-		// Add Issue Types submenu page
+		// Add Ignores submenu page
 		add_submenu_page(
 			'cleara11y',
-			__('Issue Types', 'cleara11y'),
-			__('Issue Types', 'cleara11y'),
+			'Ignores',
+			'Ignores',
 			'manage_options',
-			'cleara11y-issue-types',
-			[Issue_Types_Page::class, 'render_page']
+			'cleara11y-ignores',
+			[Ignores_Page::class, 'render']
 		);
+
+		// // Add Issue Types submenu page
+		// add_submenu_page(
+		// 	'cleara11y',
+		// 	__('Issue Types', 'cleara11y'),
+		// 	__('Issue Types', 'cleara11y'),
+		// 	'manage_options',
+		// 	'cleara11y-issue-types',
+		// 	[Issue_Types_Page::class, 'render_page']
+		// );
 
 		// Add Issue Reference submenu page
 		add_submenu_page(
@@ -700,6 +710,7 @@ class Admin {
 		$is_issues_page = ($hook_suffix === 'cleara11y_page_cleara11y-issues');
 		$is_issue_types_page = ($hook_suffix === 'cleara11y_page_cleara11y-issue-types');
 		$is_issue_reference_page = ($hook_suffix === 'cleara11y_page_cleara11y-issue-reference');
+		$is_ignores_page = ($hook_suffix === 'cleara11y_page_cleara11y-ignores');
 
 		// Enqueue the appropriate JavaScript
 		if ($is_issues_page) {
@@ -770,6 +781,28 @@ class Admin {
 				],
 				// Include severity mapping for all axe-core rules
 				'severityMap' => \ClearA11y\Services\Rule_Severity_Map::get_severity_map(),
+			]);
+		} elseif ($is_ignores_page) {
+			// Enqueue ignores page JavaScript
+			wp_enqueue_script(
+				'cleara11y-ignores-page',
+				CLEARA11Y_PLUGIN_URL . 'assets/js/ignores-page.js',
+				['jquery', 'wp-api'],
+				rand(),
+				true
+			);
+
+			// Localize ignores page script
+			wp_localize_script('cleara11y-ignores-page', 'cleara11yIgnores', [
+				'apiUrl' => $rest_url . 'cleara11y/v1/ignores',
+				'nonce' => wp_create_nonce('wp_rest'),
+				'strings' => [
+					'confirmDelete' => __('Are you sure you want to delete this ignore rule? This action cannot be undone.', 'cleara11y'),
+					'confirmDisable' => __('Are you sure you want to disable this ignore rule?', 'cleara11y'),
+					'undoSuccess' => __('Ignore rule removed.', 'cleara11y'),
+					'deleteSuccess' => __('Ignore rule deleted.', 'cleara11y'),
+					'error' => __('An error occurred. Please try again.', 'cleara11y'),
+				],
 			]);
 		} else {
 			// Enqueue scanner orchestrator first (loaded but not executed directly)

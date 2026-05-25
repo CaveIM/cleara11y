@@ -144,10 +144,21 @@ class Highlighter {
 		// Get all non-dismissed issues for this post
 		$issues = \ClearA11y\Database\Issue_Repository::get_by_post_id($post->ID);
 
-		// Prepare issues data for frontend
+		// Get site ID for ignore matching
+		$site_id = get_current_blog_id();
+
+		// Prepare issues data for frontend (excluding ignored issues)
 		$frontend_issues = [];
 
 		foreach ($issues as $issue) {
+			// Check if this issue is ignored by any active ignore rule
+			$matches = \ClearA11y\Services\Ignore_Matcher_Service::find_matches($issue, $site_id);
+
+			// Skip issues that have matching ignore rules
+			if (!empty($matches)) {
+				continue;
+			}
+
 			$frontend_issues[] = [
 				'id' => $issue->id,
 				'rule_id' => $issue->rule_id,

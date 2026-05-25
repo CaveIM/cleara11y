@@ -17,7 +17,6 @@
 	let totalPages = 1;
 	let currentFilters = {
 		severity: '',
-		dismissed: 'active',
 		search: ''
 	};
 
@@ -45,12 +44,6 @@
 				this.loadIssues();
 			});
 
-			document.getElementById('cleara11y-filter-dismissed').addEventListener('change', (e) => {
-				currentFilters.dismissed = e.target.value;
-				currentPage = 1;
-				this.loadIssues();
-			});
-
 			// Search input (debounced)
 			let searchTimeout;
 			document.getElementById('cleara11y-search-issues').addEventListener('input', (e) => {
@@ -65,11 +58,9 @@
 			// Reset filters
 			document.getElementById('cleara11y-reset-filters').addEventListener('click', () => {
 				document.getElementById('cleara11y-filter-severity').value = '';
-				document.getElementById('cleara11y-filter-dismissed').value = 'active';
 				document.getElementById('cleara11y-search-issues').value = '';
 				currentFilters = {
 					severity: '',
-					dismissed: 'active',
 					search: ''
 				};
 				currentPage = 1;
@@ -133,10 +124,10 @@
 				const stats = await response.json();
 
 				// Update stats display
-				document.getElementById('cleara11y-total-issues').textContent = stats.active || 0;
-				document.getElementById('cleara11y-critical-issues').textContent = stats.critical || 0;
-				document.getElementById('cleara11y-moderate-issues').textContent = stats.moderate || 0;
-				document.getElementById('cleara11y-minor-issues').textContent = stats.minor || 0;
+				document.getElementById('cleara11y-total-issues').textContent = stats.active?.total || 0;
+				document.getElementById('cleara11y-critical-issues').textContent = stats.active?.critical || 0;
+				document.getElementById('cleara11y-moderate-issues').textContent = stats.active?.moderate || 0;
+				document.getElementById('cleara11y-minor-issues').textContent = stats.active?.minor || 0;
 
 			} catch (error) {
 				console.error('[ClearA11y Issues List] Error loading stats:', error);
@@ -166,10 +157,6 @@
 
 				if (currentFilters.severity) {
 					params.append('severity', currentFilters.severity);
-				}
-
-				if (currentFilters.dismissed) {
-					params.append('dismissed', currentFilters.dismissed);
 				}
 
 				if (currentFilters.search) {
@@ -225,7 +212,6 @@
 			let html = '';
 
 			const renderIssue = (issue) => {
-				const isDismissed = !!issue.dismissed;
 				const severityColors = {
 					critical: '#d63638',
 					moderate: '#f56e28',
@@ -233,7 +219,7 @@
 				};
 
 				return `
-					<div class="cleara11y-issue-row" data-issue-id="${issue.id}" style="padding: 15px; border-bottom: 1px solid #c3c4c7; ${isDismissed ? 'opacity: 0.6;' : ''}">
+					<div class="cleara11y-issue-row" data-issue-id="${issue.id}" style="padding: 15px; border-bottom: 1px solid #c3c4c7;">
 						<div style="display: flex; justify-content: space-between; align-items: start; gap: 20px;">
 							<div style="flex: 1;">
 								<div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
@@ -243,7 +229,6 @@
 									<span class="cleara11y-issue-badge" style="background: ${severityColors[issue.severity]}; color: #fff; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600;">
 										${issue.severity}
 									</span>
-									${isDismissed ? '<span class="dashicons dashicons-hidden" style="color: #646970;" title="Dismissed"></span>' : ''}
 								</div>
 								<p style="margin: 0 0 8px 0; font-size: 13px; color: #646970;">
 									${this.escapeHtml(issue.message || issue.description || '')}
@@ -259,31 +244,16 @@
 										<strong>Selector:</strong> <code style="background: #f0f0f1; padding: 2px 6px; border-radius: 3px;">${this.escapeHtml(issue.selector)}</code>
 									</div>
 								` : ''}
-								${isDismissed && issue.dismissal_comment ? `
-									<div style="margin-top: 8px; padding: 8px; background: #f0f0f1; border-left: 3px solid #646970; border-radius: 3px;">
-										<span style="font-size: 11px; color: #646970;">
-											<strong>Dismissed:</strong> ${issue.dismissed_at ? new Date(issue.dismissed_at).toLocaleDateString() : ''}
-											${issue.dismissal_comment ? `<br><em>"${this.escapeHtml(issue.dismissal_comment)}"</em>` : ''}
-										</span>
-									</div>
-								` : ''}
 							</div>
 							<div class="cleara11y-issue-actions" style="display: flex; gap: 8px; align-items: center;">
 								<button type="button" class="button button-small cleara11y-view-issue" data-issue-id="${issue.id}">
 									<span class="dashicons dashicons-visibility" style="margin-top: 3px;"></span>
 									View
 								</button>
-								${isDismissed ? `
-									<button type="button" class="button button-small cleara11y-undismiss-issue" data-issue-id="${issue.id}">
-										<span class="dashicons dashicons-undo" style="margin-top: 3px;"></span>
-										Undo
-									</button>
-								` : `
-									<button type="button" class="button button-small cleara11y-dismiss-issue" data-issue-id="${issue.id}">
-										<span class="dashicons dashicons-hidden" style="margin-top: 3px;"></span>
-										Dismiss
-									</button>
-								`}
+								<button type="button" class="button button-small cleara11y-quick-ignore" data-issue-id="${issue.id}" data-selector="${this.escapeHtml(issue.selector || '')}" data-rule-id="${this.escapeHtml(issue.rule_id || '')}" title="Quick ignore - hide until next scan">
+									<span class="dashicons dashicons-dismiss" style="margin-top: 3px;"></span>
+									Quick Ignore
+								</button>
 							</div>
 						</div>
 					</div>
@@ -336,19 +306,11 @@
 				});
 			});
 
-			// Dismiss buttons
-			document.querySelectorAll('.cleara11y-dismiss-issue').forEach(btn => {
+			// Quick Ignore buttons
+			document.querySelectorAll('.cleara11y-quick-ignore').forEach(btn => {
 				btn.addEventListener('click', (e) => {
 					const issueId = parseInt(e.currentTarget.dataset.issueId);
-					this.dismissIssue(issueId);
-				});
-			});
-
-			// Undismiss buttons
-			document.querySelectorAll('.cleara11y-undismiss-issue').forEach(btn => {
-				btn.addEventListener('click', (e) => {
-					const issueId = parseInt(e.currentTarget.dataset.issueId);
-					this.undismissIssue(issueId);
+					this.quickIgnoreIssue(issueId);
 				});
 			});
 		},
@@ -386,60 +348,135 @@
 		},
 
 		/**
-		 * Dismiss an issue
+		 * Quick ignore an issue
 		 */
-		async dismissIssue(issueId) {
-			const comment = prompt('Enter a comment (optional):');
-			if (comment === null) return; // User cancelled
-
+		async quickIgnoreIssue(issueId) {
 			try {
-				const response = await fetch(API_URL + 'issues/' + issueId + '/dismiss', {
+				const response = await fetch('/wp-json/cleara11y/v1/ignores/quick', {
 					method: 'POST',
 					headers: {
 						'Content-Type': 'application/json',
-						'X-WP-Nonce': NONCE
+						'X-WP-Nonce': typeof cleara11yIgnores !== 'undefined' ? cleara11yIgnores.nonce : NONCE
 					},
-					body: JSON.stringify({ comment: comment || '' })
+					body: JSON.stringify({ violation_id: issueId })
 				});
 
 				if (!response.ok) {
-					throw new Error('Failed to dismiss issue');
+					throw new Error('Failed to quick ignore issue');
 				}
+
+				const data = await response.json();
+
+				// Show success toast with undo button
+				this.showToast(data.message || 'Issue ignored until next scan', data.id, 'quick-ignore');
 
 				// Reload issues
 				this.loadIssues();
 				this.loadStats();
 
 			} catch (error) {
-				console.error('[ClearA11y Issues List] Error dismissing issue:', error);
-				alert('Error dismissing issue: ' + error.message);
+				console.error('[ClearA11y Issues List] Error quick ignoring issue:', error);
+				alert('Error quick ignoring issue: ' + error.message);
 			}
 		},
 
 		/**
-		 * Undismiss an issue
+		 * Show toast notification with optional undo button
 		 */
-		async undismissIssue(issueId) {
-			try {
-				const response = await fetch(API_URL + 'issues/' + issueId + '/undismiss', {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						'X-WP-Nonce': NONCE
-					}
+		showToast(message, undoId = null, undoType = 'quick-ignore') {
+			// Remove existing toasts
+			const existingToast = document.querySelector('.cleara11y-toast');
+			if (existingToast) {
+				existingToast.remove();
+			}
+
+			// Create toast element
+			const toast = document.createElement('div');
+			toast.className = 'cleara11y-toast';
+			toast.innerHTML = `
+				<div class="cleara11y-toast-content">
+					<span class="cleara11y-toast-message">${message}</span>
+					${undoId ? `
+						<button type="button" class="button button-small cleara11y-toast-undo" data-undo-id="${undoId}" data-undo-type="${undoType}">
+							<span class="dashicons dashicons-undo" style="margin-top: 3px;"></span>
+							Undo
+						</button>
+					` : ''}
+					<button type="button" class="cleara11y-toast-close" aria-label="Close">
+						<span class="dashicons dashicons-no-alt"></span>
+					</button>
+				</div>
+			`;
+
+			// Add to page
+			document.body.appendChild(toast);
+
+			// Animate in
+			requestAnimationFrame(() => {
+				toast.classList.add('cleara11y-toast-visible');
+			});
+
+			// Auto-hide after 5 seconds if no undo button
+			if (!undoId) {
+				setTimeout(() => {
+					this.hideToast(toast);
+				}, 5000);
+			}
+
+			// Attach event listeners
+			toast.querySelector('.cleara11y-toast-close')?.addEventListener('click', () => {
+				this.hideToast(toast);
+			});
+
+			if (undoId) {
+				toast.querySelector('.cleara11y-toast-undo')?.addEventListener('click', (e) => {
+					this.handleUndo(undoId, undoType);
 				});
+			}
+		},
 
-				if (!response.ok) {
-					throw new Error('Failed to undismiss issue');
+		/**
+		 * Hide toast notification
+		 */
+		hideToast(toast = null) {
+			const toastEl = toast || document.querySelector('.cleara11y-toast');
+			if (toastEl) {
+				toastEl.classList.remove('cleara11y-toast-visible');
+				setTimeout(() => {
+					toastEl.remove();
+				}, 300);
+			}
+		},
+
+		/**
+		 * Handle undo action from toast
+		 */
+		async handleUndo(undoId, undoType) {
+			try {
+				if (undoType === 'quick-ignore') {
+					// Undo quick ignore
+					const response = await fetch(`/wp-json/cleara11y/v1/ignores/${undoId}/undo`, {
+						method: 'POST',
+						headers: {
+							'X-WP-Nonce': typeof cleara11yIgnores !== 'undefined' ? cleara11yIgnores.nonce : NONCE
+						}
+					});
+
+					if (!response.ok) {
+						throw new Error('Failed to undo quick ignore');
+					}
+
+					this.hideToast();
+					this.showToast('Quick ignore removed');
+					this.loadIssues();
+					this.loadStats();
+
+				} else {
+					console.warn('Unknown undo type:', undoType);
 				}
-
-				// Reload issues
-				this.loadIssues();
-				this.loadStats();
-
 			} catch (error) {
-				console.error('[ClearA11y Issues List] Error undismissing issue:', error);
-				alert('Error undismissing issue: ' + error.message);
+				console.error('[ClearA11y Issues List] Error handling undo:', error);
+				alert('Error undoing action: ' + error.message);
 			}
 		},
 

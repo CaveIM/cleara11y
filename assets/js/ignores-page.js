@@ -1243,4 +1243,18 @@
 		}
 	});
 
+
+		// Expose wizard functions globally for use from other pages (e.g., Issues List)
+		window.cleara11yWizard = {
+			state: wizardState,
+			open: openCreateWizard,
+			close: closeWizard,
+			reset: resetWizard
+		};
+
+		// Also expose to window for direct access (backward compatibility)
+		window.wizardState = wizardState;
+		window.openCreateWizard = openCreateWizard;
+		window.resetWizard = resetWizard;
+		window.closeWizard = closeWizard;
 })(jQuery);

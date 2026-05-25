@@ -722,6 +722,47 @@ class Admin {
 				CLEARA11Y_VERSION
 			);
 
+			// Enqueue ignores page CSS for wizard
+			wp_enqueue_style(
+				'cleara11y-ignores-page',
+				CLEARA11Y_PLUGIN_URL . 'assets/css/ignores-page.css',
+				[],
+				CLEARA11Y_VERSION
+			);
+
+			// Enqueue jQuery (required for ignores page wizard)
+			wp_enqueue_script('jquery');
+
+			// Enqueue ignores page script for wizard functionality
+			wp_enqueue_script(
+				'cleara11y-ignores-page',
+				CLEARA11Y_PLUGIN_URL . 'assets/js/ignores-page.js',
+				['jquery'],
+				rand(),
+				true
+			);
+
+			// Localize ignores page script
+			wp_localize_script('cleara11y-ignores-page', 'cleara11yIgnores', [
+				'apiUrl' => $rest_url . 'cleara11y/v1/ignores',
+				'nonce' => wp_create_nonce('wp_rest'),
+				'strings' => [
+					'createWizardTitle' => __('Create Ignore Rule', 'cleara11y'),
+					'cancel' => __('Cancel', 'cleara11y'),
+					'next' => __('Next', 'cleara11y'),
+					'createRule' => __('Create Ignore Rule', 'cleara11y'),
+					'target' => __('Target', 'cleara11y'),
+					'scope' => __('Scope', 'cleara11y'),
+					'duration' => __('Duration', 'cleara11y'),
+					'reason' => __('Reason', 'cleara11y'),
+					'step5Title' => __('Review & Confirm', 'cleara11y'),
+					'createSuccess' => __('Ignore rule created successfully.', 'cleara11y'),
+					'confirmDelete' => __('Are you sure you want to delete this ignore rule? This action cannot be undone.', 'cleara11y'),
+					'confirmDisable' => __('Are you sure you want to disable this ignore rule?', 'cleara11y'),
+					'error' => __('An error occurred. Please try again.', 'cleara11y'),
+				],
+			]);
+
 			// Enqueue issues list JavaScript
 			wp_enqueue_script(
 				'cleara11y-issues-list',

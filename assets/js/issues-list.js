@@ -256,6 +256,10 @@
 									<span class="dashicons dashicons-visibility" style="margin-top: 3px;"></span>
 									View
 								</button>
+								<button type="button" class="button button-small cleara11y-ignore-wizard" data-issue-id="${issue.id}" data-rule-id="${this.escapeHtml(issue.rule_id || '')}" data-selector="${this.escapeHtml(issue.selector || '')}" data-message="${this.escapeHtml(issue.message || '')}">
+									<span class="dashicons dashicons-admin-tools" style="margin-top: 3px;"></span>
+									Ignore…
+								</button>
 								<button type="button" class="button button-small cleara11y-quick-ignore" data-issue-id="${issue.id}" data-selector="${this.escapeHtml(issue.selector || '')}" data-rule-id="${this.escapeHtml(issue.rule_id || '')}" title="Quick ignore - hide until next scan">
 									<span class="dashicons dashicons-dismiss" style="margin-top: 3px;"></span>
 									Quick Ignore
@@ -319,6 +323,17 @@
 					this.quickIgnoreIssue(issueId);
 				});
 			});
+
+			// Ignore Wizard buttons
+			document.querySelectorAll('.cleara11y-ignore-wizard').forEach(btn => {
+				btn.addEventListener('click', (e) => {
+					const issueId = parseInt(e.currentTarget.dataset.issueId);
+					const ruleId = e.currentTarget.dataset.ruleId || '';
+					const selector = e.currentTarget.dataset.selector || '';
+					const message = e.currentTarget.dataset.message || '';
+					this.openIgnoreWizard(issueId, ruleId, selector, message);
+				});
+			});
 		},
 
 		/**
@@ -352,6 +367,71 @@
 
 			modal.style.display = 'block';
 		},
+
+			/**
+			 * Open ignore wizard with pre-filled data from an issue
+			 */
+
+			openIgnoreWizard(issueId, ruleId, selector, message) {
+				// Wait for DOM to be ready and ignores page script to load
+				if (typeof jQuery === 'undefined' || typeof openCreateWizard !== 'function') {
+					console.error('[ClearA11y Issues List] Wizard not available. Make sure ignores-page.js is loaded.');
+					alert('The ignore wizard is not available. Please try refreshing the page or go to the Ignores page directly.');
+					return;
+				}
+
+				// Access the wizard state from ignores-page.js
+				if (typeof wizardState === 'undefined') {
+					console.error('[ClearA11y Issues List] Wizard state not available');
+					return;
+				}
+
+				// Pre-fill the wizard state with issue data
+				wizardState.currentStep = 1;
+				wizardState.data.target_type = 'rule_on_element';
+				wizardState.data.rule_ids = ruleId ? [ruleId] : [];
+				wizardState.data.element_match = {
+					css_selector: selector || ''
+				};
+				wizardState.data.scope = { scope_type: 'page' };
+				wizardState.data.duration = { duration_type: 'until_next_scan' };
+				wizardState.data.reason_category = '';
+				wizardState.data.note = message || '';
+
+				console.log('[ClearA11y Issues List] Opening wizard with pre-filled data:', wizardState.data);
+
+				// Open the wizard using the function from ignores-page.js
+				try {
+					openCreateWizard();
+
+					// Pre-fill the form fields
+					setTimeout(() => {
+						// Set target type
+						jQuery('input[name="target_type"][value="rule_on_element"]').prop('checked', true).trigger('change');
+
+						// Fill rule IDs
+						jQuery('#cleara11y-rule-ids').val(ruleId);
+
+						// Set element match type to CSS selector
+						jQuery('input[name="element_match_type"][value="css_selector"]').prop('checked', true).trigger('change');
+
+						// Fill CSS selector
+						jQuery('#cleara11y-css-selector').val(selector);
+
+						// Set scope to page (default)
+						jQuery('input[name="scope_type"][value="page"]').prop('checked', true).trigger('change');
+
+						// Set duration to until next scan (default)
+						jQuery('input[name="duration_type"][value="until_next_scan"]').prop('checked', true).trigger('change');
+
+						// Enable next button
+						jQuery('#cleara11y-wizard-next').prop('disabled', false);
+					}, 100);
+				} catch (error) {
+					console.error('[ClearA11y Issues List] Error opening wizard:', error);
+					alert('Error opening ignore wizard. Please try again.');
+				}
+			},
 
 		/**
 		 * Quick ignore an issue

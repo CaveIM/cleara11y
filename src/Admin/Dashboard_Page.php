@@ -97,23 +97,6 @@ class Dashboard_Page {
 				</div>
 
 				<!-- Quick Actions -->
-
-					<!-- Score Card -->
-					<div class="cleara11y-card cleara11y-score-card">
-						<h2><?php esc_html_e('Overall Accessibility Score', 'cleara11y'); ?></h2>
-						<div class="cleara11y-score-display">
-							<div class="cleara11y-score-grade <?php echo esc_attr($stats['score_grade_class']); ?>">
-								<?php echo esc_html($stats['score_grade']); ?>
-							</div>
-							<div class="cleara11y-score-percentage">
-								<?php echo esc_html($stats['pass_percentage']); ?>% <?php esc_html_e('Pass Rate', 'cleara11y'); ?>
-							</div>
-							<div class="cleara11y-score-details">
-								<span class="cleara11y-score-pass"><?php echo esc_html($stats['rules_passed']); ?> <?php esc_html_e('rules passed', 'cleara11y'); ?></span>
-								<span class="cleara11y-score-fail"><?php echo esc_html($stats['rules_failed']); ?> <?php esc_html_e('rules failed', 'cleara11y'); ?></span>
-							</div>
-						</div>
-					</div>
 				<div class="cleara11y-card cleara11y-quick-actions">
 					<h2><?php esc_html_e('Quick Actions', 'cleara11y'); ?></h2>
 					<div class="cleara11y-actions-grid">

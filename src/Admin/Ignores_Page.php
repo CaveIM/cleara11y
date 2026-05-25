@@ -49,9 +49,6 @@ class Ignores_Page {
 		?>
 		<div class="wrap cleara11y-ignores-wrap">
 			<h1 class="wp-heading-inline"><?php esc_html_e('Accessibility Ignore Rules', 'cleara11y'); ?></h1>
-			<a href="#" class="page-title-action" id="cleara11y-create-ignore">
-				<?php esc_html_e('Create New Ignore Rule', 'cleara11y'); ?>
-			</a>
 			<hr class="wp-header-end">
 
 			<!-- Tabs Navigation -->

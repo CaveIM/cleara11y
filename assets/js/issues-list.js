@@ -252,10 +252,6 @@
 								` : ''}
 							</div>
 							<div class="cleara11y-issue-actions" style="display: flex; gap: 8px; align-items: center;">
-								<button type="button" class="button button-small cleara11y-view-issue" data-issue-id="${issue.id}">
-									<span class="dashicons dashicons-visibility" style="margin-top: 3px;"></span>
-									View
-								</button>
 								<button type="button" class="button button-small cleara11y-ignore-wizard" data-issue-id="${issue.id}" data-rule-id="${this.escapeHtml(issue.rule_id || '')}" data-selector="${this.escapeHtml(issue.selector || '')}" data-message="${this.escapeHtml(issue.message || '')}">
 									<span class="dashicons dashicons-admin-tools" style="margin-top: 3px;"></span>
 									Ignore…

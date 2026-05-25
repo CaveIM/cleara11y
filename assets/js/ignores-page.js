@@ -89,7 +89,6 @@
 		$(document).on('click', '.cleara11y-enable-ignore', enableIgnore);
 		$(document).on('click', '.cleara11y-delete-ignore', deleteIgnore);
 		$(document).on('click', '.cleara11y-modal-close', closeModals);
-		$('#cleara11y-create-ignore').on('click', openCreateWizard);
 	});
 
 	function initDOM() {

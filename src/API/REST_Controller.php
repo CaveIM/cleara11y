@@ -176,7 +176,7 @@ class REST_Controller {
 						'enum' => ['critical', 'moderate', 'minor'],
 						'description' => 'Filter by severity.',
 					],
-					'dismissed' => [
+					'status' => [
 						'type' => 'boolean',
 						'description' => 'Filter by dismissed status.',
 					],
@@ -431,11 +431,11 @@ class REST_Controller {
 						'enum' => ['critical', 'moderate', 'minor'],
 						'description' => 'Filter by severity.',
 					],
-					'dismissed' => [
+					'status' => [
 						'type' => 'string',
-						'enum' => ['active', 'dismissed', 'all'],
+						'enum' => ['active', 'ignored', 'all'],
 						'default' => 'active',
-						'description' => 'Filter by dismissed status.',
+						'description' => 'Filter by ignore status.',
 					],
 					'search' => [
 						'type' => 'string',
@@ -1602,7 +1602,7 @@ class REST_Controller {
 		global $wpdb;
 
 		$severity = $request->get_param('severity');
-		$dismissed = $request->get_param('dismissed') ?? 'active';
+		$status = $request->get_param('status') ?? 'active';
 		$search = $request->get_param('search');
 		$page = (int) $request->get_param('page') ?? 1;
 		$per_page = (int) $request->get_param('per_page') ?? 20;
@@ -1610,6 +1610,8 @@ class REST_Controller {
 
 		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
 		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
+		$matches_table = \ClearA11y\Database\Ignore_Schema::get_table_name('violation_ignore_matches');
+		$rules_table = \ClearA11y\Database\Ignore_Schema::get_table_name('ignore_rules');
 
 		// Build WHERE clause
 		$where = ['1=1'];
@@ -1620,13 +1622,15 @@ class REST_Controller {
 			$where_params[] = $severity;
 		}
 
-		if ($dismissed === 'active') {
-			$where[] = 'i.dismissed = %d';
-			$where_params[] = 0;
-		} elseif ($dismissed === 'dismissed') {
-			$where[] = 'i.dismissed = %d';
-			$where_params[] = 1;
+		// Filter by status (active/ignored/all)
+		if ($status === 'active') {
+			// Show only issues without active ignore matches
+			$where[] = 'vm.id IS NULL';
+		} elseif ($status === 'ignored') {
+			// Show only issues with active ignore matches
+			$where[] = 'vm.id IS NOT NULL';
 		}
+		// 'all' doesn't filter
 
 		if (!empty($search)) {
 			$where[] = '(i.rule_id LIKE %s OR i.message LIKE %s OR si.post_title LIKE %s OR si.post_url LIKE %s)';
@@ -1642,16 +1646,21 @@ class REST_Controller {
 		// Get total count
 		$count_query = "SELECT COUNT(DISTINCT i.id) FROM `{$issues_table}` i
 					   INNER JOIN `{$scan_items_table}` si ON i.scan_item_id = si.id
+					   LEFT JOIN `{$matches_table}` vm ON i.id = vm.violation_id
+					   LEFT JOIN `{$rules_table}` ir ON vm.ignore_rule_id = ir.id AND ir.status = 'active'
 					   WHERE {$where_clause}";
 		// @phpstan-ignore-next-line
 		$total = (int) $wpdb->get_var($wpdb->prepare($count_query, ...$where_params));
 
 		// Get issues
-		$query = "SELECT i.*, si.post_title, si.post_url
+		$query = "SELECT i.*, si.post_title, si.post_url,
+					CASE WHEN vm.id IS NOT NULL THEN 1 ELSE 0 END as is_ignored
 				 FROM `{$issues_table}` i
 				 INNER JOIN `{$scan_items_table}` si ON i.scan_item_id = si.id
+				 LEFT JOIN `{$matches_table}` vm ON i.id = vm.violation_id
+				 LEFT JOIN `{$rules_table}` ir ON vm.ignore_rule_id = ir.id AND ir.status = 'active'
 				 WHERE {$where_clause}
-				 ORDER BY i.dismissed ASC, FIELD(i.severity, 'critical', 'moderate', 'minor'), i.id DESC
+				 ORDER BY is_ignored ASC, FIELD(i.severity, 'critical', 'moderate', 'minor'), i.id DESC
 				 LIMIT %d OFFSET %d";
 
 		$where_params[] = $per_page;
@@ -1679,17 +1688,21 @@ class REST_Controller {
 		global $wpdb;
 
 		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
+		$matches_table = \ClearA11y\Database\Ignore_Schema::get_table_name('violation_ignore_matches');
+		$rules_table = \ClearA11y\Database\Ignore_Schema::get_table_name('ignore_rules');
 
-		// Get counts by severity (active only)
+		// Get counts by severity, excluding ignored issues
 		$counts = $wpdb->get_results(
 			"SELECT
-				SUM(CASE WHEN severity = 'critical' AND dismissed = 0 AND dismissed_global = 0 THEN 1 ELSE 0 END) as critical,
-				SUM(CASE WHEN severity = 'moderate' AND dismissed = 0 AND dismissed_global = 0 THEN 1 ELSE 0 END) as moderate,
-				SUM(CASE WHEN severity = 'minor' AND dismissed = 0 AND dismissed_global = 0 THEN 1 ELSE 0 END) as minor,
-				SUM(CASE WHEN dismissed = 0 AND dismissed_global = 0 THEN 1 ELSE 0 END) as active,
-				SUM(CASE WHEN dismissed = 1 OR dismissed_global = 1 THEN 1 ELSE 0 END) as dismissed,
+				SUM(CASE WHEN i.severity = 'critical' AND vm.id IS NULL THEN 1 ELSE 0 END) as critical,
+				SUM(CASE WHEN i.severity = 'moderate' AND vm.id IS NULL THEN 1 ELSE 0 END) as moderate,
+				SUM(CASE WHEN i.severity = 'minor' AND vm.id IS NULL THEN 1 ELSE 0 END) as minor,
+				SUM(CASE WHEN vm.id IS NULL THEN 1 ELSE 0 END) as active,
+				SUM(CASE WHEN vm.id IS NOT NULL THEN 1 ELSE 0 END) as ignored,
 				COUNT(*) as total
-			FROM `{$issues_table}`",
+			FROM `{$issues_table}` i
+			LEFT JOIN `{$matches_table}` vm ON i.id = vm.violation_id
+			LEFT JOIN `{$rules_table}` ir ON vm.ignore_rule_id = ir.id AND ir.status = 'active'",
 			ARRAY_A
 		);
 
@@ -1698,7 +1711,7 @@ class REST_Controller {
 			'moderate' => 0,
 			'minor' => 0,
 			'active' => 0,
-			'dismissed' => 0,
+			'ignored' => 0,
 			'total' => 0,
 		];
 

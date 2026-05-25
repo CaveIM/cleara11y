@@ -124,10 +124,16 @@
 				const stats = await response.json();
 
 				// Update stats display
-				document.getElementById('cleara11y-total-issues').textContent = stats.active?.total || 0;
-				document.getElementById('cleara11y-critical-issues').textContent = stats.active?.critical || 0;
-				document.getElementById('cleara11y-moderate-issues').textContent = stats.active?.moderate || 0;
-				document.getElementById('cleara11y-minor-issues').textContent = stats.active?.minor || 0;
+				document.getElementById('cleara11y-total-issues').textContent = stats.active || 0;
+				document.getElementById('cleara11y-critical-issues').textContent = stats.critical || 0;
+				document.getElementById('cleara11y-moderate-issues').textContent = stats.moderate || 0;
+				document.getElementById('cleara11y-minor-issues').textContent = stats.minor || 0;
+
+				// Update ignored count if element exists
+				const ignoredEl = document.getElementById('cleara11y-ignored-issues');
+				if (ignoredEl) {
+					ignoredEl.textContent = stats.ignored || 0;
+				}
 
 			} catch (error) {
 				console.error('[ClearA11y Issues List] Error loading stats:', error);

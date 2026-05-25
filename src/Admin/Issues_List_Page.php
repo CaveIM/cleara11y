@@ -73,12 +73,12 @@ class Issues_List_Page {
 						<option value="minor"><?php esc_html_e('Minor', 'cleara11y'); ?></option>
 					</select>
 
-					<label for="cleara11y-filter-dismissed" style="font-weight: 600;">
+					<label for="cleara11y-filter-status" style="font-weight: 600;">
 						<?php esc_html_e('Status:', 'cleara11y'); ?>
 					</label>
-					<select id="cleara11y-filter-dismissed" class="regular-text">
+					<select id="cleara11y-filter-status" class="regular-text">
 						<option value="active"><?php esc_html_e('Active', 'cleara11y'); ?></option>
-						<option value="dismissed"><?php esc_html_e('Dismissed', 'cleara11y'); ?></option>
+						<option value="ignored"><?php esc_html_e('Ignored', 'cleara11y'); ?></option>
 						<option value="all"><?php esc_html_e('All', 'cleara11y'); ?></option>
 					</select>
 
@@ -112,8 +112,8 @@ class Issues_List_Page {
 						<span class="cleara11y-stat-value" id="cleara11y-minor-issues" style="font-weight: 600; margin-left: 5px;">-</span>
 					</div>
 					<div>
-						<span class="cleara11y-stat-label" style="color: #646970;"><?php esc_html_e('Dismissed:', 'cleara11y'); ?></span>
-						<span class="cleara11y-stat-value" id="cleara11y-dismissed-issues" style="font-weight: 600; margin-left: 5px; color: #646970;">-</span>
+						<span class="cleara11y-stat-label" style="color: #646970;"><?php esc_html_e('Ignored:', 'cleara11y'); ?></span>
+						<span class="cleara11y-stat-value" id="cleara11y-ignored-issues" style="font-weight: 600; margin-left: 5px; color: #646970;">-</span>
 					</div>
 				</div>
 			</div>

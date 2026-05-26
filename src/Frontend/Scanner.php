@@ -107,11 +107,20 @@ class Scanner {
 			true
 		);
 
+		// Load scanner configuration first (constants used by other modules)
+		wp_enqueue_script(
+			'cleara11y-scanner-config',
+			CLEARA11Y_PLUGIN_URL . 'assets/js/scanner-config.js',
+			[],
+			CLEARA11Y_VERSION,
+			true
+		);
+
 		// Load shared scanner utilities (used by both scanner modes)
 		wp_enqueue_script(
 			'cleara11y-scanner-utils',
 			CLEARA11Y_PLUGIN_URL . 'assets/js/scanner-utils.js',
-			[],
+			['cleara11y-scanner-config'],
 			CLEARA11Y_VERSION,
 			true
 		);
@@ -132,7 +141,7 @@ class Scanner {
 			wp_enqueue_script(
 				'cleara11y-scanner-bg',
 				CLEARA11Y_PLUGIN_URL . 'assets/js/scanner-bg.js',
-				['axe-core', 'cleara11y-scanner-utils', 'cleara11y-evidence-extractor'],
+				['axe-core', 'cleara11y-scanner-config', 'cleara11y-scanner-utils', 'cleara11y-evidence-extractor'],
 				CLEARA11Y_VERSION,
 				true
 			);
@@ -146,13 +155,14 @@ class Scanner {
 				'restUrl' => $rest_url,
 				'nonce' => wp_create_nonce('wp_rest'),
 				'isBackground' => $is_background,
+				'debug' => defined('WP_DEBUG') && WP_DEBUG,
 			]);
 		} else {
 			// Regular mode - load full scanner with UI
 			wp_enqueue_script(
 				'cleara11y-scanner',
 				CLEARA11Y_PLUGIN_URL . 'assets/js/scanner.js',
-				['axe-core', 'cleara11y-scanner-utils', 'cleara11y-evidence-extractor'],
+				['axe-core', 'cleara11y-scanner-config', 'cleara11y-scanner-utils', 'cleara11y-evidence-extractor'],
 				CLEARA11Y_VERSION,
 				true
 			);
@@ -166,6 +176,7 @@ class Scanner {
 				'restUrl' => $rest_url,
 				'nonce' => wp_create_nonce('wp_rest'),
 				'isBackground' => $is_background,
+				'debug' => defined('WP_DEBUG') && WP_DEBUG,
 			]);
 
 			// Enqueue scanner CSS (overlay and loading indicator)

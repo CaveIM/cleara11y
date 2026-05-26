@@ -16,6 +16,12 @@
 		return;
 	}
 
+	// Check if scanner utilities are loaded
+	if (!window.ClearA11yScannerUtils) {
+		console.error('ClearA11y: Scanner utilities not loaded');
+		return;
+	}
+
 	// Check if background mode
 	const urlParams = new URLSearchParams(window.location.search);
 	const isBackgroundMode = urlParams.get('cleara11y_bg') === '1';
@@ -50,7 +56,7 @@
 						setTimeout(() => {
 							clearInterval(checkAxe);
 							this.handleError('axe-core failed to load');
-						}, 10000);
+						}, ClearA11yConstants.WAIT_FOR_AXE_TIMEOUT);
 					});
 				}
 
@@ -67,7 +73,7 @@
 		 * Run the accessibility scan
 		 */
 		async runScan() {
-			console.log('[ClearA11y BG] Starting scan for postId:', scanData.postId);
+			ClearA11yScannerUtils.debug(' Starting scan for postId:', scanData.postId);
 
 			// Notify parent that axe scan is starting
 			this.postMessage({ type: 'scan_running', scanId: scanData.scanId, postId: scanData.postId });
@@ -86,19 +92,19 @@
 					setTimeout(() => {
 						clearInterval(checkExtractor);
 						this.handleError('Evidence extractor failed to load');
-					}, 10000);
+					}, ClearA11yConstants.WAIT_FOR_AXE_TIMEOUT);
 				});
 			}
 
 			// Run axe-core scan
-			console.log('[ClearA11y BG] Running axe-core...');
+			ClearA11yScannerUtils.debug(' Running axe-core...');
 			const results = await axe.run(document, {
 				runOnly: {
 					type: 'tag',
-					values: ['wcag2aa']
+					values: ClearA11yScannerConfig.AXE_RUN_TAGS
 				}
 			});
-			console.log('[ClearA11y BG] Axe-core complete, found', results.violations?.length || 0, 'violations');
+			ClearA11yScannerUtils.debug(' Axe-core complete, found', results.violations?.length || 0, 'violations');
 
 			// Filter out ClearA11y plugin elements from results
 			if (results.violations && results.violations.length > 0) {
@@ -121,43 +127,43 @@
 								selectorPath.includes('.cleara11y-panel-')
 							].some(check => check);
 							if (isClearA11yElement) {
-								console.log('[ClearA11y BG] Filtered ClearA11y element:', selectorPath);
+								ClearA11yScannerUtils.debug(' Filtered ClearA11y element:', selectorPath);
 								return false;
 							}
 						}
 						return true;
 					});
 					if (violation.nodes.length !== beforeNodeCount) {
-						console.log('[ClearA11y BG] Filtered nodes from violation:', violation.id);
+						ClearA11yScannerUtils.debug(' Filtered nodes from violation:', violation.id);
 					}
 				});
 
 				results.violations = results.violations.filter(v => v.nodes.length > 0);
-				console.log('[ClearA11y BG] Filtered out', originalCount - results.violations.length, 'ClearA11y violations');
+				ClearA11yScannerUtils.debug(' Filtered out', originalCount - results.violations.length, 'ClearA11y violations');
 			}
 
 			// Extract evidence from results
-			console.log('[ClearA11y BG] Extracting violation evidence...');
-			console.log('[ClearA11y BG] extractEvidenceFromAxeResults function:', typeof extractEvidenceFromAxeResults);
+			ClearA11yScannerUtils.debug(' Extracting violation evidence...');
+			ClearA11yScannerUtils.debug(' extractEvidenceFromAxeResults function:', typeof extractEvidenceFromAxeResults);
 
 			let evidence = [];
 			try {
 				evidence = await extractEvidenceFromAxeResults(results, {
-					maxSnippetLen: 4000,
-					maxTextLen: 400,
-					ancestorDepth: 6,
+					maxSnippetLen: ClearA11yConstants.MAX_SNIPPET_LENGTH,
+					maxTextLen: ClearA11yConstants.MAX_TEXT_LENGTH,
+					ancestorDepth: ClearA11yConstants.ANCESTOR_DEPTH,
 					allowDataAttrs: true,
-					dataAttrWhitelist: ["data-testid", "data-qa", "data-cy"],
+					dataAttrWhitelist: ClearA11yConstants.DATA_ATTR_WHITELIST,
 				});
-				console.log('[ClearA11y BG] Evidence extraction complete, count:', Array.isArray(evidence) ? evidence.length : 'Not an array');
+				ClearA11yScannerUtils.debug(' Evidence extraction complete, count:', Array.isArray(evidence) ? evidence.length : 'Not an array');
 			} catch (e) {
-				console.error('[ClearA11y BG] Evidence extraction failed:', e);
+				ClearA11yScannerUtils.error(' Evidence extraction failed:', e);
 				evidence = [];
 			}
 
 			// Send results to server
 			this.postMessage({ type: 'saving_results', scanId: scanData.scanId, postId: scanData.postId });
-			console.log('[ClearA11y BG] Saving results to:', REST_URL);
+			ClearA11yScannerUtils.debug(' Saving results to:', REST_URL);
 
 			const response = await fetch(REST_URL, {
 				method: 'POST',
@@ -172,14 +178,14 @@
 				})
 			});
 
-			console.log('[ClearA11y BG] Save response status:', response.status);
+			ClearA11yScannerUtils.debug(' Save response status:', response.status);
 
 			const data = await response.json();
-			console.log('[ClearA11y BG] Save response data:', data);
+			ClearA11yScannerUtils.debug(' Save response data:', data);
 
 			if (data.success) {
 				// Notify parent of completion
-				console.log('[ClearA11y BG] Scan complete, notifying parent');
+				ClearA11yScannerUtils.debug(' Scan complete, notifying parent');
 				this.postMessage({
 					type: 'scan_complete',
 					scanId: scanData.scanId,
@@ -194,7 +200,7 @@
 						if (window.opener) {
 							window.close();
 						}
-					}, 500);
+					}, ClearA11yScannerConfig.BG_SCANNER_CLOSE_DELAY);
 				}
 			} else {
 				throw new Error(data.message || 'Failed to save results');
@@ -214,7 +220,7 @@
 
 			if (isBackgroundMode && window.opener) {
 				// Close error popup after showing error
-				setTimeout(() => window.close(), 2000);
+				setTimeout(() => window.close(), ClearA11yScannerConfig.ERROR_POPUP_CLOSE_DELAY);
 			}
 		},
 
@@ -222,21 +228,21 @@
 		 * Send message to parent window
 		 */
 		postMessage(data) {
-			console.log('[ClearA11y BG] postMessage:', data.type, 'scanId:', data.scanId);
+			ClearA11yScannerUtils.debug(' postMessage:', data.type, 'scanId:', data.scanId);
 			if (window.parent !== window) {
 				// Running in iframe
 				window.parent.postMessage({
 					source: 'cleara11y_scanner',
 					data: data
 				}, '*');
-				console.log('[ClearA11y BG] Message sent to parent (iframe mode)');
+				ClearA11yScannerUtils.debug(' Message sent to parent (iframe mode)');
 			} else if (window.opener) {
 				// Running in popup
 				window.opener.postMessage({
 					source: 'cleara11y_scanner',
 					data: data
 				}, '*');
-				console.log('[ClearA11y BG] Message sent to opener (popup mode)');
+				ClearA11yScannerUtils.debug(' Message sent to opener (popup mode)');
 			} else {
 				console.warn('[ClearA11y BG] No parent or opener found!');
 			}
@@ -244,20 +250,20 @@
 	};
 
 	// Start the scanner immediately for background mode
-	console.log('[ClearA11y BG] Scanner loaded, readyState:', document.readyState);
+	ClearA11yScannerUtils.debug(' Scanner loaded, readyState:', document.readyState);
 	if (document.readyState === 'loading') {
 		document.addEventListener('DOMContentLoaded', () => {
-			console.log('[ClearA11y BG] DOMContentLoaded, initializing...');
+			ClearA11yScannerUtils.debug(' DOMContentLoaded, initializing...');
 			BackgroundScanner.init();
 		});
 	} else {
-		console.log('[ClearA11y BG] DOM ready, initializing...');
+		ClearA11yScannerUtils.debug(' DOM ready, initializing...');
 		BackgroundScanner.init();
 	}
 
 	// Listen for messages from parent
 	window.addEventListener('message', (event) => {
-		console.log('[ClearA11y BG] Received message:', event.data);
+		ClearA11yScannerUtils.debug(' Received message:', event.data);
 		if (event.data && event.data.source === 'cleara11y_dashboard') {
 			// Handle messages from dashboard if needed
 			if (event.data.action === 'ping') {

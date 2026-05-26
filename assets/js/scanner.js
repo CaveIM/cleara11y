@@ -197,7 +197,7 @@
 					if (window.opener) {
 						window.close();
 					}
-				}, 3000);
+				}, ClearA11yConstants.AUTO_CLOSE_DELAY);
 			}
 		},
 
@@ -208,7 +208,7 @@
 			// Wait for axe-core using utility function
 			if (typeof axe === 'undefined') {
 				try {
-					await ClearA11yScannerUtils.waitForGlobal('axe', 10000);
+					await ClearA11yScannerUtils.waitForGlobal('axe', ClearA11yConstants.WAIT_FOR_AXE_TIMEOUT);
 				} catch (e) {
 					this.showError('axe-core failed to load');
 					return;
@@ -218,9 +218,9 @@
 			// Wait for evidence extractor using utility function
 			if (typeof extractEvidenceFromAxeResults === 'undefined') {
 				try {
-					await ClearA11yScannerUtils.waitForGlobal('extractEvidenceFromAxeResults', 10000);
+					await ClearA11yScannerUtils.waitForGlobal('extractEvidenceFromAxeResults', ClearA11yConstants.WAIT_FOR_EXTRACTOR_TIMEOUT);
 				} catch (e) {
-					console.warn('[ClearA11y] Evidence extractor not available, continuing without it');
+					ClearA11yScannerUtils.warn('Evidence extractor not available, continuing without it');
 				}
 			}
 
@@ -234,11 +234,11 @@
 				const results = await axe.run(document, {
 					runOnly: {
 						type: 'tag',
-						values: ['wcag2aa']
+						values: ClearA11yScannerConfig.AXE_RUN_TAGS
 					}
 				});
 
-				console.log('[ClearA11y] Scan complete, violations:', results.violations?.length || 0);
+				ClearA11yScannerUtils.debug('Scan complete, violations:', results.violations?.length || 0);
 
 				// Filter out ClearA11y plugin elements from results
 				const filteredResults = ClearA11yScannerUtils.filterPluginElements(results, true);
@@ -250,15 +250,15 @@
 				if (typeof extractEvidenceFromAxeResults !== 'undefined') {
 					try {
 						evidence = await extractEvidenceFromAxeResults(filteredResults, {
-							maxSnippetLen: 4000,
-							maxTextLen: 400,
-							ancestorDepth: 6,
+							maxSnippetLen: ClearA11yConstants.MAX_SNIPPET_LENGTH,
+							maxTextLen: ClearA11yConstants.MAX_TEXT_LENGTH,
+							ancestorDepth: ClearA11yConstants.ANCESTOR_DEPTH,
 							allowDataAttrs: true,
-							dataAttrWhitelist: ["data-testid", "data-qa", "data-cy"],
+							dataAttrWhitelist: ClearA11yConstants.DATA_ATTR_WHITELIST,
 						});
-						console.log('[ClearA11y] Evidence extracted:', evidence.length || 0, 'items');
+						ClearA11yScannerUtils.debug('Evidence extracted:', evidence.length || 0, 'items');
 					} catch (e) {
-						console.error('[ClearA11y] Evidence extraction failed:', e);
+						ClearA11yScannerUtils.error( Evidence extraction failed:', e);
 					}
 				}
 
@@ -289,7 +289,7 @@
 				}
 
 			} catch (error) {
-				console.error('[ClearA11y] Scan error:', error);
+				ClearA11yScannerUtils.error( Scan error:', error);
 				this.showError(error.message || 'An unknown error occurred during the scan.');
 			}
 		}

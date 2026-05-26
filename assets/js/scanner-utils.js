@@ -24,6 +24,40 @@
 	];
 
 	/**
+	 * Debug logger that only logs when debug mode is enabled.
+	 * Reads debug flag from scan data when available.
+	 *
+	 * @param {...any} args - Arguments to log
+	 */
+	function debugLog(...args) {
+		const isDebug = window.cleara11yScanData?.debug ?? false;
+		if (isDebug) {
+			console.log('[ClearA11y]', ...args);
+		}
+	}
+
+	/**
+	 * Debug error logger - always logs errors regardless of debug flag.
+	 *
+	 * @param {...any} args - Arguments to log
+	 */
+	function debugError(...args) {
+		console.error('[ClearA11y]', ...args);
+	}
+
+	/**
+	 * Debug warn logger - only warns when debug mode is enabled.
+	 *
+	 * @param {...any} args - Arguments to log
+	 */
+	function debugWarn(...args) {
+		const isDebug = window.cleara11yScanData?.debug ?? false;
+		if (isDebug) {
+			console.warn('[ClearA11y]', ...args);
+		}
+	}
+
+	/**
 	 * Filter out ClearA11y plugin elements from axe results.
 	 * This prevents the scanner from flagging its own UI elements.
 	 *
@@ -49,7 +83,7 @@
 
 					if (isClearA11yElement(selectorPath)) {
 						if (verbose) {
-							console.log('[ClearA11y] Filtered plugin element:', selectorPath);
+							debugLog('Filtered plugin element:', selectorPath);
 						}
 						return false;
 					}
@@ -58,14 +92,14 @@
 			});
 
 			if (violation.nodes.length !== beforeNodeCount && verbose) {
-				console.log('[ClearA11y] Filtered nodes from violation:', violation.id);
+				debugLog('Filtered nodes from violation:', violation.id);
 			}
 		});
 
 		results.violations = results.violations.filter(v => v.nodes.length > 0);
 
 		if (verbose) {
-			console.log('[ClearA11y] Filtered out', originalCount - results.violations.length, 'plugin violations');
+			debugLog('Filtered out', originalCount - results.violations.length, 'plugin violations');
 		}
 
 		return results;
@@ -118,7 +152,10 @@
 	window.ClearA11yScannerUtils = {
 		filterPluginElements,
 		isClearA11yElement,
-		waitForGlobal
+		waitForGlobal,
+		debug: debugLog,
+		error: debugError,
+		warn: debugWarn
 	};
 
 })();

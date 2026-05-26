@@ -17,7 +17,8 @@
 		if (window.cleara11yData) {
 			return {
 				apiUrl: window.cleara11yData.apiUrl,
-				nonce: window.cleara11yData.nonce
+				nonce: window.cleara11yData.nonce,
+				pluginUrl: window.cleara11yData.pluginUrl
 			};
 		}
 		console.error('ClearA11y: cleara11yData not found - orchestrator initialized but not ready');
@@ -486,11 +487,16 @@
 				return;
 			}
 
+			const config = getApiConfig();
+			if (!config || !config.pluginUrl) {
+				throw new Error('ClearA11y: Plugin URL not available for loading axe-core');
+			}
+
 			const script = doc.createElement('script');
-			script.src = 'https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.8.2/axe.min.js';
+			script.src = config.pluginUrl + 'assets/js/axe.min.js';
 			script.onload = callback;
 			script.onerror = () => {
-				throw new Error('Failed to load axe-core');
+				throw new Error('Failed to load axe-core from local assets');
 			};
 			doc.head.appendChild(script);
 		}

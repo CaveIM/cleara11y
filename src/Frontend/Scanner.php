@@ -107,22 +107,32 @@ class Scanner {
 			true
 		);
 
+		// Load shared scanner utilities (used by both scanner modes)
+		wp_enqueue_script(
+			'cleara11y-scanner-utils',
+			CLEARA11Y_PLUGIN_URL . 'assets/js/scanner-utils.js',
+			[],
+			CLEARA11Y_VERSION,
+			true
+		);
+
+		// Load evidence extractor (used by both scanner modes)
+		wp_enqueue_script(
+			'cleara11y-evidence-extractor',
+			CLEARA11Y_PLUGIN_URL . 'assets/js/evidence-extractor.js',
+			[],
+			CLEARA11Y_VERSION,
+			true
+		);
+
 		$rest_url = rest_url('cleara11y/v1/scan/results');
 
 		if ($is_background) {
 			// Background mode - load minimal scanner
 			wp_enqueue_script(
-				'cleara11y-evidence-extractor',
-				CLEARA11Y_PLUGIN_URL . 'assets/js/evidence-extractor.js',
-				[],
-				CLEARA11Y_VERSION,
-				true
-			);
-
-			wp_enqueue_script(
 				'cleara11y-scanner-bg',
 				CLEARA11Y_PLUGIN_URL . 'assets/js/scanner-bg.js',
-				['axe-core', 'cleara11y-evidence-extractor'],
+				['axe-core', 'cleara11y-scanner-utils', 'cleara11y-evidence-extractor'],
 				CLEARA11Y_VERSION,
 				true
 			);
@@ -138,20 +148,11 @@ class Scanner {
 				'isBackground' => $is_background,
 			]);
 		} else {
-			// Enqueue evidence extractor first
-			wp_enqueue_script(
-				'cleara11y-evidence-extractor',
-				CLEARA11Y_PLUGIN_URL . 'assets/js/evidence-extractor.js',
-				[],
-				CLEARA11Y_VERSION,
-				true
-			);
-
 			// Regular mode - load full scanner with UI
 			wp_enqueue_script(
 				'cleara11y-scanner',
 				CLEARA11Y_PLUGIN_URL . 'assets/js/scanner.js',
-				['axe-core', 'cleara11y-evidence-extractor'],
+				['axe-core', 'cleara11y-scanner-utils', 'cleara11y-evidence-extractor'],
 				CLEARA11Y_VERSION,
 				true
 			);

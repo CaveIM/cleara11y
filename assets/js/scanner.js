@@ -15,6 +15,12 @@
 		return;
 	}
 
+	// Check if scanner utilities are loaded
+	if (!window.ClearA11yScannerUtils) {
+		console.error('ClearA11y: Scanner utilities not loaded');
+		return;
+	}
+
 	const scanData = window.cleara11yScanData;
 	const REST_URL = scanData.restUrl;
 	const NONCE = scanData.nonce;
@@ -30,6 +36,7 @@
 		detailsText: null,
 		completeSection: null,
 		errorSection: null,
+		closeButton: null,
 
 		/**
 		 * Initialize the scanner
@@ -72,7 +79,7 @@
 					<div class="cleara11y-scanner-complete-icon"></div>
 					<h3>Scan Complete!</h3>
 					<div class="cleara11y-scanner-results" id="cleara11y-scanner-results"></div>
-					<button type="button" class="button button-primary cleara11y-scanner-close-button" onclick="window.close()">
+					<button type="button" class="button button-primary cleara11y-scanner-close-button">
 						Close Window
 					</button>
 				</div>
@@ -89,6 +96,14 @@
 			this.errorSection = document.getElementById('cleara11y-scanner-error');
 			this.resultsSection = document.getElementById('cleara11y-scanner-results');
 			this.errorMessage = document.getElementById('cleara11y-error-message');
+			this.closeButton = this.container.querySelector('.cleara11y-scanner-close-button');
+
+			// Add event listener for close button (no inline onclick)
+			this.closeButton.addEventListener('click', () => {
+				if (window.opener) {
+					window.close();
+				}
+			});
 		},
 
 		/**
@@ -190,42 +205,23 @@
 		 * Run the accessibility scan
 		 */
 		async runScan() {
-			// Check if axe-core is loaded
+			// Wait for axe-core using utility function
 			if (typeof axe === 'undefined') {
-				// Wait for axe-core to load
-				await new Promise(resolve => {
-					const checkAxe = setInterval(() => {
-						if (typeof axe !== 'undefined') {
-							clearInterval(checkAxe);
-							resolve();
-						}
-					}, 100);
-				});
+				try {
+					await ClearA11yScannerUtils.waitForGlobal('axe', 10000);
+				} catch (e) {
+					this.showError('axe-core failed to load');
+					return;
+				}
 			}
 
-			// Wait for evidence extractor to be available
+			// Wait for evidence extractor using utility function
 			if (typeof extractEvidenceFromAxeResults === 'undefined') {
-				await new Promise((resolve, reject) => {
-					const checkExtractor = setInterval(() => {
-						if (typeof extractEvidenceFromAxeResults !== 'undefined') {
-							clearInterval(checkExtractor);
-							resolve();
-						}
-					}, 100);
-
-					// Timeout after 10 seconds
-					setTimeout(() => {
-						clearInterval(checkExtractor);
-						console.error('[ClearA11y] Timed out waiting for evidence-extractor.js to load');
-						resolve(); // Continue anyway, evidence extraction will fail gracefully
-					}, 10000);
-				});
-			}
-
-			// Debug: Log function availability
-			console.log('[ClearA11y] extractEvidenceFromAxeResults available:', typeof extractEvidenceFromAxeResults);
-			if (typeof extractEvidenceFromAxeResults === 'undefined') {
-				console.error('[ClearA11y] extractEvidenceFromAxeResults is not defined!');
+				try {
+					await ClearA11yScannerUtils.waitForGlobal('extractEvidenceFromAxeResults', 10000);
+				} catch (e) {
+					console.warn('[ClearA11y] Evidence extractor not available, continuing without it');
+				}
 			}
 
 			// Start progress animation
@@ -242,74 +238,28 @@
 					}
 				});
 
-				// Debug: Check results
-				console.log('[ClearA11y] Axe results:', results);
-				console.log('[ClearA11y] Violations count:', results.violations?.length || 0);
+				console.log('[ClearA11y] Scan complete, violations:', results.violations?.length || 0);
 
-
-
-					// Remove ClearA11y plugin elements from results
-					if (results.violations && results.violations.length > 0) {
-						const originalCount = results.violations.length;
-
-						results.violations.forEach(violation => {
-							const beforeNodeCount = violation.nodes.length;
-							violation.nodes = violation.nodes.filter(node => {
-								if (!node.target || node.target.length === 0) return true;
-								for (const targetPath of node.target) {
-									if (!Array.isArray(targetPath)) continue;
-									const selectorPath = targetPath.join(' ');
-									const isClearA11yElement = [
-										selectorPath.includes('[data-cleara11y-plugin]'),
-										selectorPath.includes('.cleara11y-panel'),
-										selectorPath.includes('.cleara11y-backdrop'),
-										selectorPath.includes('.cleara11y-summary'),
-										selectorPath.includes('.cleara11y-stat'),
-										selectorPath.includes('.cleara11y-filter'),
-										selectorPath.includes('.cleara11y-panel-')
-									].some(check => check);
-									if (isClearA11yElement) {
-										console.log('[ClearA11y] Filtered ClearA11y element:', selectorPath);
-										return false;
-									}
-								}
-								return true;
-							});
-							if (violation.nodes.length !== beforeNodeCount) {
-								console.log('[ClearA11y] Filtered nodes from violation:', violation.id);
-							}
-						});
-
-						results.violations = results.violations.filter(v => v.nodes.length > 0);
-						console.log('[ClearA11y] Filtered out', originalCount - results.violations.length, 'ClearA11y violations');
-					}
+				// Filter out ClearA11y plugin elements from results
+				const filteredResults = ClearA11yScannerUtils.filterPluginElements(results, true);
 
 				// Extract evidence from results
 				this.updateProgress('Extracting violation evidence...');
 
-				console.log('[ClearA11y] extractEvidenceFromAxeResults function:', typeof extractEvidenceFromAxeResults);
-
 				let evidence = [];
-				try {
-					evidence = await extractEvidenceFromAxeResults(results, {
-						maxSnippetLen: 4000,
-						maxTextLen: 400,
-						ancestorDepth: 6,
-						allowDataAttrs: true,
-						dataAttrWhitelist: ["data-testid", "data-qa", "data-cy"],
-					});
-
-					// Debug: Check evidence
-					console.log('[ClearA11y] Evidence extracted:', evidence);
-					console.log('[ClearA11y] Evidence count:', Array.isArray(evidence) ? evidence.length : 'Not an array');
-
-					if (!Array.isArray(evidence)) {
-						console.error('[ClearA11y] Evidence is not an array:', typeof evidence, evidence);
-						evidence = [];
+				if (typeof extractEvidenceFromAxeResults !== 'undefined') {
+					try {
+						evidence = await extractEvidenceFromAxeResults(filteredResults, {
+							maxSnippetLen: 4000,
+							maxTextLen: 400,
+							ancestorDepth: 6,
+							allowDataAttrs: true,
+							dataAttrWhitelist: ["data-testid", "data-qa", "data-cy"],
+						});
+						console.log('[ClearA11y] Evidence extracted:', evidence.length || 0, 'items');
+					} catch (e) {
+						console.error('[ClearA11y] Evidence extraction failed:', e);
 					}
-				} catch (e) {
-					console.error('[ClearA11y] Evidence extraction failed:', e);
-					evidence = [];
 				}
 
 				// Send results with evidence to server
@@ -317,17 +267,9 @@
 
 				const payload = {
 					token: scanData.token,
-					results: results,
+					results: filteredResults,
 					evidence: evidence
 				};
-
-				console.log('[ClearA11y] Sending payload:', {
-					token: payload.token ? 'present' : 'missing',
-					hasResults: !!payload.results,
-					violationsCount: payload.results?.violations?.length || 0,
-					evidenceType: Array.isArray(payload.evidence) ? 'array' : typeof payload.evidence,
-					evidenceCount: Array.isArray(payload.evidence) ? payload.evidence.length : 'N/A'
-				});
 
 				const response = await fetch(REST_URL, {
 					method: 'POST',
@@ -347,7 +289,7 @@
 				}
 
 			} catch (error) {
-				console.error('Scan error:', error);
+				console.error('[ClearA11y] Scan error:', error);
 				this.showError(error.message || 'An unknown error occurred during the scan.');
 			}
 		}

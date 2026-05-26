@@ -454,11 +454,8 @@
 				// Remove WP Admin Bar
 				this.removeWpAdminBar(doc);
 
-				// Inject axe-core
-				this.injectAxeCore(doc, () => {
-					// After axe-core is loaded, inject bootstrap and run scan
-					this.injectBootstrapScript(win, doc, scanId);
-				});
+				// Inject external scripts in order
+				this.injectExternalScripts(doc, win, scanId);
 
 			} catch (error) {
 				console.error('ClearA11y: Failed to inject scan bootstrap:', error);
@@ -480,395 +477,147 @@
 			}
 		}
 
-		injectAxeCore(doc, callback) {
-			// Check if axe is already loaded
-			if (doc.defaultView.axe) {
-				callback();
-				return;
-			}
+			injectExternalScripts(doc, win, scanId) {
+				const config = getApiConfig();
+				if (!config || !config.pluginUrl) {
+					throw new Error('ClearA11y: Plugin URL not available');
+				}
 
-			const config = getApiConfig();
-			if (!config || !config.pluginUrl) {
-				throw new Error('ClearA11y: Plugin URL not available for loading axe-core');
-			}
+				// Check if axe is already loaded
+				if (!win.axe) {
+					const axeScript = doc.createElement('script');
+					axeScript.src = config.pluginUrl + 'assets/js/axe.min.js';
+					axeScript.onerror = () => {
+						throw new Error('Failed to load axe-core');
+					};
+					doc.head.appendChild(axeScript);
+				}
 
-			const script = doc.createElement('script');
-			script.src = config.pluginUrl + 'assets/js/axe.min.js';
-			script.onload = callback;
-			script.onerror = () => {
-				throw new Error('Failed to load axe-core from local assets');
-			};
-			doc.head.appendChild(script);
-		}
+				// Load evidence extractor
+				const extractorScript = doc.createElement('script');
+				extractorScript.src = config.pluginUrl + 'assets/js/evidence-extractor.js';
+				extractorScript.onerror = () => {
+					throw new Error('Failed to load evidence extractor');
+				};
+				doc.head.appendChild(extractorScript);
 
-		injectBootstrapScript(win, doc, scanId) {
-			// Build bootstrap code with proper escaping for regex patterns
-			const bootstrapCode = `
-				(function() {
-					if (window.__CLEARA11Y_BOOTSTRAPPED__) return;
-					window.__CLEARA11Y_BOOTSTRAPPED__ = true;
-
-					// === Evidence Extraction Functions (Inline) ===
-
-					function extractEvidenceFromAxeResults(results) {
-						const out = [];
-						for (const v of results.violations || []) {
-							for (const node of v.nodes || []) {
-								const selector = (node && node.target && node.target[0]) || null;
-								const record = {
-									rule_id: v.id,
-									impact: v.impact || null,
-									message: v.description || v.help || null,
-									help_url: v.helpUrl || null,
-									failure_summary: node.failureSummary || null,
-									selector: selector,
-									selector_match_count: null,
-									selector_score: null,
-									node_evidence: null,
-									axe_node_raw: {
-										html: node.html || null,
-										target: node.target || null,
-										any: node.any || null,
-										all: node.all || null,
-										none: node.none || null,
-									},
-								};
-								if (!selector) {
-									out.push(record);
-									continue;
-								}
-								const matchResult = resolveSelector(selector, document);
-								record.selector_match_count = matchResult.matchCount;
-								if (matchResult.element) {
-									record.node_evidence = buildNodeEvidence(matchResult.element);
-								}
-								out.push(record);
-							}
-						}
-						return out;
+				// Wait for scripts to load, then run scan
+				const checkInterval = setInterval(() => {
+					if (win.axe && win.extractEvidenceFromAxeResults) {
+						clearInterval(checkInterval);
+						this.runSimpleBootstrap(win, doc, scanId);
 					}
+				}, 50);
 
-					function resolveSelector(selector, rootDoc) {
-						let matchCount = 0;
-						let element = null;
-						try {
-							const matches = rootDoc.querySelectorAll(selector);
-							matchCount = matches.length;
-							element = matches[0] || null;
-						} catch (e) {
-							matchCount = 0;
-							element = null;
-						}
-						return { matchCount, element };
-					}
-
-					function selectorHasGeneratedTokens(selector) {
-						const tokens = selector.split(/[^A-Za-z0-9_-]+/g).filter(Boolean);
-						const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-						const longHexRe = /^[0-9a-f]{10,}$/i;
-						const cssModuleRe = /__[a-zA-Z0-9_-]{6,}$/;
-						const jssRe = /^jss[0-9]+$/i;
-						const scRe = /^sc-[A-Za-z0-9]{6,}$/;
-						const cssDashRe = /^css-[A-Za-z0-9]{6,}$/;
-						for (const t of tokens) {
-							if (uuidRe.test(t)) return true;
-							if (longHexRe.test(t)) return true;
-							if (cssModuleRe.test(t)) return true;
-							if (jssRe.test(t)) return true;
-							if (scRe.test(t)) return true;
-							if (cssDashRe.test(t)) return true;
-							if (t.length >= 18 && /[A-Za-z]/.test(t) && /[0-9]/.test(t)) return true;
-						}
-						return false;
-					}
-
-					function buildNodeEvidence(el) {
-						const tagName = el.tagName.toLowerCase();
-						const attrs = extractAttributes(el);
-						const outerHtmlSnippet = (el.outerHTML || "").slice(0, 4000);
-						const innerTextSnippet = normalizeWhitespace(el.innerText || el.textContent || "").slice(0, 400);
-						const xpath = buildXPath(el);
-						const domPath = buildDomPath(el);
-						const ancestorChain = buildAncestorChain(el, 6);
-						const rect = el.getBoundingClientRect();
-						const boundingBox = {
-							x: Math.round(rect.x * 100) / 100,
-							y: Math.round(rect.y * 100) / 100,
-							w: Math.round(rect.width * 100) / 100,
-							h: Math.round(rect.height * 100) / 100,
-						};
-						const cs = window.getComputedStyle(el);
-						const styleEvidence = {
-							color: cs.color || null,
-							backgroundColor: cs.backgroundColor || null,
-							fontSize: cs.fontSize || null,
-							fontWeight: cs.fontWeight || null,
-							opacity: cs.opacity || null,
-						};
-						const accessibleName = deriveAccessibleName(el);
-						const strictSource = JSON.stringify({
-							tagName,
-							attrs: pickStableAttrs(attrs),
-							ancestorChain,
-							accessibleName,
+				// Timeout after 10 seconds
+				setTimeout(() => {
+					clearInterval(checkInterval);
+					if (!win.axe || !win.extractEvidenceFromAxeResults) {
+						this.postMessage({
+							type: 'scan_error',
+							error: 'Timeout loading scanner scripts'
 						});
-						const looseSource = JSON.stringify({
-							tagName,
-							attrs: pickLooseAttrs(attrs),
-							ancestorChain: ancestorChain.map(a => ({
-								tag: a.tag,
-								role: a.role || null,
-								ariaLabel: a.ariaLabel || null,
-								id: a.id || null,
-							})),
-							accessibleName: accessibleName || null,
-						});
-
-						return {
-							tag_name: tagName,
-							attributes: attrs,
-							accessible_name: accessibleName,
-							css_selector_hint: buildBestEffortSelector(el),
-							xpath: xpath,
-							dom_path: domPath,
-							ancestor_chain: ancestorChain,
-							outer_html_snippet: outerHtmlSnippet,
-							inner_text_snippet: innerTextSnippet,
-							bounding_box: boundingBox,
-							computed_style: styleEvidence,
-							fingerprint_strict: simpleHash(strictSource),
-							fingerprint_loose: simpleHash(looseSource),
-							signature_version: 1,
-						};
 					}
+				}, 10000);
+				}
 
-					function extractAttributes(el) {
-						const out = {};
-						const allow = new Set([
-							"id", "class", "name", "type", "role",
-							"href", "src", "alt", "title", "for", "value",
-							"aria-label", "aria-labelledby", "aria-describedby",
-							"aria-hidden", "tabindex",
-						]);
-						for (const attr of el.attributes) {
-							if (allow.has(attr.name)) out[attr.name] = attr.value;
-							if (attr.name.startsWith("data-")) out[attr.name] = attr.value;
-						}
-						if (out.class) {
-							out.class_list = out.class.split(/\s+/).filter(Boolean);
-						}
-						return out;
-					}
+				runSimpleBootstrap(win, doc, scanId) {
+				const axeTags = window.ClearA11yScannerConfig?.AXE_ORCHESTRATOR_TAGS || ['wcag2a', 'wcag2aa', 'wcag21aa'];
+				const maxSnippet = window.ClearA11yConstants?.MAX_SNIPPET_LENGTH || 4000;
+				const maxText = window.ClearA11yConstants?.MAX_TEXT_LENGTH || 400;
+				const ancestorDepth = window.ClearA11yConstants?.ANCESTOR_DEPTH || 6;
+				const whitelist = window.ClearA11yConstants?.DATA_ATTR_WHITELIST || ["data-testid", "data-qa", "data-cy"];
 
-					function deriveAccessibleName(el) {
-						const ariaLabel = el.getAttribute("aria-label");
-						if (ariaLabel) return normalizeWhitespace(ariaLabel);
-						const alt = el.getAttribute("alt");
-						if (alt) return normalizeWhitespace(alt);
-						const title = el.getAttribute("title");
-						if (title) return normalizeWhitespace(title);
-						const text = el.innerText || el.textContent;
-						if (text) return normalizeWhitespace(text).slice(0, 120);
-						return null;
-					}
+				const bootstrapCode = `
+					(function() {
+						if (window.__CLEARA11Y_BOOTSTRAPPED__) return;
+						window.__CLEARA11Y_BOOTSTRAPPED__ = true;
 
-					function buildXPath(el) {
-						const segments = [];
-						let node = el;
-						while (node && node.nodeType === Node.ELEMENT_NODE) {
-							const tag = node.tagName.toLowerCase();
-							const id = node.getAttribute("id");
-							if (id && !selectorHasGeneratedTokens("#" + id)) {
-								segments.unshift('//*[@id="' + id + '"]');
-								break;
-							}
-							let index = 1;
-							let sib = node.previousElementSibling;
-							while (sib) {
-								if (sib.tagName.toLowerCase() === tag) index++;
-								sib = sib.previousElementSibling;
-							}
-							segments.unshift("/" + tag + "[" + index + "]");
-							node = node.parentElement;
-						}
-						return segments.length ? segments.join("") : null;
-					}
-
-					function buildDomPath(el) {
-						const path = [];
-						let node = el;
-						while (node && node.nodeType === Node.ELEMENT_NODE) {
-							const tag = node.tagName.toLowerCase();
-							const id = node.getAttribute("id") || null;
-							let indexOfType = 1;
-							let sib = node.previousElementSibling;
-							while (sib) {
-								if (sib.tagName.toLowerCase() === tag) indexOfType++;
-								sib = sib.previousElementSibling;
-							}
-							path.unshift({ tag, id, indexOfType });
-							if (id && !selectorHasGeneratedTokens("#" + id)) break;
-							node = node.parentElement;
-						}
-						return path;
-					}
-
-					function buildAncestorChain(el, maxDepth) {
-						const chain = [];
-						let node = el;
-						let depth = 0;
-						while (node && node.nodeType === Node.ELEMENT_NODE && depth < maxDepth) {
-							chain.push({
-								tag: node.tagName.toLowerCase(),
-								id: node.getAttribute("id") || null,
-								class: node.getAttribute("class") || null,
-								role: node.getAttribute("role") || null,
-								ariaLabel: node.getAttribute("aria-label") || null,
-							});
-							node = node.parentElement;
-							depth++;
-						}
-						return chain;
-					}
-
-					function buildBestEffortSelector(el) {
-						const id = el.getAttribute("id");
-						if (id && !selectorHasGeneratedTokens("#" + id)) return "#" + cssEscape(id);
-						const dt = el.getAttribute("data-testid");
-						if (dt) return el.tagName.toLowerCase() + '[data-testid="' + dt + '"]';
-						const role = el.getAttribute("role");
-						const ariaLabel = el.getAttribute("aria-label");
-						if (role && ariaLabel) {
-							return '[role="' + role + '"][aria-label="' + ariaLabel + '"]';
-						}
-						const classList = (el.getAttribute("class") || "").split(/\s+/).filter(Boolean);
-						if (classList.length) {
-							return el.tagName.toLowerCase() + "." + classList.slice(0, 2).map(cssEscape).join(".");
-						}
-						return el.tagName.toLowerCase();
-					}
-
-					function pickStableAttrs(attrs) {
-						const out = {};
-						for (const k of ["id", "role", "aria-label", "name", "type", "href", "for"]) {
-							if (attrs[k]) out[k] = attrs[k];
-						}
-						if (Array.isArray(attrs.class_list)) {
-							out.class_list = attrs.class_list.slice(0, 3);
-						}
-						return out;
-					}
-
-					function pickLooseAttrs(attrs) {
-						const out = {};
-						for (const k of ["role", "name", "type", "href"]) {
-							if (attrs[k]) out[k] = attrs[k];
-						}
-						return out;
-					}
-
-					function simpleHash(str) {
-						let hash = 0;
-						for (let i = 0; i < str.length; i++) {
-							const char = str.charCodeAt(i);
-							hash = ((hash << 5) - hash) + char;
-							hash = hash & hash;
-						}
-						return Math.abs(hash).toString(36);
-					}
-
-					function cssEscape(str) {
-						if (window.CSS && typeof window.CSS.escape === "function") {
-							return window.CSS.escape(str);
-						}
-						return String(str).replace(/[^a-zA-Z0-9_-]/g, s => "\\\\" + s);
-					}
-
-					function normalizeWhitespace(s) {
-						return String(s).replace(/\s+/g, " ").trim();
-					}
-
-					// === Scan Execution ===
-
-					setTimeout(async function() {
-						try {
-							if (!window.axe) {
-								throw new Error('axe-core not loaded');
-							}
-
-							// Run accessibility scan
-							const results = await window.axe.run(document, {
-								runOnly: {
-									type: 'tag',
-									values: ['wcag2a', 'wcag2aa', 'wcag21aa']
+						setTimeout(async function() {
+							try {
+								if (!window.axe) {
+									throw new Error('axe-core not loaded');
 								}
-							});
 
-							// Extract evidence from violations
-							const evidence = extractEvidenceFromAxeResults(results);
-							results.evidence = evidence;
+								const results = await window.axe.run(document, {
+									runOnly: { type: 'tag', values: ${JSON.stringify(axeTags)} }
+								});
 
-							// Post results back to parent
-							window.parent.postMessage({
-								type: 'CLEARA11Y_SCAN_RESULT',
-								scanId: '${scanId}',
-								payload: results
-							}, '*');
+								let evidence = [];
+								if (window.extractEvidenceFromAxeResults) {
+									try {
+										evidence = window.extractEvidenceFromAxeResults(results, {
+											maxSnippetLen: ${maxSnippet},
+											maxTextLen: ${maxText},
+											ancestorDepth: ${ancestorDepth},
+											allowDataAttrs: true,
+											dataAttrWhitelist: ${JSON.stringify(whitelist)},
+										});
+									} catch (e) {
+										console.warn('[ClearA11y] Evidence extraction failed:', e);
+									}
+								}
 
-						} catch (error) {
-							window.parent.postMessage({
-								type: 'CLEARA11Y_SCAN_RESULT',
-								scanId: '${scanId}',
-								error: error.message
-							}, '*');
-						}
-					}, 150);
-				})();
-			`;
+								window.parent.postMessage({
+									type: 'CLEARA11Y_SCAN_RESULT',
+									scanId: '${scanId}',
+									payload: results
+								}, '*');
 
-			const script = doc.createElement('script');
-			script.textContent = bootstrapCode;
-			doc.documentElement.appendChild(script);
-		}
+							} catch (error) {
+								window.parent.postMessage({
+									type: 'CLEARA11Y_SCAN_RESULT',
+									scanId: '${scanId}',
+									error: error.message
+								}, '*');
+							}
+						}, 150);
+					})();
+				`;
+
+				const script = doc.createElement('script');
+				script.textContent = bootstrapCode;
+				doc.documentElement.appendChild(script);
+				}
 
 		async completeJob(job, status, resultJson = null, error = null) {
-			const config = getApiConfig();
-			if (!config) {
+				const config = getApiConfig();
+				if (!config) {
 				throw new Error('ClearA11y: API configuration not available');
-			}
+				}
 
-			const resultJsonString = resultJson ? JSON.stringify(resultJson) : null;
-			console.log('ClearA11y: Sending job complete:', {
+				const resultJsonString = resultJson ? JSON.stringify(resultJson) : null;
+				console.log('ClearA11y: Sending job complete:', {
 				jobId: job.id,
 				status: status,
 				resultJsonLength: resultJsonString?.length || 0,
 				hasResultJson: !!resultJsonString,
-			});
+				});
 
-			const response = await fetchJSON(`${config.apiUrl}jobs/complete`, {
+				const response = await fetchJSON(`${config.apiUrl}jobs/complete`, {
 				jobId: job.id,
 				leaseToken: job.leaseToken,
 				status: status,
 				...(resultJsonString !== null && { resultJson: resultJsonString }),
 				...(error !== null && { error: error }),
-			});
+				});
 
-			if (!response || !response.ok) {
+				if (!response || !response.ok) {
 				throw new Error('Failed to complete job');
-			}
+				}
 
-			console.log(`ClearA11y: Job ${job.id} completed with status: ${status}`);
+				console.log(`ClearA11y: Job ${job.id} completed with status: ${status}`);
 		}
 
 		getStatus() {
-			return {
+				return {
 				running: !this.stopped,
 				workerId: this.workerId,
 				maxConcurrency: this.maxConcurrency,
 				freeSlots: this.workerPool.freeSlots(),
 				activeJobs: this.activeJobs.size,
 				activeHeartbeats: this.activeHeartbeats.size,
-			};
+				};
 		}
 	}
 

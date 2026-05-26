@@ -258,7 +258,7 @@
 						});
 						ClearA11yScannerUtils.debug('Evidence extracted:', evidence.length || 0, 'items');
 					} catch (e) {
-						ClearA11yScannerUtils.error( Evidence extraction failed:', e);
+						ClearA11yScannerUtils.error('Evidence extraction failed:', e);
 					}
 				}
 
@@ -289,7 +289,7 @@
 				}
 
 			} catch (error) {
-				ClearA11yScannerUtils.error( Scan error:', error);
+				ClearA11yScannerUtils.error('Scan error:', error);
 				this.showError(error.message || 'An unknown error occurred during the scan.');
 			}
 		}

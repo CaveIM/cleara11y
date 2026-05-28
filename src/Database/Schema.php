@@ -86,12 +86,25 @@ class Schema {
 			`minor_issues` int(11) NOT NULL DEFAULT 0,
 			`error_message` text DEFAULT NULL,
 			`scanned_at` datetime DEFAULT NULL,
+			`rules_checked` int(11) NOT NULL DEFAULT 0,
+			`rules_passed` int(11) NOT NULL DEFAULT 0,
+			`rules_failed` int(11) NOT NULL DEFAULT 0,
+			`rules_incomplete` int(11) NOT NULL DEFAULT 0,
+			`pass_percentage` decimal(5,2) NOT NULL DEFAULT 0.00,
+			`fail_percentage` decimal(5,2) NOT NULL DEFAULT 0.00,
+			`score_grade` varchar(1) DEFAULT NULL,
+			`rules_checked_list` longtext DEFAULT NULL,
+			`rules_passed_list` longtext DEFAULT NULL,
+			`rules_failed_list` longtext DEFAULT NULL,
+			`rules_incomplete_list` longtext DEFAULT NULL,
 			`created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (`id`),
 			KEY `scan_id` (`scan_id`),
 			KEY `post_id` (`post_id`),
 			KEY `status` (`status`),
 			KEY `scan_method` (`scan_method`),
+			KEY `pass_percentage` (`pass_percentage`),
+			KEY `score_grade` (`score_grade`),
 			KEY `created_at` (`created_at`)
 		) $charset_collate;";
 
@@ -447,14 +460,7 @@ class Schema {
 		$table = self::get_table_name('scan_items');
 
 		// Check if pass_percentage column exists (if yes, scoring columns already added)
-		$column_exists = $wpdb->get_var(
-			"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-			WHERE TABLE_SCHEMA = DATABASE()
-			AND TABLE_NAME = '{$table}'
-			AND COLUMN_NAME = 'pass_percentage'"
-		);
-
-		if ($column_exists) {
+		if (self::scan_items_have_scoring_columns()) {
 			return true; // Already migrated
 		}
 
@@ -501,6 +507,26 @@ class Schema {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Check whether scan_items has the scoring columns used by Scan_Item_Repository.
+	 *
+	 * @return bool True if scoring columns exist.
+	 */
+	public static function scan_items_have_scoring_columns(): bool {
+		global $wpdb;
+
+		$table = self::get_table_name('scan_items');
+
+		$column_exists = $wpdb->get_var(
+			"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+			WHERE TABLE_SCHEMA = DATABASE()
+			AND TABLE_NAME = '{$table}'
+			AND COLUMN_NAME = 'pass_percentage'"
+		);
+
+		return !empty($column_exists);
 	}
 
 	/**

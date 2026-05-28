@@ -230,12 +230,14 @@ class ClearA11y_Plugin {
 			}
 		}
 
-		// Need to run migration if version is older than 1.6.0
-		if (version_compare($current_db_version, '1.6.0', '<')) {
+		// Need to run migration if version is older than 1.6.0 or scoring columns are missing.
+		if (version_compare($current_db_version, '1.6.0', '<') || ! \ClearA11y\Database\Schema::scan_items_have_scoring_columns()) {
 			$result = \ClearA11y\Database\Schema::add_scoring_columns();
 
 			if ($result) {
-				update_option('cleara11y_db_version', '1.6.0');
+				if (version_compare($current_db_version, '1.6.0', '<')) {
+					update_option('cleara11y_db_version', '1.6.0');
+				}
 
 				// Recalculate scoring data for existing completed scans
 				$recalc_result = \ClearA11y\Database\Schema::recalculate_scoring_data();
@@ -246,12 +248,14 @@ class ClearA11y_Plugin {
 			}
 		}
 
-			// Need to run migration if version is older than 1.7.0
-			if (version_compare($current_db_version, '1.7.0', '<')) {
+			// Need to run migration if version is older than 1.7.0 or ignore tables are missing.
+			if (version_compare($current_db_version, '1.7.0', '<') || ! \ClearA11y\Database\Ignore_Schema::tables_exist()) {
 			$result = \ClearA11y\Database\Ignore_Schema::create_tables();
 
 			if ($result) {
-				update_option('cleara11y_db_version', '1.7.0');
+				if (version_compare($current_db_version, '1.7.0', '<')) {
+					update_option('cleara11y_db_version', '1.7.0');
+				}
 				add_action('admin_notices', function() {
 					echo '<div class="notice notice-success is-dismissible"><p>ClearA11y: Ignore system tables added successfully!</p></div>';
 				});

@@ -349,6 +349,12 @@ class REST_Controller {
 						'type' => 'string',
 						'description' => 'Name for this scan batch.',
 					],
+					'scan_type' => [
+						'type' => 'string',
+						'enum' => ['individual', 'full'],
+						'default' => 'full',
+						'description' => 'Type of scan being queued.',
+					],
 				],
 			]
 		);
@@ -1219,6 +1225,7 @@ class REST_Controller {
 	public function add_to_queue(\WP_REST_Request $request): \WP_REST_Response {
 		$post_ids = $request->get_param('post_ids');
 		$scan_name = $request->get_param('scan_name') ?? null;
+		$scan_type = $request->get_param('scan_type') ?? 'full';
 
 		if (empty($post_ids) || !is_array($post_ids)) {
 			return rest_ensure_response(
@@ -1233,7 +1240,7 @@ class REST_Controller {
 
 		// Create a new scan
 		$scan = new \ClearA11y\Models\Scan();
-		$scan->scan_type = 'full';
+		$scan->scan_type = $scan_type;
 		$scan->scan_name = $scan_name ?? 'Batch Scan - ' . count($post_ids) . ' pages';
 		$scan->status = 'pending';
 		$scan->total_items = count($post_ids);
@@ -1601,6 +1608,10 @@ class REST_Controller {
 	public function get_issues_list(\WP_REST_Request $request): \WP_REST_Response {
 		global $wpdb;
 
+		if (! \ClearA11y\Database\Ignore_Schema::tables_exist()) {
+			\ClearA11y\Database\Ignore_Schema::create_tables();
+		}
+
 		$severity = $request->get_param('severity');
 		$status = $request->get_param('status') ?? 'active';
 		$search = $request->get_param('search');
@@ -1694,6 +1705,10 @@ class REST_Controller {
 	 */
 	public function get_issues_stats(\WP_REST_Request $request): \WP_REST_Response {
 		global $wpdb;
+
+		if (! \ClearA11y\Database\Ignore_Schema::tables_exist()) {
+			\ClearA11y\Database\Ignore_Schema::create_tables();
+		}
 
 		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
 		$matches_table = \ClearA11y\Database\Ignore_Schema::get_table_name('violation_ignore_matches');
@@ -2243,32 +2258,34 @@ class REST_Controller {
 			);
 		}
 
-		// Additional processing for successful jobs
-		if ($status === 'done' && $result_json) {
+		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
+		$scan_item = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT * FROM `{$scan_items_table}` WHERE post_id = %d AND scan_id = %d LIMIT 1",
+				$job->post_id,
+				$job->scan_id
+			),
+			ARRAY_A
+		);
+
+		// Additional processing for completed jobs.
+		if ($status === 'done' && $result_json && $scan_item) {
 			$results = json_decode($result_json, true);
 
 			if ($results && isset($results['violations'])) {
-				// Get scan_item for this job
-				$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
-				$scan_item = $wpdb->get_row(
-					$wpdb->prepare(
-						"SELECT * FROM `{$scan_items_table}` WHERE post_id = %d AND scan_id = %d LIMIT 1",
-						$job->post_id,
-						$job->scan_id
-					),
-					ARRAY_A
+				// Store results via Scan_Results_Processor.
+				$results_processor = new Scan_Results_Processor();
+				$results_processor->process_results(
+					$scan_item['id'],
+					$results,
+					$results['evidence'] ?? []
 				);
-
-				if ($scan_item) {
-					// Store results via Scan_Results_Processor
-					$results_processor = new Scan_Results_Processor();
-					$results_processor->process_results(
-						$scan_item['id'],
-						$results,
-						$results['evidence'] ?? []
-					);
-				}
 			}
+		} elseif ($status === 'failed' && $scan_item) {
+			Scan_Results_Processor::handle_error(
+				(int) $scan_item['id'],
+				$error ?: 'Scan job failed.'
+			);
 		}
 
 		// CRITICAL: Check if scan is complete and update status

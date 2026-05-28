@@ -554,7 +554,7 @@
 			button.textContent = 'Queued...';
 
 			// Add to queue and let background processor handle it
-			await this.addToQueue([postId], `Scan - Page ${postId}`);
+			await this.addToQueue([postId], `Scan - Page ${postId}`, 'individual');
 
 			// Button state will be updated when page list refreshes
 		},
@@ -649,7 +649,7 @@
 		/**
 		 * Add posts to scan queue
 		 */
-		async addToQueue(postIds, scanName = null) {
+		async addToQueue(postIds, scanName = null, scanType = 'full') {
 			try {
 				const response = await fetch(API_URL + 'queue/add', {
 					method: 'POST',
@@ -659,7 +659,8 @@
 					},
 					body: JSON.stringify({
 						post_ids: postIds,
-						scan_name: scanName
+						scan_name: scanName,
+						scan_type: scanType
 					})
 				});
 

@@ -1612,6 +1612,14 @@ class REST_Controller {
 		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
 		$matches_table = \ClearA11y\Database\Ignore_Schema::get_table_name('violation_ignore_matches');
 		$rules_table = \ClearA11y\Database\Ignore_Schema::get_table_name('ignore_rules');
+		$active_ignore_join = "
+			LEFT JOIN (
+				SELECT DISTINCT vm.violation_id
+				FROM `{$matches_table}` vm
+				INNER JOIN `{$rules_table}` ir ON vm.ignore_rule_id = ir.id
+				WHERE ir.status = 'active'
+					AND (ir.expires_at IS NULL OR ir.expires_at > NOW())
+			) active_ignores ON i.id = active_ignores.violation_id";
 
 		// Build WHERE clause
 		$where = ['1=1'];
@@ -1625,10 +1633,10 @@ class REST_Controller {
 		// Filter by status (active/ignored/all)
 		if ($status === 'active') {
 			// Show only issues without active ignore matches
-			$where[] = 'vm.id IS NULL';
+			$where[] = 'active_ignores.violation_id IS NULL';
 		} elseif ($status === 'ignored') {
 			// Show only issues with active ignore matches
-			$where[] = 'vm.id IS NOT NULL';
+			$where[] = 'active_ignores.violation_id IS NOT NULL';
 		}
 		// 'all' doesn't filter
 
@@ -1646,19 +1654,19 @@ class REST_Controller {
 		// Get total count
 		$count_query = "SELECT COUNT(DISTINCT i.id) FROM `{$issues_table}` i
 					   INNER JOIN `{$scan_items_table}` si ON i.scan_item_id = si.id
-					   LEFT JOIN `{$matches_table}` vm ON i.id = vm.violation_id
-					   LEFT JOIN `{$rules_table}` ir ON vm.ignore_rule_id = ir.id AND ir.status = 'active'
+					   {$active_ignore_join}
 					   WHERE {$where_clause}";
 		// @phpstan-ignore-next-line
-		$total = (int) $wpdb->get_var($wpdb->prepare($count_query, ...$where_params));
+		$total = !empty($where_params)
+			? (int) $wpdb->get_var($wpdb->prepare($count_query, ...$where_params))
+			: (int) $wpdb->get_var($count_query);
 
 		// Get issues
 		$query = "SELECT i.*, si.post_title, si.post_url,
-					CASE WHEN vm.id IS NOT NULL THEN 1 ELSE 0 END as is_ignored
+					CASE WHEN active_ignores.violation_id IS NOT NULL THEN 1 ELSE 0 END as is_ignored
 				 FROM `{$issues_table}` i
 				 INNER JOIN `{$scan_items_table}` si ON i.scan_item_id = si.id
-				 LEFT JOIN `{$matches_table}` vm ON i.id = vm.violation_id
-				 LEFT JOIN `{$rules_table}` ir ON vm.ignore_rule_id = ir.id AND ir.status = 'active'
+				 {$active_ignore_join}
 				 WHERE {$where_clause}
 				 ORDER BY is_ignored ASC, FIELD(i.severity, 'critical', 'moderate', 'minor'), i.id DESC
 				 LIMIT %d OFFSET %d";
@@ -1690,19 +1698,26 @@ class REST_Controller {
 		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
 		$matches_table = \ClearA11y\Database\Ignore_Schema::get_table_name('violation_ignore_matches');
 		$rules_table = \ClearA11y\Database\Ignore_Schema::get_table_name('ignore_rules');
+		$active_ignore_join = "
+			LEFT JOIN (
+				SELECT DISTINCT vm.violation_id
+				FROM `{$matches_table}` vm
+				INNER JOIN `{$rules_table}` ir ON vm.ignore_rule_id = ir.id
+				WHERE ir.status = 'active'
+					AND (ir.expires_at IS NULL OR ir.expires_at > NOW())
+			) active_ignores ON i.id = active_ignores.violation_id";
 
 		// Get counts by severity, excluding ignored issues
 		$counts = $wpdb->get_results(
 			"SELECT
-				SUM(CASE WHEN i.severity = 'critical' AND vm.id IS NULL THEN 1 ELSE 0 END) as critical,
-				SUM(CASE WHEN i.severity = 'moderate' AND vm.id IS NULL THEN 1 ELSE 0 END) as moderate,
-				SUM(CASE WHEN i.severity = 'minor' AND vm.id IS NULL THEN 1 ELSE 0 END) as minor,
-				SUM(CASE WHEN vm.id IS NULL THEN 1 ELSE 0 END) as active,
-				SUM(CASE WHEN vm.id IS NOT NULL THEN 1 ELSE 0 END) as ignored,
+				SUM(CASE WHEN i.severity = 'critical' AND active_ignores.violation_id IS NULL THEN 1 ELSE 0 END) as critical,
+				SUM(CASE WHEN i.severity = 'moderate' AND active_ignores.violation_id IS NULL THEN 1 ELSE 0 END) as moderate,
+				SUM(CASE WHEN i.severity = 'minor' AND active_ignores.violation_id IS NULL THEN 1 ELSE 0 END) as minor,
+				SUM(CASE WHEN active_ignores.violation_id IS NULL THEN 1 ELSE 0 END) as active,
+				SUM(CASE WHEN active_ignores.violation_id IS NOT NULL THEN 1 ELSE 0 END) as ignored,
 				COUNT(*) as total
 			FROM `{$issues_table}` i
-			LEFT JOIN `{$matches_table}` vm ON i.id = vm.violation_id
-			LEFT JOIN `{$rules_table}` ir ON vm.ignore_rule_id = ir.id AND ir.status = 'active'",
+			{$active_ignore_join}",
 			ARRAY_A
 		);
 

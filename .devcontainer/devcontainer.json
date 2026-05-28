@@ -1,0 +1,38 @@
+{
+	"name": "ClearA11y WordPress",
+	"dockerComposeFile": "docker-compose.yml",
+	"service": "wordpress",
+	"workspaceFolder": "/workspaces/cleara11y",
+	"mounts": [
+		"source=cleara11y-bashhistory-${devcontainerId},target=/commandhistory,type=volume",
+		"source=cleara11y-npm-cache-${devcontainerId},target=/root/.npm,type=volume",
+		"source=cleara11y-opencode-data,target=/root/.local/share/opencode,type=volume",
+		"source=cleara11y-opencode-state,target=/root/.local/state/opencode,type=volume",
+		"source=cleara11y-opencode-config,target=/root/.config/opencode,type=volume"
+	],
+	"containerEnv": {
+		"HISTFILE": "/commandhistory/.bash_history"
+	},
+	"forwardPorts": [80, 8081],
+	"portsAttributes": {
+		"80": {
+			"label": "WordPress",
+			"onAutoForward": "notify"
+		},
+		"8081": {
+			"label": "phpMyAdmin",
+			"onAutoForward": "silent"
+		}
+	},
+	"postStartCommand": "sh .devcontainer/setup-wordpress.sh",
+	"waitFor": "postStartCommand",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"bmewburn.vscode-intelephense-client",
+				"xdebug.php-debug",
+				"wordpresstoolbox.wordpress-toolbox"
+			]
+		}
+	}
+}

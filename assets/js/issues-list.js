@@ -17,6 +17,7 @@
 	let totalPages = 1;
 	let currentFilters = {
 		severity: '',
+		status: 'active',
 		search: ''
 	};
 
@@ -44,6 +45,12 @@
 				this.loadIssues();
 			});
 
+			document.getElementById('cleara11y-filter-status').addEventListener('change', (e) => {
+				currentFilters.status = e.target.value;
+				currentPage = 1;
+				this.loadIssues();
+			});
+
 			// Search input (debounced)
 			let searchTimeout;
 			document.getElementById('cleara11y-search-issues').addEventListener('input', (e) => {
@@ -58,9 +65,11 @@
 			// Reset filters
 			document.getElementById('cleara11y-reset-filters').addEventListener('click', () => {
 				document.getElementById('cleara11y-filter-severity').value = '';
+				document.getElementById('cleara11y-filter-status').value = 'active';
 				document.getElementById('cleara11y-search-issues').value = '';
 				currentFilters = {
 					severity: '',
+					status: 'active',
 					search: ''
 				};
 				currentPage = 1;
@@ -163,6 +172,10 @@
 
 				if (currentFilters.severity) {
 					params.append('severity', currentFilters.severity);
+				}
+
+				if (currentFilters.status) {
+					params.append('status', currentFilters.status);
 				}
 
 				if (currentFilters.search) {

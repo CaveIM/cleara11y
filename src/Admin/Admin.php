@@ -746,21 +746,7 @@ class Admin {
 			wp_localize_script('cleara11y-ignores-page', 'cleara11yIgnores', [
 				'apiUrl' => $rest_url . 'cleara11y/v1/ignores',
 				'nonce' => wp_create_nonce('wp_rest'),
-				'strings' => [
-					'createWizardTitle' => __('Create Ignore Rule', 'cleara11y'),
-					'cancel' => __('Cancel', 'cleara11y'),
-					'next' => __('Next', 'cleara11y'),
-					'createRule' => __('Create Ignore Rule', 'cleara11y'),
-					'target' => __('Target', 'cleara11y'),
-					'scope' => __('Scope', 'cleara11y'),
-					'duration' => __('Duration', 'cleara11y'),
-					'reason' => __('Reason', 'cleara11y'),
-					'step5Title' => __('Review & Confirm', 'cleara11y'),
-					'createSuccess' => __('Ignore rule created successfully.', 'cleara11y'),
-					'confirmDelete' => __('Are you sure you want to delete this ignore rule? This action cannot be undone.', 'cleara11y'),
-					'confirmDisable' => __('Are you sure you want to disable this ignore rule?', 'cleara11y'),
-					'error' => __('An error occurred. Please try again.', 'cleara11y'),
-				],
+				'strings' => Ignores_Page::get_script_strings(),
 			]);
 
 			// Enqueue issues list JavaScript
@@ -845,13 +831,7 @@ class Admin {
 			wp_localize_script('cleara11y-ignores-page', 'cleara11yIgnores', [
 				'apiUrl' => $rest_url . 'cleara11y/v1/ignores',
 				'nonce' => wp_create_nonce('wp_rest'),
-				'strings' => [
-					'confirmDelete' => __('Are you sure you want to delete this ignore rule? This action cannot be undone.', 'cleara11y'),
-					'confirmDisable' => __('Are you sure you want to disable this ignore rule?', 'cleara11y'),
-					'undoSuccess' => __('Ignore rule removed.', 'cleara11y'),
-					'deleteSuccess' => __('Ignore rule deleted.', 'cleara11y'),
-					'error' => __('An error occurred. Please try again.', 'cleara11y'),
-				],
+				'strings' => Ignores_Page::get_script_strings(),
 			]);
 		} else {
 			// Enqueue scanner orchestrator first (loaded but not executed directly)

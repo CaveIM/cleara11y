@@ -1,0 +1,21 @@
+{
+  "workflows": {
+    "plugin": {
+      "project": {
+        "nice_id": "CPD"
+      },
+      "states": {
+        "ideas": "Ideas",
+        "shaped": "Shaped",
+        "planned": "Planned",
+        "not_now": "Not Now",
+        "todo": "To Do",
+        "in_progress": "In Progress",
+        "review": "Review",
+        "dogfood": "Dogfood",
+        "ready_to_release": "Ready to Release",
+        "released": "Released"
+      }
+    }
+  }
+}

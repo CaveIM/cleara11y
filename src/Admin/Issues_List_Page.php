@@ -67,8 +67,8 @@ class Issues_List_Page {
 						<?php esc_html_e('Status:', 'cleara11y'); ?>
 					</label>
 					<select id="cleara11y-filter-status" class="regular-text">
-						<option value="active"><?php esc_html_e('Active', 'cleara11y'); ?></option>
-						<option value="ignored"><?php esc_html_e('Ignored', 'cleara11y'); ?></option>
+						<option value="active"><?php esc_html_e('Active Detected Issues', 'cleara11y'); ?></option>
+						<option value="ignored"><?php esc_html_e('Exceptions', 'cleara11y'); ?></option>
 						<option value="all"><?php esc_html_e('All', 'cleara11y'); ?></option>
 					</select>
 
@@ -86,7 +86,7 @@ class Issues_List_Page {
 			<div class="cleara11y-issues-stats" style="margin: 20px 0; padding: 15px; background: #fff; border: 1px solid #c3c4c7; box-shadow: 0 1px 1px rgba(0,0,0,.04);">
 				<div style="display: flex; gap: 30px;">
 					<div>
-						<span class="cleara11y-stat-label" style="color: #646970;"><?php esc_html_e('Total Issues:', 'cleara11y'); ?></span>
+						<span class="cleara11y-stat-label" style="color: #646970;"><?php esc_html_e('Active Issues:', 'cleara11y'); ?></span>
 						<span class="cleara11y-stat-value" id="cleara11y-total-issues" style="font-weight: 600; margin-left: 5px;">-</span>
 					</div>
 					<div>
@@ -102,7 +102,7 @@ class Issues_List_Page {
 						<span class="cleara11y-stat-value" id="cleara11y-minor-issues" style="font-weight: 600; margin-left: 5px;">-</span>
 					</div>
 					<div>
-						<span class="cleara11y-stat-label" style="color: #646970;"><?php esc_html_e('Ignored:', 'cleara11y'); ?></span>
+						<span class="cleara11y-stat-label" style="color: #646970;"><?php esc_html_e('Exceptions:', 'cleara11y'); ?></span>
 						<span class="cleara11y-stat-value" id="cleara11y-ignored-issues" style="font-weight: 600; margin-left: 5px; color: #646970;">-</span>
 					</div>
 				</div>

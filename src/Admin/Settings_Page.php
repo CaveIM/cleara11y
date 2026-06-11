@@ -187,7 +187,7 @@ class Settings_Page {
 								<ul>
 									<li><?php esc_html_e('All scan history and records', 'cleara11y'); ?></li>
 									<li><?php esc_html_e('All accessibility issues found', 'cleara11y'); ?></li>
-									<li><?php esc_html_e('All ignore rules and audit history', 'cleara11y'); ?></li>
+									<li><?php esc_html_e('All exceptions and audit history', 'cleara11y'); ?></li>
 									<li><?php esc_html_e('All scheduled scan configurations', 'cleara11y'); ?></li>
 								</ul>
 							</div>

@@ -48,9 +48,9 @@ class Ignores_Page {
 	public static function render(): void {
 		?>
 		<div class="wrap cleara11y-ignores-wrap">
-			<h1 class="wp-heading-inline"><?php esc_html_e('Accessibility Ignore Rules', 'cleara11y'); ?></h1>
+			<h1 class="wp-heading-inline"><?php esc_html_e('Exceptions', 'cleara11y'); ?></h1>
 			<a href="#" class="page-title-action" id="cleara11y-create-ignore">
-				<?php esc_html_e('Create New Ignore Rule', 'cleara11y'); ?>
+				<?php esc_html_e('Create Exception', 'cleara11y'); ?>
 			</a>
 			<hr class="wp-header-end">
 
@@ -81,7 +81,7 @@ class Ignores_Page {
 						<div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
 							<label>
 								<input type="checkbox" id="cleara11y-hide-system-ignores">
-								<?php esc_html_e('Hide system-generated quick ignores', 'cleara11y'); ?>
+								<?php esc_html_e('Hide temporary exceptions', 'cleara11y'); ?>
 							</label>
 							<button type="button" class="button" id="cleara11y-refresh-ignores">
 								<span class="dashicons dashicons-update" style="margin-top: 3px;"></span>
@@ -94,7 +94,7 @@ class Ignores_Page {
 						<thead>
 							<tr>
 								<th scope="col" style="width: 30%;">
-									<?php esc_html_e('Ignore Rule', 'cleara11y'); ?>
+									<?php esc_html_e('Exception Rule', 'cleara11y'); ?>
 								</th>
 								<th scope="col" style="width: 15%;">
 									<?php esc_html_e('Target', 'cleara11y'); ?>
@@ -120,7 +120,7 @@ class Ignores_Page {
 							<tr>
 								<td colspan="7" style="text-align: center; padding: 40px;">
 									<span class="spinner is-active" style="float: none; margin: 0;"></span>
-									<?php esc_html_e('Loading ignore rules...', 'cleara11y'); ?>
+									<?php esc_html_e('Loading exceptions...', 'cleara11y'); ?>
 								</td>
 							</tr>
 						</tbody>
@@ -163,7 +163,7 @@ class Ignores_Page {
 									<?php esc_html_e('Event', 'cleara11y'); ?>
 								</th>
 								<th scope="col" style="width: 25%;">
-									<?php esc_html_e('Ignore Rule', 'cleara11y'); ?>
+									<?php esc_html_e('Exception Rule', 'cleara11y'); ?>
 								</th>
 								<th scope="col" style="width: 15%;">
 									<?php esc_html_e('Actor', 'cleara11y'); ?>
@@ -203,12 +203,12 @@ class Ignores_Page {
 			</template>
 		</div>
 
-		<!-- Ignore Rule Detail Modal -->
+		<!-- Exception Rule Detail Modal -->
 		<div id="cleara11y-ignore-detail-modal" style="display: none;">
 			<div class="cleara11y-modal-backdrop"></div>
 			<div class="cleara11y-modal-content" style="max-width: 600px;">
 				<div class="cleara11y-modal-header">
-					<h2><?php esc_html_e('Ignore Rule Details', 'cleara11y'); ?></h2>
+					<h2><?php esc_html_e('Exception Rule Details', 'cleara11y'); ?></h2>
 					<button type="button" class="cleara11y-modal-close">
 						<span class="dashicons dashicons-no-alt"></span>
 					</button>
@@ -239,28 +239,28 @@ class Ignores_Page {
 	 */
 	public static function get_script_strings(): array {
 		return [
-			'confirmDelete' => __('Are you sure you want to delete this ignore rule? This action cannot be undone.', 'cleara11y'),
-			'confirmDisable' => __('Are you sure you want to disable this ignore rule?', 'cleara11y'),
-			'undoSuccess' => __('Ignore rule removed.', 'cleara11y'),
-			'deleteSuccess' => __('Ignore rule deleted.', 'cleara11y'),
+			'confirmDelete' => __('Are you sure you want to delete this exception? This action cannot be undone.', 'cleara11y'),
+			'confirmDisable' => __('Are you sure you want to disable this exception?', 'cleara11y'),
+			'undoSuccess' => __('Exception removed.', 'cleara11y'),
+			'deleteSuccess' => __('Exception deleted.', 'cleara11y'),
 			'error' => __('An error occurred. Please try again.', 'cleara11y'),
-			'createWizardTitle' => __('Create Ignore Rule', 'cleara11y'),
+			'createWizardTitle' => __('Create Exception', 'cleara11y'),
 			'cancel' => __('Cancel', 'cleara11y'),
 			'next' => __('Next', 'cleara11y'),
-			'createRule' => __('Create Rule', 'cleara11y'),
+			'createRule' => __('Create Exception', 'cleara11y'),
 			'creating' => __('Creating...', 'cleara11y'),
-			'createSuccess' => __('Ignore rule created successfully!', 'cleara11y'),
-			'createFailed' => __('Failed to create ignore rule.', 'cleara11y'),
-			'step1Title' => __('What are you ignoring?', 'cleara11y'),
-			'step1Desc' => __('Choose what you want to ignore: a specific rule, a specific element, or both.', 'cleara11y'),
+			'createSuccess' => __('Exception created successfully!', 'cleara11y'),
+			'createFailed' => __('Failed to create exception.', 'cleara11y'),
+			'step1Title' => __('What should become an exception?', 'cleara11y'),
+			'step1Desc' => __('Choose the detected issue pattern this review decision should apply to: a specific rule, a specific element, or both.', 'cleara11y'),
 			'ruleOnly' => __('Rule Only', 'cleara11y'),
-			'ruleOnlyDesc' => __('Ignore all violations of a specific accessibility rule (e.g. color-contrast).', 'cleara11y'),
+			'ruleOnlyDesc' => __('Mark all detected issues for a specific accessibility rule as exceptions (e.g. color-contrast).', 'cleara11y'),
 			'elementOnly' => __('Element Only', 'cleara11y'),
-			'elementOnlyDesc' => __('Ignore a specific element regardless of which rules it violates.', 'cleara11y'),
+			'elementOnlyDesc' => __('Mark detected issues on a specific element as exceptions, regardless of rule.', 'cleara11y'),
 			'ruleOnElement' => __('Rule on Element', 'cleara11y'),
-			'ruleOnElementDesc' => __('Ignore a specific accessibility rule on a specific element (most precise).', 'cleara11y'),
+			'ruleOnElementDesc' => __('Mark a specific accessibility rule on a specific element as an exception (most precise).', 'cleara11y'),
 			'step2Title' => __('Where should this apply?', 'cleara11y'),
-			'step2Desc' => __('Choose the scope for this ignore rule.', 'cleara11y'),
+			'step2Desc' => __('Choose the scope for this exception.', 'cleara11y'),
 			'singlePage' => __('Single Page', 'cleara11y'),
 			'singlePageDesc' => __('Apply to a specific page only.', 'cleara11y'),
 			'entireSite' => __('Entire Site', 'cleara11y'),
@@ -270,31 +270,31 @@ class Ignores_Page {
 			'urlPattern' => __('URL Pattern', 'cleara11y'),
 			'urlPatternDesc' => __('Apply to pages matching a URL pattern (use * as wildcard).', 'cleara11y'),
 			'step3Title' => __('How long should this apply?', 'cleara11y'),
-			'step3Desc' => __('Choose the duration for this ignore rule.', 'cleara11y'),
+			'step3Desc' => __('Choose the duration for this exception.', 'cleara11y'),
 			'untilNextScan' => __('Until Next Scan', 'cleara11y'),
-			'untilNextScanDesc' => __('Ignore until the next accessibility scan runs (recommended for testing).', 'cleara11y'),
+			'untilNextScanDesc' => __('Exclude from active issue counts until the next accessibility scan runs (recommended for testing).', 'cleara11y'),
 			'permanent' => __('Permanent', 'cleara11y'),
 			'permanentDesc' => __('Never expire. Use with caution and document why.', 'cleara11y'),
 			'untilDate' => __('Until Specific Date', 'cleara11y'),
-			'untilDateDesc' => __('Ignore until a specific date.', 'cleara11y'),
+			'untilDateDesc' => __('Exclude from active issue counts until a specific date.', 'cleara11y'),
 			'untilContentChanges' => __('Until Content Changes', 'cleara11y'),
-			'untilContentChangesDesc' => __('Ignore until the element is significantly modified.', 'cleara11y'),
-			'step4Title' => __('Why are you ignoring this?', 'cleara11y'),
-			'step4Desc' => __('Help your team understand why this issue is being ignored.', 'cleara11y'),
+			'untilContentChangesDesc' => __('Exclude from active issue counts until the element is significantly modified.', 'cleara11y'),
+			'step4Title' => __('Why is this an exception?', 'cleara11y'),
+			'step4Desc' => __('Help your team understand why this detected issue does not currently require remediation.', 'cleara11y'),
 			'step5Title' => __('Review and Confirm', 'cleara11y'),
-			'step5Desc' => __('Review your ignore rule before creating it.', 'cleara11y'),
+			'step5Desc' => __('Review your exception rule before creating it.', 'cleara11y'),
 			'target' => __('Target', 'cleara11y'),
 			'scope' => __('Scope', 'cleara11y'),
 			'duration' => __('Duration', 'cleara11y'),
 			'reason' => __('Reason', 'cleara11y'),
 			'impactPreview' => __('Impact Preview', 'cleara11y'),
-			'impactPreviewDesc' => __('This shows how many existing issues will be affected by this rule.', 'cleara11y'),
+			'impactPreviewDesc' => __('This shows how many existing issues will be affected by this exception.', 'cleara11y'),
 			'calculatingImpact' => __('Calculating impact...', 'cleara11y'),
-			'issuesIgnored' => __('issue(s) will be ignored', 'cleara11y'),
+			'issuesIgnored' => __('issue(s) will be marked as exceptions', 'cleara11y'),
 			'pagesAffected' => __('page(s) affected', 'cleara11y'),
-			'noIssuesMatch' => __('No existing issues match this rule.', 'cleara11y'),
+			'noIssuesMatch' => __('No existing issues match this exception.', 'cleara11y'),
 			'impactWarning' => __('Warning:', 'cleara11y'),
-			'impactWarningDesc' => __('This rule will ignore many issues. Please double-check your configuration.', 'cleara11y'),
+			'impactWarningDesc' => __('This rule will mark many detected issues as exceptions. Please double-check your configuration.', 'cleara11y'),
 			'failedToCalculate' => __('Failed to calculate impact. You can still create the rule.', 'cleara11y'),
 		];
 	}

@@ -162,13 +162,13 @@ class Ignore_Rule {
 	 */
 	public const REASON_CATEGORIES = [
 		'false_positive',
+		'not_applicable',
+		'acceptable_in_context',
 		'accepted_risk',
 		'third_party_code',
-		'design_decision',
-		'temporary_workaround',
-		'not_applicable',
-		'duplicate_issue',
-		'will_fix_later',
+		'tracked_elsewhere',
+		'planned_fix',
+		'design_limitation',
 		'other',
 	];
 

@@ -453,6 +453,26 @@ class Admin {
 			[Dashboard_Page::class, 'render']
 		);
 
+		// Add Scans submenu page
+		add_submenu_page(
+			'cleara11y',
+			__('Scans', 'cleara11y'),
+			__('Scans', 'cleara11y'),
+			'manage_options',
+			'cleara11y-scans',
+			[Scans_Page::class, 'render']
+		);
+
+		// Hidden scan detail page, accessible from Scans and dashboard links.
+		add_submenu_page(
+			null,
+			__('Scan Details', 'cleara11y'),
+			__('Scan Details', 'cleara11y'),
+			'manage_options',
+			'cleara11y-scan-detail',
+			[Scan_Detail_Page::class, 'render']
+		);
+
 		// Add Issues List submenu page
 		add_submenu_page(
 			'cleara11y',
@@ -463,11 +483,11 @@ class Admin {
 			[Issues_List_Page::class, 'render']
 		);
 
-		// Add Ignores submenu page
+		// Add Exceptions submenu page
 		add_submenu_page(
 			'cleara11y',
-			'Ignores',
-			'Ignores',
+			__('Exceptions', 'cleara11y'),
+			__('Exceptions', 'cleara11y'),
 			'manage_options',
 			'cleara11y-ignores',
 			[Ignores_Page::class, 'render']
@@ -788,8 +808,8 @@ class Admin {
 					'loading' => __('Loading...', 'cleara11y'),
 					'noIssues' => __('No issues found.', 'cleara11y'),
 					'error' => __('Error loading issue types.', 'cleara11y'),
-					'confirmGlobalIgnore' => __('Are you sure you want to globally ignore this issue type?', 'cleara11y'),
-					'confirmGlobalUnignore' => __('Are you sure you want to un-ignore this issue type globally?', 'cleara11y'),
+					'confirmGlobalIgnore' => __('Are you sure you want to mark this issue type as a global exception?', 'cleara11y'),
+					'confirmGlobalUnignore' => __('Are you sure you want to remove the global exception for this issue type?', 'cleara11y'),
 				],
 			]);
 		} elseif ($is_issue_reference_page) {

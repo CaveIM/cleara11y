@@ -160,6 +160,8 @@ class Scan_Item_Repository {
 			'status' => null,
 			'orderby' => 'created_at',
 			'order' => 'ASC',
+			'limit' => null,
+			'offset' => 0,
 		];
 
 		$args = wp_parse_args($args, $defaults);
@@ -173,12 +175,28 @@ class Scan_Item_Repository {
 		}
 
 		$where_clause = implode(' AND ', $where);
-		$orderby = sanitize_sql_orderby("{$args['orderby']} {$args['order']}");
+		$allowed_orderby = [
+			'id' => 'id',
+			'post_title' => 'post_title',
+			'status' => 'status',
+			'total_issues' => 'total_issues',
+			'created_at' => 'created_at',
+			'scanned_at' => 'scanned_at',
+		];
+		$orderby_field = $allowed_orderby[$args['orderby']] ?? 'created_at';
+		$order = strtoupper((string) $args['order']) === 'DESC' ? 'DESC' : 'ASC';
+		$orderby = sanitize_sql_orderby("{$orderby_field} {$order}");
 
 		$table = self::get_table();
+		$limit_clause = '';
+		if (null !== $args['limit']) {
+			$limit = max(1, absint($args['limit']));
+			$offset = max(0, absint($args['offset']));
+			$limit_clause = $wpdb->prepare(' LIMIT %d OFFSET %d', $limit, $offset);
+		}
 		// @phpstan-ignore-next-line
 		$query = $wpdb->prepare(
-			"SELECT * FROM `{$table}` WHERE {$where_clause} ORDER BY {$orderby}",
+			"SELECT * FROM `{$table}` WHERE {$where_clause} ORDER BY {$orderby}{$limit_clause}",
 			...$where_params
 		);
 

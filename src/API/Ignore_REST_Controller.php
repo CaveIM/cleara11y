@@ -150,7 +150,7 @@ class Ignore_REST_Controller {
 					'violation_id' => [
 						'required' => true,
 						'type' => 'integer',
-						'description' => 'Violation ID to ignore.',
+						'description' => 'Issue ID to mark as an exception.',
 					],
 				],
 			]
@@ -297,7 +297,7 @@ class Ignore_REST_Controller {
 		$rule = Ignore_Rule_Repository::get_by_id($rule_id);
 
 		if (!$rule) {
-			return new \WP_Error('rule_not_found', 'Ignore rule not found.', ['status' => 404]);
+			return new \WP_Error('rule_not_found', 'Reviewed exception not found.', ['status' => 404]);
 		}
 
 		$rule_array = $rule->to_array();
@@ -355,7 +355,7 @@ class Ignore_REST_Controller {
 		$insert_id = Ignore_Rule_Repository::insert($rule);
 
 		if (!$insert_id) {
-			return new \WP_Error('insert_failed', 'Failed to create ignore rule.', ['status' => 500]);
+			return new \WP_Error('insert_failed', 'Failed to create exception.', ['status' => 500]);
 		}
 
 		// Apply to existing violations
@@ -363,7 +363,7 @@ class Ignore_REST_Controller {
 
 		return rest_ensure_response([
 			'id' => $rule_id,
-			'message' => 'Ignore rule created successfully.',
+			'message' => 'Reviewed exception created successfully.',
 			'warning' => $warning,
 			'rule' => $rule->to_array(),
 		]);
@@ -383,7 +383,7 @@ class Ignore_REST_Controller {
 		$violation = Issue_Repository::get_by_id($violation_id);
 
 		if (!$violation) {
-			return new \WP_Error('violation_not_found', 'Violation not found.', ['status' => 404]);
+			return new \WP_Error('violation_not_found', 'Issue not found.', ['status' => 404]);
 		}
 
 		// Get scan item for URL
@@ -418,7 +418,7 @@ class Ignore_REST_Controller {
 			Ignore_Rule_Repository::update($existing);
 
 			return rest_ensure_response([
-				'message' => 'Quick ignore refreshed.',
+				'message' => 'Temporary exception refreshed.',
 				'rule' => $existing->to_array(),
 			]);
 		}
@@ -456,7 +456,7 @@ class Ignore_REST_Controller {
 		$insert_id = Ignore_Rule_Repository::insert($rule);
 
 		if (!$insert_id) {
-			return new \WP_Error('insert_failed', 'Failed to create quick ignore.', ['status' => 500]);
+			return new \WP_Error('insert_failed', 'Failed to create temporary exception.', ['status' => 500]);
 		}
 
 		// Create violation match
@@ -464,7 +464,7 @@ class Ignore_REST_Controller {
 
 		return rest_ensure_response([
 			'id' => $rule_id,
-			'message' => 'Issue ignored until next scan.',
+			'message' => 'Issue marked as a temporary exception until next scan.',
 			'rule' => $rule->to_array(),
 		]);
 	}
@@ -481,12 +481,12 @@ class Ignore_REST_Controller {
 		$rule = Ignore_Rule_Repository::get_by_id($rule_id);
 
 		if (!$rule) {
-			return new \WP_Error('rule_not_found', 'Ignore rule not found.', ['status' => 404]);
+			return new \WP_Error('rule_not_found', 'Reviewed exception not found.', ['status' => 404]);
 		}
 
 		// Only allow undoing system-generated rules
 		if (!$rule->system_generated) {
-			return new \WP_Error('not_quick_ignore', 'This is not a quick ignore rule.', ['status' => 400]);
+			return new \WP_Error('not_quick_ignore', 'This is not a temporary exception.', ['status' => 400]);
 		}
 
 		// Delete the rule
@@ -494,11 +494,11 @@ class Ignore_REST_Controller {
 
 		if ($result) {
 			return rest_ensure_response([
-				'message' => 'Quick ignore removed.',
+				'message' => 'Temporary exception removed.',
 			]);
 		}
 
-		return new \WP_Error('delete_failed', 'Failed to remove quick ignore.', ['status' => 500]);
+		return new \WP_Error('delete_failed', 'Failed to remove temporary exception.', ['status' => 500]);
 	}
 
 	/**
@@ -514,7 +514,7 @@ class Ignore_REST_Controller {
 		$rule = Ignore_Rule_Repository::get_by_id($rule_id);
 
 		if (!$rule) {
-			return new \WP_Error('rule_not_found', 'Ignore rule not found.', ['status' => 404]);
+			return new \WP_Error('rule_not_found', 'Reviewed exception not found.', ['status' => 404]);
 		}
 
 		// Update fields
@@ -542,12 +542,12 @@ class Ignore_REST_Controller {
 
 		if ($result) {
 			return rest_ensure_response([
-				'message' => 'Ignore rule updated successfully.',
+				'message' => 'Reviewed exception updated successfully.',
 				'rule' => $rule->to_array(),
 			]);
 		}
 
-		return new \WP_Error('update_failed', 'Failed to update ignore rule.', ['status' => 500]);
+		return new \WP_Error('update_failed', 'Failed to update exception.', ['status' => 500]);
 	}
 
 	/**
@@ -562,18 +562,18 @@ class Ignore_REST_Controller {
 		$rule = Ignore_Rule_Repository::get_by_id($rule_id);
 
 		if (!$rule) {
-			return new \WP_Error('rule_not_found', 'Ignore rule not found.', ['status' => 404]);
+			return new \WP_Error('rule_not_found', 'Reviewed exception not found.', ['status' => 404]);
 		}
 
 		$result = Ignore_Rule_Repository::delete($rule_id);
 
 		if ($result) {
 			return rest_ensure_response([
-				'message' => 'Ignore rule deleted successfully.',
+				'message' => 'Reviewed exception deleted successfully.',
 			]);
 		}
 
-		return new \WP_Error('delete_failed', 'Failed to delete ignore rule.', ['status' => 500]);
+		return new \WP_Error('delete_failed', 'Failed to delete exception.', ['status' => 500]);
 	}
 
 	/**
@@ -589,15 +589,15 @@ class Ignore_REST_Controller {
 		$rule = Ignore_Rule_Repository::get_by_id($rule_id);
 
 		if (!$rule) {
-			return new \WP_Error('rule_not_found', 'Ignore rule not found.', ['status' => 404]);
+			return new \WP_Error('rule_not_found', 'Reviewed exception not found.', ['status' => 404]);
 		}
 
 		if ($action === 'enable') {
 			$result = Ignore_Rule_Repository::enable($rule_id);
-			$message = 'Ignore rule enabled.';
+			$message = 'Reviewed exception enabled.';
 		} else {
 			$result = Ignore_Rule_Repository::disable($rule_id);
-			$message = 'Ignore rule disabled.';
+			$message = 'Reviewed exception disabled.';
 		}
 
 		if ($result) {
@@ -606,7 +606,7 @@ class Ignore_REST_Controller {
 			]);
 		}
 
-		return new \WP_Error('toggle_failed', 'Failed to toggle ignore rule.', ['status' => 500]);
+		return new \WP_Error('toggle_failed', 'Failed to toggle exception.', ['status' => 500]);
 	}
 
 	/**
@@ -729,7 +729,7 @@ class Ignore_REST_Controller {
 		$violation = Issue_Repository::get_by_id($violation_id);
 
 		if (!$violation) {
-			return new \WP_Error('violation_not_found', 'Violation not found.', ['status' => 404]);
+			return new \WP_Error('violation_not_found', 'Issue not found.', ['status' => 404]);
 		}
 
 		$matches = Ignore_Matcher_Service::find_matches($violation, $site_id);
@@ -774,12 +774,12 @@ class Ignore_REST_Controller {
 
 		// Check for site-wide ignores
 		if (isset($params['scope']['scope_type']) && $params['scope']['scope_type'] === 'site') {
-			$warnings[] = 'This ignore will apply across the entire site. Make sure this is intentional.';
+			$warnings[] = 'This exception will apply across the entire site. Make sure this is intentional.';
 		}
 
 		// Check for permanent ignores
 		if (isset($params['duration']['duration_type']) && $params['duration']['duration_type'] === 'permanent') {
-			$warnings[] = 'This is a permanent ignore. Consider using a temporary ignore if the issue might be fixed later.';
+			$warnings[] = 'This is a permanent exception. Consider using a temporary exception if the issue might be fixed later.';
 		}
 
 		// Check for critical issues
@@ -796,7 +796,7 @@ class Ignore_REST_Controller {
 			);
 
 			if ($has_critical) {
-				$warnings[] = 'This rule may hide critical accessibility issues. Ignoring issues does not fix the underlying problem.';
+				$warnings[] = 'This exception may remove critical accessibility issues from active remediation counts. Marking an exception does not fix the underlying problem.';
 			}
 		}
 

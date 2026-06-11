@@ -180,6 +180,137 @@ class Scan_Repository {
 	}
 
 	/**
+	 * Get scans with filters for admin list views.
+	 *
+	 * @param array $args Query arguments.
+	 * @return Scan[]
+	 */
+	public static function get_filtered(array $args = []): array {
+		global $wpdb;
+
+		$defaults = [
+			'status' => '',
+			'scan_type' => '',
+			'search' => '',
+			'date_from' => '',
+			'date_to' => '',
+			'limit' => 20,
+			'offset' => 0,
+			'orderby' => 'created_at',
+			'order' => 'DESC',
+		];
+		$args = wp_parse_args($args, $defaults);
+
+		[$where, $params] = self::build_filtered_where($args);
+		$orderby = self::sanitize_scan_orderby((string) $args['orderby']);
+		$order = strtoupper((string) $args['order']) === 'ASC' ? 'ASC' : 'DESC';
+		$limit = max(1, absint($args['limit']));
+		$offset = max(0, absint($args['offset']));
+		$table = self::get_table();
+
+		$params[] = $limit;
+		$params[] = $offset;
+
+		$query = "SELECT * FROM `{$table}` {$where} ORDER BY {$orderby} {$order} LIMIT %d OFFSET %d";
+		// @phpstan-ignore-next-line
+		$rows = $wpdb->get_results($wpdb->prepare($query, ...$params));
+
+		return array_map(fn($row) => Scan::from_row($row), $rows ?: []);
+	}
+
+	/**
+	 * Count scans matching admin list filters.
+	 *
+	 * @param array $args Query arguments.
+	 * @return int
+	 */
+	public static function count_filtered(array $args = []): int {
+		global $wpdb;
+
+		[$where, $params] = self::build_filtered_where($args);
+		$table = self::get_table();
+		$query = "SELECT COUNT(*) FROM `{$table}` {$where}";
+
+		if (!empty($params)) {
+			// @phpstan-ignore-next-line
+			$query = $wpdb->prepare($query, ...$params);
+		}
+
+		return (int) $wpdb->get_var($query);
+	}
+
+	/**
+	 * Build WHERE clause for filtered scan queries.
+	 *
+	 * @param array $args Query arguments.
+	 * @return array{0:string,1:array}
+	 */
+	private static function build_filtered_where(array $args): array {
+		global $wpdb;
+
+		$where = ['1=1'];
+		$params = [];
+		$table = self::get_table();
+		$scan_items_table = Schema::get_table_name('scan_items');
+
+		if (!empty($args['status']) && in_array($args['status'], Scan::STATUSES, true)) {
+			$where[] = 'status = %s';
+			$params[] = $args['status'];
+		}
+
+		if (!empty($args['scan_type']) && in_array($args['scan_type'], Scan::SCAN_TYPES, true)) {
+			$where[] = 'scan_type = %s';
+			$params[] = $args['scan_type'];
+		}
+
+		if (!empty($args['date_from']) && false !== strtotime((string) $args['date_from'])) {
+			$where[] = 'created_at >= %s';
+			$params[] = date('Y-m-d 00:00:00', (int) strtotime((string) $args['date_from']));
+		}
+
+		if (!empty($args['date_to']) && false !== strtotime((string) $args['date_to'])) {
+			$where[] = 'created_at <= %s';
+			$params[] = date('Y-m-d 23:59:59', (int) strtotime((string) $args['date_to']));
+		}
+
+		if (!empty($args['search'])) {
+			$like = '%' . $wpdb->esc_like((string) $args['search']) . '%';
+			$where[] = "(scan_name LIKE %s OR EXISTS (
+				SELECT 1 FROM `{$scan_items_table}` si
+				WHERE si.scan_id = `{$table}`.id
+				AND (si.post_title LIKE %s OR si.post_url LIKE %s)
+			))";
+			$params[] = $like;
+			$params[] = $like;
+			$params[] = $like;
+		}
+
+		return ['WHERE ' . implode(' AND ', $where), $params];
+	}
+
+	/**
+	 * Sanitize scan list orderby field.
+	 *
+	 * @param string $orderby Requested orderby field.
+	 * @return string Safe SQL column.
+	 */
+	private static function sanitize_scan_orderby(string $orderby): string {
+		$allowed = [
+			'id' => 'id',
+			'scan_name' => 'scan_name',
+			'scan_type' => 'scan_type',
+			'status' => 'status',
+			'total_items' => 'total_items',
+			'scanned_items' => 'scanned_items',
+			'total_issues' => 'total_issues',
+			'created_at' => 'created_at',
+			'completed_at' => 'completed_at',
+		];
+
+		return $allowed[$orderby] ?? 'created_at';
+	}
+
+	/**
 	 * Delete scan by ID.
 	 *
 	 * @param int $scan_id Scan ID.
@@ -299,6 +430,32 @@ class Scan_Repository {
 		);
 
 		return $row ? Scan::from_row($row) : null;
+	}
+
+	/**
+	 * Get the scan that should drive dashboard totals.
+	 *
+	 * Prefer the newest active scan so in-progress dashboards do not show stale totals.
+	 * Fall back to the latest completed scan when nothing is running.
+	 *
+	 * @return Scan|null
+	 */
+	public static function get_latest_active_or_completed(): ?Scan {
+		global $wpdb;
+
+		$table = self::get_table();
+		$row = $wpdb->get_row(
+			"SELECT * FROM `{$table}`
+			WHERE status IN ('in_progress', 'pending')
+			ORDER BY FIELD(status, 'in_progress', 'pending'), COALESCE(started_at, updated_at, created_at) DESC, id DESC
+			LIMIT 1"
+		);
+
+		if ($row) {
+			return Scan::from_row($row);
+		}
+
+		return self::get_latest_completed();
 	}
 
 	/**

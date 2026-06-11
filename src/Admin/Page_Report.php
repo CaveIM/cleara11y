@@ -42,7 +42,6 @@ class Page_Report {
 	 */
 	private function __construct() {
 		add_action('admin_menu', [$this, 'register_page'], 20);
-		add_action('admin_footer', [$this, 'hide_from_menu_js']);
 		add_action('admin_enqueue_scripts', [$this, 'enqueue_assets']);
 	}
 
@@ -52,36 +51,14 @@ class Page_Report {
 	 * @return void
 	 */
 	public function register_page(): void {
-		$hook = add_submenu_page(
-			'cleara11y', // Parent slug - main ClearA11y menu
+		add_submenu_page(
+			null,
 			__('Page Accessibility Report', 'cleara11y'),
 			__('Page Accessibility Report', 'cleara11y'),
 			'edit_posts',
 			'cleara11y-page-report',
 			[$this, 'render_page']
 		);
-	}
-
-	/**
-	 * Hide the page report from the admin menu using JavaScript.
-	 * The page remains accessible via direct URL.
-	 *
-	 * @return void
-	 */
-	public function hide_from_menu_js(): void {
-		?>
-		<script>
-			jQuery(document).ready(function($) {
-				// Find and hide the page report menu item
-				$('#adminmenu .wp-submenu li a').each(function() {
-					var href = $(this).attr('href');
-					if (href && href.indexOf('page=cleara11y-page-report') !== -1) {
-						$(this).closest('li').hide();
-					}
-				});
-			});
-		</script>
-		<?php
 	}
 
 	/**
@@ -313,7 +290,7 @@ class Page_Report {
 	 * @return void
 	 */
 	public function enqueue_assets(string $hook_suffix): void {
-		if ($hook_suffix !== 'cleara11y_page_cleara11y-page-report') {
+		if (! in_array($hook_suffix, ['cleara11y_page_cleara11y-page-report', 'admin_page_cleara11y-page-report'], true)) {
 			return;
 		}
 

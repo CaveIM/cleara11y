@@ -119,30 +119,30 @@ class Ignore_Audit_Log {
 	 * @return string
 	 */
 	private function get_event_label(): string {
-		switch ($this->event_type) {
+			switch ($this->event_type) {
 			case 'ignore_created':
-				return 'Ignore rule created';
+				return 'Reviewed exception created';
 
 			case 'ignore_edited':
-				return 'Ignore rule updated';
+				return 'Reviewed exception updated';
 
 			case 'ignore_disabled':
-				return 'Ignore rule disabled';
+				return 'Reviewed exception disabled';
 
 			case 'ignore_enabled':
-				return 'Ignore rule enabled';
+				return 'Reviewed exception enabled';
 
 			case 'ignore_deleted':
-				return 'Ignore rule deleted';
+				return 'Reviewed exception deleted';
 
 			case 'ignore_expired':
-				return 'Ignore rule expired';
+				return 'Reviewed exception expired';
 
 			case 'quick_ignore_created':
-				return 'Quick ignore created';
+				return 'Temporary exception created';
 
 			case 'violation_suppressed':
-				return 'Violation suppressed';
+				return 'Issue marked as exception';
 
 			default:
 				return $this->event_type;

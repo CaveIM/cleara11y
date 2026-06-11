@@ -69,8 +69,8 @@ class Dashboard_Page {
 					<div class="cleara11y-last-updated">
 						<?php
 						printf(
-							/* translators: %s: last scan date */
-							esc_html__('Overall stats from all completed scans. Last scan: %s', 'cleara11y'),
+							/* translators: %s: scan date */
+							esc_html__('Stats from the latest scan. Scan date: %s', 'cleara11y'),
 							esc_html(date('M j, Y g:i A', strtotime($stats['last_scan_date'])))
 						);
 						?>
@@ -114,6 +114,7 @@ class Dashboard_Page {
 				<!-- Recent Scans -->
 				<div class="cleara11y-card cleara11y-recent-scans">
 					<h2><?php esc_html_e('Recent Scans', 'cleara11y'); ?></h2>
+					<p><a href="<?php echo esc_url(admin_url('admin.php?page=cleara11y-scans')); ?>"><?php esc_html_e('View all scans', 'cleara11y'); ?></a></p>
 					<?php if (empty($recent_scans)) : ?>
 						<p class="cleara11y-empty-state">
 							<?php esc_html_e('No scans yet. Start by scanning a page.', 'cleara11y'); ?>
@@ -149,10 +150,10 @@ class Dashboard_Page {
 										</td>
 										<td><?php echo esc_html(date('M j, Y', strtotime($scan->created_at))); ?></td>
 										<td>
-											<button type="button" class="button button-small cleara11y-view-scan" data-scan-id="<?php echo esc_attr($scan->id); ?>">
-												<?php esc_html_e('View Details', 'cleara11y'); ?>
-											</button>
-										</td>
+										<a class="button button-small" href="<?php echo esc_url(Scans_Page::get_detail_url($scan->id)); ?>">
+											<?php esc_html_e('View Details', 'cleara11y'); ?>
+										</a>
+									</td>
 									</tr>
 								<?php endforeach; ?>
 							</tbody>
@@ -206,13 +207,21 @@ class Dashboard_Page {
 
 		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
 		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
-		$scans_table = \ClearA11y\Database\Schema::get_table_name('scans');
+		$dashboard_scan = \ClearA11y\Database\Scan_Repository::get_latest_active_or_completed();
 
-		// Get issue counts by severity.
+		if (!$dashboard_scan) {
+			return $stats;
+		}
+
+		// Get issue counts by severity for the current dashboard scan only.
 		$active_issues = $wpdb->get_results(
-			"SELECT severity, COUNT(*) as count
-			FROM `{$issues_table}`
-			GROUP BY severity",
+			$wpdb->prepare(
+				"SELECT severity, COUNT(*) as count
+				FROM `{$issues_table}`
+				WHERE scan_id = %d
+				GROUP BY severity",
+				$dashboard_scan->id
+			),
 			ARRAY_A
 		);
 
@@ -220,35 +229,30 @@ class Dashboard_Page {
 			$stats['total_' . $row['severity']] = (int) $row['count'];
 		}
 
-		// Get unique scanned pages
+		// Get unique scanned pages for the current dashboard scan only.
 		$scanned_pages = $wpdb->get_var(
-			"SELECT COUNT(DISTINCT post_id)
-			FROM `{$scan_items_table}`
-			WHERE status = 'completed'"
+			$wpdb->prepare(
+				"SELECT COUNT(DISTINCT post_id)
+				FROM `{$scan_items_table}`
+				WHERE scan_id = %d AND status = 'completed'",
+				$dashboard_scan->id
+			)
 		);
 		$stats['total_pages'] = (int) $scanned_pages;
+		$stats['last_scan_date'] = $dashboard_scan->completed_at ?: ($dashboard_scan->started_at ?: $dashboard_scan->created_at);
 
-		// Get last scan date
-		$last_scan = $wpdb->get_row(
-			"SELECT created_at FROM `{$scans_table}`
-			WHERE status = 'completed'
-			ORDER BY completed_at DESC, created_at DESC
-			LIMIT 1"
-		);
-
-		if ($last_scan) {
-			$stats['last_scan_date'] = $last_scan->created_at;
-		}
-
-		// Calculate aggregate scoring from all completed scan items
+		// Calculate scoring from completed scan items in the current dashboard scan only.
 		$scoring_data = $wpdb->get_row(
-			"SELECT
-				SUM(rules_checked) as total_rules,
-				SUM(rules_passed) as total_passed,
-				SUM(rules_failed) as total_failed,
-				SUM(rules_incomplete) as total_incomplete
-			FROM `{$scan_items_table}`
-			WHERE status = 'completed'"
+			$wpdb->prepare(
+				"SELECT
+					SUM(rules_checked) as total_rules,
+					SUM(rules_passed) as total_passed,
+					SUM(rules_failed) as total_failed,
+					SUM(rules_incomplete) as total_incomplete
+				FROM `{$scan_items_table}`
+				WHERE scan_id = %d AND status = 'completed'",
+				$dashboard_scan->id
+			)
 		, ARRAY_A);
 
 		if ($scoring_data) {

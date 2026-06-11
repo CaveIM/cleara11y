@@ -401,7 +401,7 @@ class REST_Controller {
 						'type' => 'string',
 						'enum' => ['active', 'ignored', 'all'],
 						'default' => 'active',
-						'description' => 'Filter by ignore status.',
+						'description' => 'Filter by exception status.',
 					],
 					'search' => [
 						'type' => 'string',
@@ -1012,7 +1012,7 @@ class REST_Controller {
 	public function get_stats_overview(\WP_REST_Request $request): \WP_REST_Response {
 		global $wpdb;
 
-		$latest_scan = Scan_Repository::get_latest_completed();
+		$latest_scan = Scan_Repository::get_latest_active_or_completed();
 		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
 		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
 
@@ -1049,7 +1049,7 @@ class REST_Controller {
 				$counts['total'] += (int) $row['count'];
 			}
 
-			// Get the count of unique pages scanned
+			// Get the count of unique pages scanned in the current dashboard scan.
 			$scanned_pages = $wpdb->get_var(
 				$wpdb->prepare(
 					"SELECT COUNT(DISTINCT post_id)
@@ -2335,7 +2335,11 @@ class REST_Controller {
 	 * @return \WP_REST_Response
 	 */
 	public function get_overview_stats(\WP_REST_Request $request): \WP_REST_Response {
-		$latest_scan = \ClearA11y\Database\Scan_Repository::get_latest_completed();
+		global $wpdb;
+
+		$latest_scan = \ClearA11y\Database\Scan_Repository::get_latest_active_or_completed();
+		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
+		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
 
 		$stats = [
 			'total_critical' => 0,
@@ -2345,10 +2349,32 @@ class REST_Controller {
 		];
 
 		if ($latest_scan) {
-			$stats['total_critical'] = $latest_scan->critical_issues;
-			$stats['total_moderate'] = $latest_scan->moderate_issues;
-			$stats['total_minor'] = $latest_scan->minor_issues;
-			$stats['total_pages'] = $latest_scan->scanned_items;
+			$issue_counts = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT severity, COUNT(*) as count
+					FROM `{$issues_table}`
+					WHERE scan_id = %d
+					GROUP BY severity",
+					$latest_scan->id
+				),
+				ARRAY_A
+			);
+
+			foreach ($issue_counts as $row) {
+				$severity = (string) $row['severity'];
+				if (isset($stats['total_' . $severity])) {
+					$stats['total_' . $severity] = (int) $row['count'];
+				}
+			}
+
+			$stats['total_pages'] = (int) $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT COUNT(DISTINCT post_id)
+					FROM `{$scan_items_table}`
+					WHERE scan_id = %d AND status = 'completed'",
+					$latest_scan->id
+				)
+			);
 		}
 
 		return rest_ensure_response($stats);

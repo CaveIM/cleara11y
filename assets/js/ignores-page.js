@@ -1,5 +1,5 @@
 /**
- * ClearA11y Ignores Management Page
+ * ClearA11y Exceptions Management Page
  */
 (function($) {
 	'use strict';
@@ -188,7 +188,7 @@
 		rules.forEach(function(rule) {
 			html += '<tr>';
 
-			// Ignore Rule column (30%) - Shows rule titles and IDs
+			// Exception Rule column (30%) - Shows rule titles and IDs
 			html += '<td style="width: 30%;">';
 			// Show readable titles
 			html += '<div style="margin-bottom: 5px; font-size: 13px; color: #646970;">';
@@ -356,13 +356,13 @@
 
 		switch (state.currentStatus) {
 			case 'active':
-				message = 'No active ignore rules found.';
+				message = 'No active exceptions found.';
 				break;
 			case 'expired':
-				message = 'No expired ignore rules found.';
+				message = 'No expired exceptions found.';
 				break;
 			case 'disabled':
-				message = 'No disabled ignore rules found.';
+				message = 'No disabled exceptions found.';
 				break;
 		}
 
@@ -395,7 +395,7 @@
 
 	function showRuleDetailModal(rule) {
 		let html = '<div class="cleara11y-detail-section">';
-		html += '<h3>Rule Details</h3>';
+		html += '<h3>Exception Details</h3>';
 		html += '<div class="cleara11y-detail-row"><span class="cleara11y-detail-label">Label:</span><span class="cleara11y-detail-value">' + esc_html(rule.label) + '</span></div>';
 		html += '<div class="cleara11y-detail-row"><span class="cleara11y-detail-label">Target Type:</span><span class="cleara11y-detail-value">' + esc_html(rule.target_type) + '</span></div>';
 		html += '<div class="cleara11y-detail-row"><span class="cleara11y-detail-label">Scope:</span><span class="cleara11y-detail-value">' + esc_html(getScopeLabel(rule.scope)) + '</span></div>';
@@ -406,7 +406,7 @@
 		if (rule.note) {
 			html += '<div class="cleara11y-detail-row"><span class="cleara11y-detail-label">Note:</span><span class="cleara11y-detail-value">' + esc_html(rule.note) + '</span></div>';
 		}
-		html += '<div class="cleara11y-detail-row"><span class="cleara11y-detail-label">Matched Violations:</span><span class="cleara11y-detail-value">' + rule.match_count + '</span></div>';
+		html += '<div class="cleara11y-detail-row"><span class="cleara11y-detail-label">Matched Issues:</span><span class="cleara11y-detail-value">' + rule.match_count + '</span></div>';
 		html += '</div>';
 
 		$('#cleara11y-ignore-detail-body').html(html);
@@ -781,8 +781,11 @@
 							<select id="cleara11y-reason-category" class="regular-text" style="width: 100%;">
 								<option value="">Select a reason...</option>
 								<option value="false_positive">False Positive</option>
+								<option value="not_applicable">Not Applicable</option>
+								<option value="acceptable_in_context">Acceptable in Context</option>
 								<option value="accepted_risk">Accepted Risk</option>
 								<option value="third_party_code">Third-Party Code</option>
+								<option value="tracked_elsewhere">Tracked Elsewhere</option>
 								<option value="planned_fix">Planned Fix</option>
 								<option value="design_limitation">Design Limitation</option>
 								<option value="other">Other</option>
@@ -791,7 +794,7 @@
 
 						<div style="margin: 20px 0;">
 								<label for="cleara11y-note"><strong>Additional Notes:</strong></label>
-							<textarea id="cleara11y-note" rows="4" class="large-text" placeholder="Provide more context about this ignore decision..."></textarea>
+							<textarea id="cleara11y-note" rows="4" class="large-text" placeholder="Provide more context about this review decision..."></textarea>
 						</div>
 					</div>
 				`;

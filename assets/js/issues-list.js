@@ -138,7 +138,7 @@
 				document.getElementById('cleara11y-moderate-issues').textContent = stats.moderate || 0;
 				document.getElementById('cleara11y-minor-issues').textContent = stats.minor || 0;
 
-				// Update ignored count if element exists
+				// Update exception count if element exists
 				const ignoredEl = document.getElementById('cleara11y-ignored-issues');
 				if (ignoredEl) {
 					ignoredEl.textContent = stats.ignored || 0;
@@ -267,11 +267,11 @@
 							<div class="cleara11y-issue-actions" style="display: flex; gap: 8px; align-items: center;">
 								<button type="button" class="button button-small cleara11y-ignore-wizard" data-issue-id="${issue.id}" data-rule-id="${this.escapeHtml(issue.rule_id || '')}" data-selector="${this.escapeHtml(issue.selector || '')}" data-message="${this.escapeHtml(issue.message || '')}">
 									<span class="dashicons dashicons-admin-tools" style="margin-top: 3px;"></span>
-									Ignore…
+									Mark as Exception…
 								</button>
-								<button type="button" class="button button-small cleara11y-quick-ignore" data-issue-id="${issue.id}" data-selector="${this.escapeHtml(issue.selector || '')}" data-rule-id="${this.escapeHtml(issue.rule_id || '')}" title="Quick ignore - hide until next scan">
+								<button type="button" class="button button-small cleara11y-quick-ignore" data-issue-id="${issue.id}" data-selector="${this.escapeHtml(issue.selector || '')}" data-rule-id="${this.escapeHtml(issue.rule_id || '')}" title="Temporary exception - exclude from active issue counts until next scan">
 									<span class="dashicons dashicons-dismiss" style="margin-top: 3px;"></span>
-									Quick Ignore
+									Temporary Exception
 								</button>
 							</div>
 						</div>
@@ -325,7 +325,7 @@
 				});
 			});
 
-			// Quick Ignore buttons
+			// Temporary Exception buttons
 			document.querySelectorAll('.cleara11y-quick-ignore').forEach(btn => {
 				btn.addEventListener('click', (e) => {
 					const issueId = parseInt(e.currentTarget.dataset.issueId);
@@ -333,7 +333,7 @@
 				});
 			});
 
-			// Ignore Wizard buttons
+			// Exception Wizard buttons
 			document.querySelectorAll('.cleara11y-ignore-wizard').forEach(btn => {
 				btn.addEventListener('click', (e) => {
 					const issueId = parseInt(e.currentTarget.dataset.issueId);
@@ -378,14 +378,14 @@
 		},
 
 			/**
-			 * Open ignore wizard with pre-filled data from an issue
+			 * Open exception wizard with pre-filled data from an issue
 			 */
 
 			openIgnoreWizard(issueId, ruleId, selector, message) {
 				// Wait for DOM to be ready and ignores page script to load
 				if (typeof jQuery === 'undefined' || typeof openCreateWizard !== 'function') {
 					console.error('[ClearA11y Issues List] Wizard not available. Make sure ignores-page.js is loaded.');
-					alert('The ignore wizard is not available. Please try refreshing the page or go to the Ignores page directly.');
+					alert('The exception wizard is not available. Please try refreshing the page or go to the Exceptions page directly.');
 					return;
 				}
 
@@ -438,12 +438,12 @@
 					}, 100);
 				} catch (error) {
 					console.error('[ClearA11y Issues List] Error opening wizard:', error);
-					alert('Error opening ignore wizard. Please try again.');
+					alert('Error opening exception wizard. Please try again.');
 				}
 			},
 
 		/**
-		 * Quick ignore an issue
+		 * Create a temporary exception for an issue.
 		 */
 		async quickIgnoreIssue(issueId) {
 			try {
@@ -457,21 +457,21 @@
 				});
 
 				if (!response.ok) {
-					throw new Error('Failed to quick ignore issue');
+					throw new Error('Failed to create temporary exception');
 				}
 
 				const data = await response.json();
 
 				// Show success toast with undo button
-				this.showToast(data.message || 'Issue ignored until next scan', data.id, 'quick-ignore');
+				this.showToast(data.message || 'Issue marked as a temporary exception until next scan', data.id, 'quick-ignore');
 
 				// Reload issues
 				this.loadIssues();
 				this.loadStats();
 
 			} catch (error) {
-				console.error('[ClearA11y Issues List] Error quick ignoring issue:', error);
-				alert('Error quick ignoring issue: ' + error.message);
+				console.error('[ClearA11y Issues List] Error creating temporary exception:', error);
+				alert('Error creating temporary exception: ' + error.message);
 			}
 		},
 
@@ -549,7 +549,7 @@
 		async handleUndo(undoId, undoType) {
 			try {
 				if (undoType === 'quick-ignore') {
-					// Undo quick ignore
+					// Undo temporary exception
 					const response = await fetch(`${API_URL}ignores/${undoId}/undo`, {
 						method: 'POST',
 						headers: {
@@ -558,11 +558,11 @@
 					});
 
 					if (!response.ok) {
-						throw new Error('Failed to undo quick ignore');
+						throw new Error('Failed to undo temporary exception');
 					}
 
 					this.hideToast();
-					this.showToast('Quick ignore removed');
+					this.showToast('Temporary exception removed');
 					this.loadIssues();
 					this.loadStats();
 

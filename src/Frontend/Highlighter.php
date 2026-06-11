@@ -141,7 +141,7 @@ class Highlighter {
 			return;
 		}
 
-		// Get all non-dismissed issues for this post
+		// Get all issues for this post; active ignore rules are applied below.
 		$issues = \ClearA11y\Database\Issue_Repository::get_by_post_id($post->ID);
 
 		// Get site ID for ignore matching

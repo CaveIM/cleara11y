@@ -767,8 +767,6 @@ class Admin {
 					'loading' => __('Loading...', 'cleara11y'),
 					'noIssues' => __('No issues found.', 'cleara11y'),
 					'error' => __('Error loading issues.', 'cleara11y'),
-					'confirmDismiss' => __('Are you sure you want to dismiss this issue?', 'cleara11y'),
-					'confirmUndismiss' => __('Are you sure you want to undismiss this issue?', 'cleara11y'),
 				],
 			]);
 		} elseif ($is_issue_types_page) {

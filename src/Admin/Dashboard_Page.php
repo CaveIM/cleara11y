@@ -208,11 +208,10 @@ class Dashboard_Page {
 		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
 		$scans_table = \ClearA11y\Database\Schema::get_table_name('scans');
 
-		// Get active issues (excluding dismissed and globally ignored)
+		// Get issue counts by severity.
 		$active_issues = $wpdb->get_results(
 			"SELECT severity, COUNT(*) as count
 			FROM `{$issues_table}`
-			WHERE dismissed = 0 AND dismissed_global = 0
 			GROUP BY severity",
 			ARRAY_A
 		);

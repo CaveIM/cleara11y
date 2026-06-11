@@ -51,16 +51,6 @@ class Issues_List_Page {
 			<h1 class="wp-heading-inline"><?php esc_html_e('Accessibility Issues', 'cleara11y'); ?></h1>
 			<hr class="wp-header-end">
 
-			<!-- Bulk Actions Bar -->
-			<div class="cleara11y-bulk-actions" style="display: none; margin: 20px 0; padding: 15px; background: #fff; border: 1px solid #c3c4c7; box-shadow: 0 1px 1px rgba(0,0,0,.04); align-items: center; gap: 15px;">
-				<strong><?php esc_html_e('Bulk Actions:', 'cleara11y'); ?></strong>
-				<button type="button" class="button button-primary" id="cleara11y-bulk-dismiss">
-					<span class="dashicons dashicons-hidden" style="margin-top: 3px;"></span>
-					<?php esc_html_e('Dismiss Selected', 'cleara11y'); ?>
-				</button>
-				<span class="cleara11y-selected-count" style="color: #646970;"></span>
-			</div>
-
 			<div class="cleara11y-issues-filters" style="margin: 20px 0; padding: 15px; background: #fff; border: 1px solid #c3c4c7; box-shadow: 0 1px 1px rgba(0,0,0,.04);">
 				<div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
 					<label for="cleara11y-filter-severity" style="font-weight: 600;">

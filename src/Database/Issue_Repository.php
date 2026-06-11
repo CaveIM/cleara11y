@@ -178,7 +178,6 @@ class Issue_Repository {
 
 		$defaults = [
 			'severity' => null,
-			'dismissed' => null,
 			'orderby' => 'created_at',
 			'order' => 'DESC',
 		];
@@ -191,11 +190,6 @@ class Issue_Repository {
 		if (!empty($args['severity'])) {
 			$where[] = 'severity = %s';
 			$where_params[] = $args['severity'];
-		}
-
-		if (null !== $args['dismissed']) {
-			$where[] = 'dismissed = %d';
-			$where_params[] = $args['dismissed'] ? 1 : 0;
 		}
 
 		$where_clause = implode(' AND ', $where);
@@ -225,7 +219,7 @@ class Issue_Repository {
 		$table = self::get_table();
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT * FROM `{$table}` WHERE scan_item_id = %d AND dismissed = 0 AND dismissed_global = 0 ORDER BY severity DESC, id ASC",
+				"SELECT * FROM `{$table}` WHERE scan_item_id = %d ORDER BY severity DESC, id ASC",
 				$scan_item_id
 			)
 		);
@@ -267,7 +261,7 @@ class Issue_Repository {
 		// Get issues only from the latest scan_item
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT * FROM `{$table}` WHERE scan_item_id = %d AND post_id = %d AND dismissed = 0 AND dismissed_global = 0 ORDER BY severity DESC, id ASC",
+				"SELECT * FROM `{$table}` WHERE scan_item_id = %d AND post_id = %d ORDER BY severity DESC, id ASC",
 				$latest_scan_item->id,
 				$post_id
 			)
@@ -327,58 +321,6 @@ class Issue_Repository {
 	}
 
 	/**
-	 * Dismiss an issue.
-	 *
-	 * @param int      $issue_id Issue ID.
-	 * @param int|null $user_id  User ID dismissing the issue.
-	 * @param string   $comment  Dismissal comment.
-	 * @return bool True on success, false on failure.
-	 */
-	public static function dismiss(int $issue_id, ?int $user_id = null, string $comment = ''): bool {
-		global $wpdb;
-
-		$result = $wpdb->update(
-			self::get_table(),
-			[
-				'dismissed' => 1,
-				'dismissed_by' => $user_id,
-				'dismissed_at' => current_time('mysql'),
-				'dismissal_comment' => $comment,
-			],
-			['id' => $issue_id],
-			['%d', '%d', '%s', '%s'],
-			['%d']
-		);
-
-		return $result !== false;
-	}
-
-	/**
-	 * Undismiss an issue.
-	 *
-	 * @param int $issue_id Issue ID.
-	 * @return bool True on success, false on failure.
-	 */
-	public static function undismiss(int $issue_id): bool {
-		global $wpdb;
-
-		$result = $wpdb->update(
-			self::get_table(),
-			[
-				'dismissed' => 0,
-				'dismissed_by' => null,
-				'dismissed_at' => null,
-				'dismissal_comment' => null,
-			],
-			['id' => $issue_id],
-			['%d', '%d', '%s', '%s'],
-			['%d']
-		);
-
-		return $result !== false;
-	}
-
-	/**
 	 * Get issue counts grouped by severity for a scan.
 	 *
 	 * @param int $scan_id Scan ID.
@@ -391,7 +333,7 @@ class Issue_Repository {
 		$counts = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT severity, COUNT(*) as count FROM `{$table}`
-				WHERE scan_id = %d AND dismissed = 0 AND dismissed_global = 0
+				WHERE scan_id = %d
 				GROUP BY severity",
 				$scan_id
 			),
@@ -424,7 +366,7 @@ class Issue_Repository {
 		$counts = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT rule_id, COUNT(*) as count FROM `{$table}`
-				WHERE scan_item_id = %d AND dismissed = 0 AND dismissed_global = 0
+				WHERE scan_item_id = %d
 				GROUP BY rule_id",
 				$scan_item_id
 			),
@@ -486,7 +428,7 @@ class Issue_Repository {
 		$counts = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT severity, COUNT(*) as count FROM `{$table}`
-				WHERE scan_item_id = %d AND dismissed = 0 AND dismissed_global = 0
+				WHERE scan_item_id = %d
 				GROUP BY severity",
 				$latest_scan_item->id
 			),

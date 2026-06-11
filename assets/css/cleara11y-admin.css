@@ -1,53 +1,10 @@
 /**
  * ClearA11y Admin Styles
  *
- * Styles for admin pages, including dismiss UI and bulk actions.
+ * Styles for admin pages, including bulk actions.
  *
  * @package ClearA11y
  */
-
-/* Dismiss UI */
-.cleara11y-dismiss-ui {
-	margin-top: 15px;
-	padding: 15px;
-	background: #f6f7f7;
-	border: 1px solid #c3c4c7;
-	border-radius: 4px;
-}
-
-.cleara11y-dismiss-ui-content label {
-	display: block;
-	font-weight: 600;
-	margin-bottom: 8px;
-}
-
-.cleara11y-dismiss-ui-content textarea {
-	width: 100%;
-	min-height: 80px;
-	padding: 8px;
-	font-size: 13px;
-}
-
-.cleara11y-dismiss-ui-actions {
-	margin-top: 10px;
-	display: flex;
-	gap: 10px;
-}
-
-/* Dismissal Info Display */
-.cleara11y-dismissal-info {
-	margin-top: 10px;
-	padding: 10px;
-	background: #f0f0f1;
-	border-left: 3px solid #646970;
-	border-radius: 3px;
-	font-size: 12px;
-	color: #646970;
-}
-
-.cleara11y-dismissal-info strong {
-	font-weight: 600;
-}
 
 /* Bulk Actions Bar */
 .cleara11y-bulk-actions {
@@ -240,10 +197,6 @@
 		opacity: 1;
 		transform: translateY(0);
 	}
-}
-
-.cleara11y-dismiss-ui {
-	animation: fadeIn 0.2s ease-out;
 }
 
 /* Responsive adjustments */

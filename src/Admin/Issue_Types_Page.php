@@ -79,21 +79,6 @@ class Issue_Types_Page {
 				<div class="cleara11y-filters">
 					<h2 class="screen-reader-text"><?php esc_html_e('Filter Issues', 'cleara11y'); ?></h2>
 
-					<div class="cleara11y-filter-tabs">
-						<button class="cleara11y-filter-tab active" data-status="active">
-							<?php esc_html_e('Active', 'cleara11y'); ?>
-							<span class="count" id="count-active"></span>
-						</button>
-						<button class="cleara11y-filter-tab" data-status="dismissed-global">
-							<?php esc_html_e('Globally Ignored', 'cleara11y'); ?>
-							<span class="count" id="count-dismissed-global"></span>
-						</button>
-						<button class="cleara11y-filter-tab" data-status="all">
-							<?php esc_html_e('All', 'cleara11y'); ?>
-							<span class="count" id="count-all"></span>
-						</button>
-					</div>
-
 					<div class="cleara11y-filter-controls">
 						<select id="cleara11y-severity-filter">
 							<option value=""><?php esc_html_e('All Severities', 'cleara11y'); ?></option>
@@ -134,23 +119,6 @@ class Issue_Types_Page {
 				</div>
 			</div>
 
-			<!-- Modal for Global Ignore -->
-			<div id="cleara11y-ignore-modal" class="cleara11y-modal" style="display: none;">
-				<div class="cleara11y-modal-content cleara11y-modal-small">
-					<div class="cleara11y-modal-header">
-						<h2><?php esc_html_e('Globally Ignore Issue', 'cleara11y'); ?></h2>
-						<button class="cleara11y-modal-close" aria-label="<?php esc_attr_e('Close modal', 'cleara11y'); ?>">&times;</button>
-					</div>
-					<div class="cleara11y-modal-body">
-						<p id="cleara11y-ignore-message"></p>
-						<textarea id="cleara11y-ignore-comment" rows="3" placeholder="<?php esc_attr_e('Optional: Add a comment explaining why this issue is being ignored globally...', 'cleara11y'); ?>"></textarea>
-					</div>
-					<div class="cleara11y-modal-footer">
-						<button class="button" id="cleara11y-cancel-ignore"><?php esc_html_e('Cancel', 'cleara11y'); ?></button>
-						<button class="button button-primary" id="cleara11y-confirm-ignore"><?php esc_html_e('Ignore Globally', 'cleara11y'); ?></button>
-					</div>
-				</div>
-			</div>
 		</div>
 
 		<style>

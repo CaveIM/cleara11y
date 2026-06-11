@@ -3,8 +3,7 @@
  *
  * Handles the issue types page functionality including:
  * - Loading and displaying issue types grouped by rule
- * - Filtering by severity and status
- * - Global ignore/unignore functionality
+ * - Filtering by severity and search
  * - Viewing pages with specific issue types
  */
 
@@ -15,7 +14,6 @@ document.addEventListener('DOMContentLoaded', function() {
 		strings: cleara11yData.strings,
 
 		state: {
-			currentStatus: 'active',
 			currentSeverity: '',
 			searchTerm: '',
 			issueTypes: [],
@@ -30,30 +28,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
 		cacheElements() {
 			this.elements = {
-				filterTabs: document.querySelectorAll('.cleara11y-filter-tab'),
 				severityFilter: document.getElementById('cleara11y-severity-filter'),
 				searchInput: document.getElementById('cleara11y-issue-search'),
 				issueTypesList: document.getElementById('cleara11y-issue-types-list'),
 				statsGrid: document.getElementById('cleara11y-stats-grid'),
-				countActive: document.getElementById('count-active'),
-				countDismissedGlobal: document.getElementById('count-dismissed-global'),
-				countAll: document.getElementById('count-all'),
 				pagesModal: document.getElementById('cleara11y-pages-modal'),
-				ignoreModal: document.getElementById('cleara11y-ignore-modal'),
 			};
 		},
 
 		bindEvents() {
-			// Filter tabs
-			this.elements.filterTabs.forEach(tab => {
-				tab.addEventListener('click', (e) => {
-					this.elements.filterTabs.forEach(t => t.classList.remove('active'));
-					e.target.classList.add('active');
-					this.state.currentStatus = e.target.dataset.status;
-					this.loadIssueTypes();
-				});
-			});
-
 			// Severity filter
 			if (this.elements.severityFilter) {
 				this.elements.severityFilter.addEventListener('change', (e) => {
@@ -79,18 +62,6 @@ document.addEventListener('DOMContentLoaded', function() {
 				btn.addEventListener('click', () => this.closeModals());
 			});
 
-			// Cancel global ignore
-			const cancelBtn = document.getElementById('cleara11y-cancel-ignore');
-			if (cancelBtn) {
-				cancelBtn.addEventListener('click', () => this.closeModals());
-			}
-
-			// Confirm global ignore
-			const confirmBtn = document.getElementById('cleara11y-confirm-ignore');
-			if (confirmBtn) {
-				confirmBtn.addEventListener('click', () => this.confirmGlobalIgnore());
-			}
-
 			// Close modals on backdrop click
 			document.querySelectorAll('.cleara11y-modal').forEach(modal => {
 				modal.addEventListener('click', (e) => {
@@ -107,9 +78,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 		async loadIssueTypes() {
 			try {
-				const params = new URLSearchParams({
-					status: this.state.currentStatus,
-				});
+				const params = new URLSearchParams();
 
 				if (this.state.currentSeverity) {
 					params.append('severity', this.state.currentSeverity);
@@ -132,7 +101,6 @@ document.addEventListener('DOMContentLoaded', function() {
 				this.state.counts = data.counts || {};
 
 				this.renderIssueTypes();
-				this.updateCounts();
 				this.renderStats(data.counts);
 			} catch (error) {
 				console.error('Error loading issue types:', error);
@@ -152,8 +120,6 @@ document.addEventListener('DOMContentLoaded', function() {
 			}
 
 			const html = this.state.issueTypes.map(issueType => {
-				const isGloballyIgnored = issueType.globally_ignored > 0;
-
 				return `
 					<div class="cleara11y-issue-type-item" data-rule-id="${issueType.rule_id}">
 						<div class="cleara11y-issue-severity ${issueType.severity}">${issueType.severity}</div>
@@ -167,17 +133,11 @@ document.addEventListener('DOMContentLoaded', function() {
 							<div class="message">${this.escapeHtml(issueType.message || '')}</div>
 							<div class="meta">
 								<span>Found on <strong>${issueType.page_count}</strong> ${issueType.page_count === 1 ? 'page' : 'pages'}</span>
-								${isGloballyIgnored ? '<span class="globally-ignored-badge">Globally Ignored</span>' : ''}
 							</div>
 						</div>
 						<div class="cleara11y-issue-actions">
 							<button class="button view-pages" data-rule-id="${issueType.rule_id}">
 								View Pages
-							</button>
-							<button class="button ${isGloballyIgnored ? 'button-secondary' : ''} toggle-global-ignore"
-								data-rule-id="${issueType.rule_id}"
-								data-ignored="${isGloballyIgnored ? '1' : '0'}">
-								${isGloballyIgnored ? 'Unignore' : 'Ignore Globally'}
 							</button>
 						</div>
 					</div>
@@ -199,33 +159,6 @@ document.addEventListener('DOMContentLoaded', function() {
 				});
 			});
 
-			// Toggle global ignore buttons
-			this.elements.issueTypesList.querySelectorAll('.toggle-global-ignore').forEach(btn => {
-				btn.addEventListener('click', (e) => {
-					const ruleId = e.target.dataset.ruleId;
-					const ignored = e.target.dataset.ignored === '1';
-					this.showGlobalIgnoreModal(ruleId, ignored);
-				});
-			});
-		},
-
-		updateCounts() {
-			if (this.elements.countActive) {
-				this.elements.countActive.textContent = this.formatNumber(this.state.counts.active || 0);
-			}
-			if (this.elements.countDismissedGlobal) {
-				this.elements.countDismissedGlobal.textContent = this.formatNumber(this.state.counts['dismissed-global'] || 0);
-			}
-			if (this.elements.countAll) {
-				this.elements.countAll.textContent = this.formatNumber(this.state.counts.all || 0);
-			}
-		},
-
-		formatNumber(num) {
-			if (num >= 1000) {
-				return (num / 1000).toFixed(1) + 'k';
-			}
-			return num.toString();
 		},
 
 		async viewIssuePages(ruleId) {
@@ -296,61 +229,6 @@ document.addEventListener('DOMContentLoaded', function() {
 			}
 		},
 
-		showGlobalIgnoreModal(ruleId, currentlyIgnored) {
-			const modal = this.elements.ignoreModal;
-			const message = document.getElementById('cleara11y-ignore-message');
-			const confirmBtn = document.getElementById('cleara11y-confirm-ignore');
-			const commentInput = document.getElementById('cleara11y-ignore-comment');
-
-			// Find issue type info
-			const issueType = this.state.issueTypes.find(it => it.rule_id === ruleId);
-
-			if (currentlyIgnored) {
-				message.textContent = `Are you sure you want to restore "${issueType?.message || ruleId}" from global ignore? All instances of this issue will become active again.`;
-				confirmBtn.textContent = 'Restore Issue';
-			} else {
-				message.textContent = `Globally ignore "${issueType?.message || ruleId}"? This will hide all instances of this issue across your site.`;
-				confirmBtn.textContent = 'Ignore Globally';
-			}
-
-			confirmBtn.dataset.ruleId = ruleId;
-			confirmBtn.dataset.ignored = currentlyIgnored ? '0' : '1';
-
-			// Clear previous comment
-			commentInput.value = '';
-
-			modal.style.display = 'flex';
-		},
-
-		async confirmGlobalIgnore() {
-			const confirmBtn = document.getElementById('cleara11y-confirm-ignore');
-			const ruleId = confirmBtn.dataset.ruleId;
-			const ignored = confirmBtn.dataset.ignored === '1';
-			const comment = document.getElementById('cleara11y-ignore-comment').value;
-
-			try {
-				const response = await fetch(`${this.apiUrl}issue-types/${ruleId}/ignore-global`, {
-					method: 'POST',
-					headers: {
-						'X-WP-Nonce': this.nonce,
-						'Content-Type': 'application/json',
-					},
-					body: JSON.stringify({
-						ignored: ignored,
-						comment: comment,
-					}),
-				});
-
-				if (!response.ok) throw new Error('Failed to update global ignore');
-
-				await this.loadIssueTypes();
-				this.closeModals();
-			} catch (error) {
-				console.error('Error updating global ignore:', error);
-				alert('Error updating global ignore. Please try again.');
-			}
-		},
-
 		closeModals() {
 			document.querySelectorAll('.cleara11y-modal').forEach(modal => {
 				modal.style.display = 'none';
@@ -359,14 +237,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
 		renderStats(counts) {
 			this.elements.statsGrid.innerHTML = `
-				<div class="cleara11y-stat-card">
-					<div class="stat-label">Active Issues</div>
-					<div class="stat-value">${counts.active || 0}</div>
-				</div>
-				<div class="cleara11y-stat-card">
-					<div class="stat-label">Globally Ignored</div>
-					<div class="stat-value">${counts['dismissed-global'] || 0}</div>
-				</div>
 				<div class="cleara11y-stat-card">
 					<div class="stat-label">Total Issues</div>
 					<div class="stat-value">${counts.all || 0}</div>

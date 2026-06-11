@@ -1449,7 +1449,7 @@
 		},
 
 		/**
-		 * Show page issues modal with dismiss functionality
+		 * Show page issues modal.
 		 */
 		showPageIssuesModal(issues, scanItem) {
 			// Remove existing modal if any
@@ -1463,9 +1463,8 @@
 			modal.id = 'cleara11y-issues-modal';
 			modal.className = 'cleara11y-modal-overlay active';
 
-			// Store issues data on modal for filtering
+			// Store issues data on modal for rendering.
 			modal.issuesData = issues;
-			modal.currentFilter = 'active'; // active, dismissed, all
 
 			// Build the modal HTML
 			this.renderIssuesModalContent(modal, scanItem);
@@ -1480,25 +1479,6 @@
 			closeBtn.addEventListener('click', closeHandler);
 			closeBtnFooter.addEventListener('click', closeHandler);
 
-			// Setup filter tabs
-			const filterTabs = modal.querySelectorAll('.cleara11y-filter-tab');
-			filterTabs.forEach(tab => {
-				tab.addEventListener('click', (e) => {
-					const filter = e.target.dataset.filter;
-					modal.currentFilter = filter;
-					// Update active tab
-					filterTabs.forEach(t => t.classList.remove('active'));
-					e.target.classList.add('active');
-					// Re-render content
-					this.renderIssuesModalContent(modal, scanItem);
-					// Re-attach event handlers
-					this.attachIssuesModalHandlers(modal);
-				});
-			});
-
-			// Attach other handlers
-			this.attachIssuesModalHandlers(modal);
-
 			// Close on backdrop click
 			modal.addEventListener('click', (e) => {
 				if (e.target === modal) {
@@ -1512,54 +1492,23 @@
 		 */
 		renderIssuesModalContent(modal, scanItem) {
 			const issues = modal.issuesData || [];
-			const currentFilter = modal.currentFilter || 'active';
-
-			// Filter issues
-			let filteredIssues = issues;
-			if (currentFilter === 'active') {
-				filteredIssues = issues.filter(i => !i.dismissed);
-			} else if (currentFilter === 'dismissed') {
-				filteredIssues = issues.filter(i => i.dismissed);
-			}
-
-			// Count by status
-			const activeCount = issues.filter(i => !i.dismissed).length;
-			const dismissedCount = issues.filter(i => i.dismissed).length;
 
 			// Group issues by severity
-			const critical = filteredIssues.filter(i => i.severity === 'critical');
-			const moderate = filteredIssues.filter(i => i.severity === 'moderate');
-			const minor = filteredIssues.filter(i => i.severity === 'minor');
+			const critical = issues.filter(i => i.severity === 'critical');
+			const moderate = issues.filter(i => i.severity === 'moderate');
+			const minor = issues.filter(i => i.severity === 'minor');
 
 			let issuesHtml = '';
-			if (filteredIssues.length === 0) {
-				if (currentFilter === 'dismissed') {
-					issuesHtml = '<p class="cleara11y-empty-state">No dismissed issues.</p>';
-				} else if (currentFilter === 'active') {
-					issuesHtml = '<p class="cleara11y-empty-state">No active issues! Great job!</p>';
-				} else {
-					issuesHtml = '<p class="cleara11y-empty-state">No accessibility issues found!</p>';
-				}
+			if (issues.length === 0) {
+				issuesHtml = '<p class="cleara11y-empty-state">No accessibility issues found!</p>';
 			} else {
 				const renderIssue = (issue) => {
-					const isDismissed = !!issue.dismissed;
-					const dismissedInfo = isDismissed ? `
-						<div class="cleara11y-dismissed-info" style="margin-top: 10px; padding: 8px; background: #f0f0f1; border-left: 3px solid #646970; border-radius: 3px;">
-							<div style="font-size: 0.85em; color: #646970;">
-								<strong>Dismissed:</strong>
-								${issue.dismissed_at ? ` ${new Date(issue.dismissed_at).toLocaleDateString()}` : ''}
-								${issue.dismissal_comment ? `<br><em>"${this.escapeHtml(issue.dismissal_comment)}"</em>` : ''}
-							</div>
-						</div>
-					` : '';
-
 					return `
-						<div class="cleara11y-issue-item ${isDismissed ? 'dismissed' : ''}" data-issue-id="${issue.id}" style="padding: 15px; border-bottom: 1px solid #eee; ${isDismissed ? 'opacity: 0.6;' : ''}">
+						<div class="cleara11y-issue-item" data-issue-id="${issue.id}" style="padding: 15px; border-bottom: 1px solid #eee;">
 							<div style="display: flex; justify-content: space-between; align-items: start; gap: 15px;">
 								<div style="flex: 1;">
 									<h4 style="margin: 0 0 10px 0; color: #1d2327; display: flex; align-items: center; gap: 8px;">
 										${this.escapeHtml(issue.rule_id || issue.issue_id || 'Unknown Issue')}
-										${isDismissed ? '<span class="dashicons dashicons-hidden" style="color: #646970;" title="Dismissed"></span>' : ''}
 									</h4>
 									<p style="margin: 0 0 10px 0; color: #646970;">${this.escapeHtml(issue.message || issue.description || '')}</p>
 									<div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;">
@@ -1579,40 +1528,12 @@
 										</div>
 									` : ''}
 									${issue.help_url ? `
-										<a href="${issue.help_url}" target="_blank" style="display: inline-block; margin-top: 5px; font-size: 0.85em;">
-											Learn more →
+										<a href="${issue.help_url}" target="_blank" rel="noopener" style="display: inline-block; margin-top: 5px; font-size: 0.85em;">
+											Learn more
 										</a>
 									` : ''}
-									${dismissedInfo}
-								</div>
-								<div class="cleara11y-issue-actions" style="min-width: 150px;">
-									${isDismissed ? `
-										<button type="button" class="button button-small cleara11y-undismiss-btn" data-issue-id="${issue.id}">
-											<span class="dashicons dashicons-visibility"></span>
-											Undo Dismiss
-										</button>
-									` : `
-										<button type="button" class="button button-small cleara11y-dismiss-btn" data-issue-id="${issue.id}">
-											<span class="dashicons dashicons-hidden"></span>
-											Dismiss
-										</button>
-									`}
 								</div>
 							</div>
-							${!isDismissed ? `
-								<div class="cleara11y-dismiss-comment-form" style="display: none; margin-top: 10px; padding: 10px; background: #f6f7f7; border-radius: 4px;">
-									<label style="display: block; margin-bottom: 5px; font-size: 0.9em;">Comment (optional):</label>
-									<textarea class="cleara11y-dismiss-comment" rows="2" style="width: 100%; max-width: 400px;" placeholder="Why are you dismissing this issue?"></textarea>
-									<div style="margin-top: 8px;">
-										<button type="button" class="button button-small button-primary cleara11y-confirm-dismiss">
-											Confirm Dismiss
-										</button>
-										<button type="button" class="button button-small cleara11y-cancel-dismiss">
-											Cancel
-										</button>
-									</div>
-								</div>
-							` : ''}
 						</div>
 					`;
 				};
@@ -1636,18 +1557,6 @@
 						<button type="button" class="cleara11y-modal-close">×</button>
 					</div>
 					<div class="cleara11y-modal-body" style="max-height: 70vh; overflow-y: auto;">
-						<!-- Filter Tabs -->
-						<div class="cleara11y-filter-tabs" style="display: flex; gap: 5px; margin-bottom: 15px; border-bottom: 1px solid #ddd; padding-bottom: 10px;">
-							<button class="cleara11y-filter-tab ${currentFilter === 'active' ? 'active' : ''}" data-filter="active" style="border: none; background: ${currentFilter === 'active' ? '#2271b1' : 'transparent'}; color: ${currentFilter === 'active' ? '#fff' : '#2271b1'}; padding: 6px 12px; cursor: pointer; border-radius: 3px;">
-								Active (${activeCount})
-							</button>
-							<button class="cleara11y-filter-tab ${currentFilter === 'dismissed' ? 'active' : ''}" data-filter="dismissed" style="border: none; background: ${currentFilter === 'dismissed' ? '#2271b1' : 'transparent'}; color: ${currentFilter === 'dismissed' ? '#fff' : '#2271b1'}; padding: 6px 12px; cursor: pointer; border-radius: 3px;">
-								Dismissed (${dismissedCount})
-							</button>
-							<button class="cleara11y-filter-tab ${currentFilter === 'all' ? 'active' : ''}" data-filter="all" style="border: none; background: ${currentFilter === 'all' ? '#2271b1' : 'transparent'}; color: ${currentFilter === 'all' ? '#fff' : '#2271b1'}; padding: 6px 12px; cursor: pointer; border-radius: 3px;">
-								All (${issues.length})
-							</button>
-						</div>
 						${issuesHtml}
 					</div>
 					<div class="cleara11y-modal-footer">
@@ -1655,133 +1564,6 @@
 					</div>
 				</div>
 			`;
-		},
-
-		/**
-		 * Attach event handlers for issues modal
-		 */
-		attachIssuesModalHandlers(modal) {
-			// Dismiss button handlers
-			const dismissBtns = modal.querySelectorAll('.cleara11y-dismiss-btn');
-			dismissBtns.forEach(btn => {
-				btn.addEventListener('click', (e) => {
-					const issueItem = e.target.closest('.cleara11y-issue-item');
-					const commentForm = issueItem.querySelector('.cleara11y-dismiss-comment-form');
-					commentForm.style.display = 'block';
-					btn.style.display = 'none';
-				});
-			});
-
-			// Cancel dismiss handlers
-			const cancelBtns = modal.querySelectorAll('.cleara11y-cancel-dismiss');
-			cancelBtns.forEach(btn => {
-				btn.addEventListener('click', (e) => {
-					const issueItem = e.target.closest('.cleara11y-issue-item');
-					const commentForm = issueItem.querySelector('.cleara11y-dismiss-comment-form');
-					const dismissBtn = issueItem.querySelector('.cleara11y-dismiss-btn');
-					commentForm.style.display = 'none';
-					dismissBtn.style.display = 'inline-block';
-				});
-			});
-
-			// Confirm dismiss handlers
-			const confirmBtns = modal.querySelectorAll('.cleara11y-confirm-dismiss');
-			confirmBtns.forEach(btn => {
-				btn.addEventListener('click', (e) => {
-					const issueItem = e.target.closest('.cleara11y-issue-item');
-					const issueId = issueItem.dataset.issueId;
-					const comment = issueItem.querySelector('.cleara11y-dismiss-comment').value;
-					this.dismissIssue(parseInt(issueId), comment, modal);
-				});
-			});
-
-			// Undismiss button handlers
-			const undismissBtns = modal.querySelectorAll('.cleara11y-undismiss-btn');
-			undismissBtns.forEach(btn => {
-				btn.addEventListener('click', (e) => {
-					const issueId = e.target.dataset.issueId || e.target.closest('[data-issue-id]').dataset.issueId;
-					this.undismissIssue(parseInt(issueId), modal);
-				});
-			});
-		},
-
-		/**
-		 * Dismiss an issue
-		 */
-		async dismissIssue(issueId, comment, modal) {
-			try {
-				const response = await fetch(API_URL + 'issues/' + issueId + '/dismiss', {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						'X-WP-Nonce': NONCE
-					},
-					body: JSON.stringify({ comment: comment })
-				});
-
-				const data = await response.json();
-
-				if (data.success || response.ok) {
-					// Update the issues data
-					const issueIndex = modal.issuesData.findIndex(i => i.id === issueId);
-					if (issueIndex !== -1) {
-						modal.issuesData[issueIndex].dismissed = true;
-						modal.issuesData[issueIndex].dismissal_comment = comment;
-						modal.issuesData[issueIndex].dismissed_at = new Date().toISOString();
-					}
-
-					// Re-render the modal content
-					const scanItem = { post_title: modal.querySelector('.cleara11y-modal-title').textContent.replace('Issues: ', '') };
-					this.renderIssuesModalContent(modal, scanItem);
-					this.attachIssuesModalHandlers(modal);
-
-					console.log('[ClearA11y Dashboard] Issue dismissed successfully');
-				} else {
-					throw new Error(data.message || 'Failed to dismiss issue');
-				}
-			} catch (error) {
-				console.error('[ClearA11y Dashboard] Error dismissing issue:', error);
-				alert('Error dismissing issue: ' + error.message);
-			}
-		},
-
-		/**
-		 * Undismiss an issue
-		 */
-		async undismissIssue(issueId, modal) {
-			try {
-				const response = await fetch(API_URL + 'issues/' + issueId + '/undismiss', {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-						'X-WP-Nonce': NONCE
-					}
-				});
-
-				const data = await response.json();
-
-				if (data.success || response.ok) {
-					// Update the issues data
-					const issueIndex = modal.issuesData.findIndex(i => i.id === issueId);
-					if (issueIndex !== -1) {
-						modal.issuesData[issueIndex].dismissed = false;
-						modal.issuesData[issueIndex].dismissal_comment = null;
-						modal.issuesData[issueIndex].dismissed_at = null;
-					}
-
-					// Re-render the modal content
-					const scanItem = { post_title: modal.querySelector('.cleara11y-modal-title').textContent.replace('Issues: ', '') };
-					this.renderIssuesModalContent(modal, scanItem);
-					this.attachIssuesModalHandlers(modal);
-
-					console.log('[ClearA11y Dashboard] Issue undismissed successfully');
-				} else {
-					throw new Error(data.message || 'Failed to undismiss issue');
-				}
-			} catch (error) {
-				console.error('[ClearA11y Dashboard] Error undismissing issue:', error);
-				alert('Error undismissing issue: ' + error.message);
-			}
 		},
 
 		/**

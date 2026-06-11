@@ -176,10 +176,6 @@ class REST_Controller {
 						'enum' => ['critical', 'moderate', 'minor'],
 						'description' => 'Filter by severity.',
 					],
-					'status' => [
-						'type' => 'boolean',
-						'description' => 'Filter by dismissed status.',
-					],
 				],
 			]
 		);
@@ -279,42 +275,6 @@ class REST_Controller {
 					'error_message' => [
 						'type' => 'string',
 						'description' => 'Error message',
-					],
-				],
-			]
-		);
-
-		register_rest_route(
-			self::NAMESPACE,
-			'/issues/(?P<id>\d+)/dismiss',
-			[
-				'methods' => 'POST',
-				'callback' => [$this, 'dismiss_issue'],
-				'permission_callback' => [$this, 'manage_options_permission'],
-				'args' => [
-					'id' => [
-						'required' => true,
-						'type' => 'integer',
-					],
-					'comment' => [
-						'type' => 'string',
-						'description' => 'Dismissible comment.',
-					],
-				],
-			]
-		);
-
-		register_rest_route(
-			self::NAMESPACE,
-			'/issues/(?P<id>\d+)/undismiss',
-			[
-				'methods' => 'POST',
-				'callback' => [$this, 'undismiss_issue'],
-				'permission_callback' => [$this, 'manage_options_permission'],
-				'args' => [
-					'id' => [
-						'required' => true,
-						'type' => 'integer',
 					],
 				],
 			]
@@ -486,12 +446,6 @@ class REST_Controller {
 						'enum' => ['critical', 'moderate', 'minor'],
 						'description' => 'Filter by severity.',
 					],
-					'status' => [
-						'type' => 'string',
-						'enum' => ['active', 'dismissed-global', 'all'],
-						'default' => 'active',
-						'description' => 'Filter by global ignore status.',
-					],
 					'search' => [
 						'type' => 'string',
 						'description' => 'Search term for rule_id or message.',
@@ -523,32 +477,6 @@ class REST_Controller {
 						'default' => 20,
 						'minimum' => 1,
 						'maximum' => 100,
-					],
-				],
-			]
-		);
-
-		register_rest_route(
-			self::NAMESPACE,
-			'/issue-types/(?P<rule_id>[a-zA-Z0-9_-]+)/ignore-global',
-			[
-				'methods' => 'POST',
-				'callback' => [$this, 'set_global_ignore'],
-				'permission_callback' => [$this, 'manage_options_permission'],
-				'args' => [
-					'rule_id' => [
-						'required' => true,
-						'type' => 'string',
-						'description' => 'The rule ID to globally ignore.',
-					],
-					'ignored' => [
-						'required' => true,
-						'type' => 'boolean',
-						'description' => 'Whether to ignore or un-ignore.',
-					],
-					'comment' => [
-						'type' => 'string',
-						'description' => 'Optional comment explaining the ignore.',
 					],
 				],
 			]
@@ -942,11 +870,9 @@ class REST_Controller {
 	public function get_scan_issues(\WP_REST_Request $request): \WP_REST_Response {
 		$scan_id = (int) $request->get_param('id');
 		$severity = $request->get_param('severity');
-		$dismissed = $request->get_param('dismissed');
 
 		$args = [
 			'severity' => $severity,
-			'dismissed' => $dismissed,
 		];
 
 		$issues = Issue_Repository::get_by_scan_id($scan_id, $args);
@@ -1078,52 +1004,6 @@ class REST_Controller {
 	}
 
 	/**
-	 * Dismiss an issue.
-	 *
-	 * @param \WP_REST_Request $request REST request object.
-	 * @return \WP_REST_Response
-	 */
-	public function dismiss_issue(\WP_REST_Request $request): \WP_REST_Response {
-		$issue_id = (int) $request->get_param('id');
-		$comment = $request->get_param('comment') ?? '';
-		$user_id = get_current_user_id();
-
-		$result = Issue_Repository::dismiss($issue_id, $user_id, $comment);
-
-		if ($result) {
-			return rest_ensure_response([
-				'message' => 'Issue dismissed successfully.',
-			]);
-		}
-
-		return rest_ensure_response(
-			new \WP_Error('dismiss_failed', 'Failed to dismiss issue.', ['status' => 500])
-		);
-	}
-
-	/**
-	 * Undismiss an issue.
-	 *
-	 * @param \WP_REST_Request $request REST request object.
-	 * @return \WP_REST_Response
-	 */
-	public function undismiss_issue(\WP_REST_Request $request): \WP_REST_Response {
-		$issue_id = (int) $request->get_param('id');
-
-		$result = Issue_Repository::undismiss($issue_id);
-
-		if ($result) {
-			return rest_ensure_response([
-				'message' => 'Issue undismissed successfully.',
-			]);
-		}
-
-		return rest_ensure_response(
-			new \WP_Error('undismiss_failed', 'Failed to undismiss issue.', ['status' => 500])
-		);
-	}
-
-	/**
 	 * Get overview statistics.
 	 *
 	 * @param \WP_REST_Request $request REST request object.
@@ -1145,13 +1025,12 @@ class REST_Controller {
 		];
 
 		if ($latest_scan) {
-			// Calculate actual issue counts from the issues table
-			// This accounts for dismissals that happened after the scan
+			// Calculate actual issue counts from the issues table.
 			$issue_counts = $wpdb->get_results(
 				$wpdb->prepare(
 					"SELECT severity, COUNT(*) as count
 					 FROM `{$issues_table}`
-					 WHERE scan_id = %d AND dismissed = 0 AND dismissed_global = 0
+					 WHERE scan_id = %d
 					 GROUP BY severity",
 					$latest_scan->id
 				),
@@ -1838,7 +1717,7 @@ class REST_Controller {
 		// Calculate score and format results
 		$formatted_pages = [];
 		foreach ($pages as $page) {
-			// Get actual issue counts from issues table (accounts for dismissals)
+			// Get actual issue counts from issues table.
 			$counts = [
 				'total' => 0,
 				'critical' => 0,
@@ -1847,13 +1726,13 @@ class REST_Controller {
 			];
 
 			if ($page->scan_item_id && $page->scan_status === 'completed') {
-				// Count issues from the latest scan_item, excluding dismissed ones
+				// Count issues from the latest scan_item.
 				error_log('ClearA11y Pages List: Querying issues for post_id: ' . $page->post_id . ', scan_item_id: ' . $page->scan_item_id);
 				$issue_counts = $wpdb->get_results(
 					$wpdb->prepare(
 						"SELECT severity, COUNT(*) as count
 						 FROM `{$issues_table}`
-						 WHERE scan_item_id = %d AND dismissed = 0 AND dismissed_global = 0
+						 WHERE scan_item_id = %d
 						 GROUP BY severity",
 						$page->scan_item_id
 					),
@@ -1970,7 +1849,6 @@ class REST_Controller {
 		global $wpdb;
 
 		$severity = $request->get_param('severity');
-		$status = $request->get_param('status') ?? 'active';
 		$search = $request->get_param('search');
 
 		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
@@ -1985,14 +1863,6 @@ class REST_Controller {
 			$where_params[] = $severity;
 		}
 
-		// Filter by status
-		if ('dismissed-global' === $status) {
-			$where[] = 'dismissed_global = 1';
-		} elseif ('active' === $status) {
-			$where[] = 'dismissed = 0 AND dismissed_global = 0';
-		}
-		// 'all' doesn't filter
-
 		// Search
 		if (!empty($search)) {
 			$where[] = '(rule_id LIKE %s OR message LIKE %s)';
@@ -2003,8 +1873,7 @@ class REST_Controller {
 		$where_clause = 'WHERE ' . implode(' AND ', $where);
 
 		// Get issue types grouped by rule
-		$query = $wpdb->prepare(
-			"SELECT
+		$query = "SELECT
 				rule_id,
 				rule_type,
 				severity,
@@ -2012,35 +1881,31 @@ class REST_Controller {
 				help_url,
 				COUNT(*) as issue_count,
 				COUNT(DISTINCT post_id) as page_count,
-				SUM(CASE WHEN dismissed_global = 1 THEN 1 ELSE 0 END) as globally_ignored,
 				MAX(created_at) as last_found
 			FROM `{$issues_table}`
 			{$where_clause}
 			GROUP BY rule_id, rule_type, severity, message
-			ORDER BY FIELD(severity, 'critical', 'moderate', 'minor'), issue_count DESC",
-			$where_params
-		);
+			ORDER BY FIELD(severity, 'critical', 'moderate', 'minor'), issue_count DESC";
+		if (!empty($where_params)) {
+			$query = $wpdb->prepare($query, ...$where_params);
+		}
 
 		$issue_types = $wpdb->get_results($query);
 
 		// Get counts for status tabs
-		$count_query = $wpdb->prepare(
-			"SELECT
-				COUNT(DISTINCT rule_id) as total_types,
-				SUM(CASE WHEN dismissed = 0 AND dismissed_global = 0 THEN 1 ELSE 0 END) as active_issues,
-				SUM(CASE WHEN dismissed_global = 1 THEN 1 ELSE 0 END) as globally_ignored_issues
+		$count_query = "SELECT
+				COUNT(*) as total_issues
 			FROM `{$issues_table}`
-			{$where_clause}",
-			$where_params
-		);
+			{$where_clause}";
+		if (!empty($where_params)) {
+			$count_query = $wpdb->prepare($count_query, ...$where_params);
+		}
 
 		$counts = $wpdb->get_row($count_query, ARRAY_A);
 
 		return rest_ensure_response([
 			'issue_types' => $issue_types,
 			'counts' => [
-				'active' => (int) ($counts['active_issues'] ?? 0),
-				'dismissed-global' => (int) ($counts['globally_ignored_issues'] ?? 0),
 				'all' => (int) ($counts['total_issues'] ?? 0),
 			],
 		]);
@@ -2081,7 +1946,7 @@ class REST_Controller {
 					si.post_title,
 					si.post_url,
 					COUNT(*) as issue_count,
-					SUM(CASE WHEN i.dismissed = 0 AND i.dismissed_global = 0 THEN 1 ELSE 0 END) as active_count
+					COUNT(*) as active_count
 				FROM `{$issues_table}` i
 				INNER JOIN `{$scan_items_table}` si ON i.scan_item_id = si.id
 				WHERE i.rule_id = %s
@@ -2101,69 +1966,6 @@ class REST_Controller {
 			'per_page' => $per_page,
 			'total_pages' => ceil($total / $per_page),
 		]);
-	}
-
-	/**
-	 * Set global ignore status for a rule.
-	 *
-	 * @param \WP_REST_Request $request REST request object.
-	 * @return \WP_REST_Response
-	 */
-	public function set_global_ignore(\WP_REST_Request $request): \WP_REST_Response {
-		global $wpdb;
-
-		$rule_id = $request->get_param('rule_id');
-		$ignored = (bool) $request->get_param('ignored');
-		$comment = $request->get_param('comment') ?? '';
-
-		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
-		$user_id = get_current_user_id();
-
-		if ($ignored) {
-			// Set global ignore
-			$wpdb->query(
-				$wpdb->prepare(
-					"UPDATE `{$issues_table}`
-					SET dismissed_global = 1,
-						dismissed_global_by = %d,
-						dismissed_global_at = NOW(),
-						dismissed_global_comment = %s
-					WHERE rule_id = %s",
-					$user_id,
-					$comment,
-					$rule_id
-				)
-			);
-
-			$affected = $wpdb->rows_affected;
-
-			return rest_ensure_response([
-				'success' => true,
-				'message' => sprintf('Globally ignored %d issues.', $affected),
-				'affected' => $affected,
-			]);
-		} else {
-			// Remove global ignore
-			$wpdb->query(
-				$wpdb->prepare(
-					"UPDATE `{$issues_table}`
-					SET dismissed_global = 0,
-						dismissed_global_by = NULL,
-						dismissed_global_at = NULL,
-						dismissed_global_comment = NULL
-					WHERE rule_id = %s",
-					$rule_id
-				)
-			);
-
-			$affected = $wpdb->rows_affected;
-
-			return rest_ensure_response([
-				'success' => true,
-				'message' => sprintf('Restored %d issues from global ignore.', $affected),
-				'affected' => $affected,
-			]);
-		}
 	}
 
 	/**

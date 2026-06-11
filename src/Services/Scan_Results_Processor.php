@@ -327,7 +327,6 @@ class Scan_Results_Processor {
 				'id' => $issue->id,
 				'selector' => $issue->selector,
 				'html' => $issue->html,
-				'dismissed' => $issue->dismissed,
 			];
 		}
 

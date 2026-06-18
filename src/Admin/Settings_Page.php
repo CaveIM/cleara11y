@@ -139,7 +139,7 @@ class Settings_Page {
 	 * @param string $frequency Scan frequency (daily, weekly, monthly).
 	 */
 	private function schedule_automated_scan(string $frequency): void {
-		// Clear any existing scheduled event
+		// Clear any existing scheduled events first to prevent duplicates
 		wp_clear_scheduled_hook('cleara11y_automated_scan');
 
 		// Map frequency to custom schedule names
@@ -159,10 +159,8 @@ class Settings_Page {
 	 * Unschedule automated scan cron job.
 	 */
 	private function unschedule_automated_scan(): void {
-		$timestamp = wp_next_scheduled('cleara11y_automated_scan');
-		if ($timestamp) {
-			wp_unschedule_event($timestamp, 'cleara11y_automated_scan');
-		}
+		// Clear all instances of the automated scan event
+		wp_clear_scheduled_hook('cleara11y_automated_scan');
 	}
 
 	/**

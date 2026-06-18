@@ -420,6 +420,7 @@ class ClearA11y_Plugin {
 	private function clear_cron_events(): void {
 		wp_clear_scheduled_hook('cleara11y_cleanup_old_scans');
 		wp_clear_scheduled_hook('cleara11y_process_scheduled_scans');
+		wp_clear_scheduled_hook('cleara11y_automated_scan');
 	}
 
 	/**

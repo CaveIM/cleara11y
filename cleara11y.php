@@ -103,6 +103,10 @@ class ClearA11y_Plugin {
 		add_action('cleara11y_process_scan_batch', [$this, 'process_scan_batch']);
 		add_action('cleara11y_process_scheduled_scans', [$this, 'process_scheduled_scans']);
 		add_action('cleara11y_cleanup_old_scans', [$this, 'cleanup_old_scans']);
+		add_action('cleara11y_automated_scan', [$this, 'run_automated_scan']);
+
+		// Custom cron schedules
+		add_filter('cron_schedules', [$this, 'add_custom_cron_schedules']);
 
 		// Admin hooks
 		add_action('admin_init', [$this, 'check_tables_exist']);
@@ -456,6 +460,107 @@ class ClearA11y_Plugin {
 	public function cleanup_old_scans(): void {
 		$retention_days = (int) get_option('cleara11y_results_retention_days', 30);
 		ClearA11y\Database\Scan_Repository::cleanup_old($retention_days);
+	}
+
+	/**
+	 * Add custom cron schedules for automated scanning.
+	 *
+	 * @param array $schedules Existing cron schedules.
+	 * @return array Modified cron schedules with custom intervals.
+	 */
+	public function add_custom_cron_schedules(array $schedules): array {
+		$schedules['cleara11y_daily'] = [
+			'interval' => DAY_IN_SECONDS,
+			'display'  => __('ClearA11y Daily Scan', 'cleara11y'),
+		];
+
+		$schedules['cleara11y_weekly'] = [
+			'interval' => WEEK_IN_SECONDS,
+			'display'  => __('ClearA11y Weekly Scan', 'cleara11y'),
+		];
+
+		$schedules['cleara11y_monthly'] = [
+			'interval' => 30 * DAY_IN_SECONDS,
+			'display'  => __('ClearA11y Monthly Scan', 'cleara11y'),
+		];
+
+		return $schedules;
+	}
+
+	/**
+	 * Run automated accessibility scan.
+	 * This function is triggered by WordPress cron based on the configured schedule.
+	 */
+	public function run_automated_scan(): void {
+		// Check if automated scanning is enabled
+		if (!get_option('cleara11y_automated_enabled', 0)) {
+			error_log('[ClearA11y] Automated scan is disabled, skipping.');
+			return;
+		}
+
+		error_log('[ClearA11y] Starting automated scan...');
+
+		// Get post types to scan
+		$post_types = get_option('cleara11y_scan_post_types', ['page', 'post']);
+
+		// Get all published posts of the specified types
+		$posts = get_posts([
+			'post_type' => $post_types,
+			'post_status' => 'publish',
+			'posts_per_page' => -1,
+			'fields' => 'ids',
+		]);
+
+		if (empty($posts)) {
+			error_log('[ClearA11y] No posts found for automated scan.');
+			return;
+		}
+
+		error_log('[ClearA11y] Found ' . count($posts) . ' posts to scan.');
+
+		// Create a new scan record
+		$scan_id = \ClearA11y\Database\Scan_Repository::create([
+			'scan_type' => 'full_site',
+			'scan_name' => sprintf(__('Automated Scan %s', 'cleara11y'), current_time('mysql')),
+			'status' => 'pending',
+			'total_items' => count($posts),
+		]);
+
+		if (!$scan_id) {
+			error_log('[ClearA11y] Failed to create scan record for automated scan.');
+			return;
+		}
+
+		error_log('[ClearA11y] Created scan record ID: ' . $scan_id);
+
+		// Create scan jobs for each post
+		$created_jobs = 0;
+		foreach ($posts as $post_id) {
+			$url = get_permalink($post_id);
+			if (!$url) {
+				continue;
+			}
+
+			$job_id = \ClearA11y\Database\Job_Repository::create([
+				'site_id' => get_current_blog_id(),
+				'url' => $url,
+				'post_id' => $post_id,
+				'scan_id' => $scan_id,
+				'status' => 'pending',
+				'priority' => 10,
+			]);
+
+			if ($job_id) {
+				$created_jobs++;
+			}
+		}
+
+		error_log('[ClearA11y] Created ' . $created_jobs . ' scan jobs for automated scan.');
+
+		// Update scan status to in_progress
+		\ClearA11y\Database\Scan_Repository::update_status($scan_id, 'in_progress');
+
+		error_log('[ClearA11y] Automated scan setup complete. Scan ID: ' . $scan_id . ', Jobs: ' . $created_jobs);
 	}
 
 	/**

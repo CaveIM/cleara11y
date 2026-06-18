@@ -809,6 +809,9 @@
 						clearInterval(this.statusUpdateInterval);
 						this.statusUpdateInterval = null;
 						console.log('[ClearA11y Dashboard] ✅ Scan complete - stopped polling');
+
+						// ONE-TIME: Refresh Recent Scans when scan completes
+						this.loadRecentScans();
 					}
 				}
 
@@ -1286,6 +1289,89 @@
 		 */
 		getReportUrl(postId) {
 			return `${window.location.origin}/wp-admin/admin.php?page=cleara11y-page-report&post_id=${postId}`;
+		},
+
+		/**
+		 * Load Recent Scans via AJAX and update the DOM
+		 */
+		async loadRecentScans() {
+			try {
+				const response = await fetch(API_URL + 'scans/recent?limit=10', {
+					headers: { 'X-WP-Nonce': NONCE }
+				});
+				const data = await response.json();
+
+				this.renderRecentScans(data.scans);
+				console.log('[ClearA11y Dashboard] Recent Scans updated:', data.scans.length, 'scans');
+			} catch (error) {
+				console.error('[ClearA11y Dashboard] Error loading recent scans:', error);
+			}
+		},
+
+		/**
+		 * Render Recent Scans table
+		 */
+		renderRecentScans(scans) {
+			const container = document.querySelector('.cleara11y-recent-scans tbody');
+			if (!container) {
+				console.warn('[ClearA11y Dashboard] Recent Scans container not found');
+				return;
+			}
+
+			if (!scans || scans.length === 0) {
+				container.innerHTML = `
+					<tr>
+						<td colspan="5">
+							<p class="cleara11y-empty-state">No scans yet. Start by scanning a page.</p>
+						</td>
+					</tr>
+				`;
+				return;
+			}
+
+			container.innerHTML = scans.map(scan => `
+				<tr>
+					<td>${this.capitalize(scan.scan_type)}</td>
+					<td>
+						<span class="cleara11y-status-badge cleara11y-status-${scan.status}">
+							${this.capitalize(scan.status.replace('_', ' '))}
+						</span>
+					</td>
+					<td>
+						${scan.total_issues > 0
+							? `<span class="cleara11y-issue-count">${scan.total_issues}</span>`
+							: `<span class="cleara11y-no-issues">None</span>`
+						}
+					</td>
+					<td>${this.formatDate(scan.created_at)}</td>
+					<td>
+						<a class="button button-small" href="${scan.detail_url}">
+							View Details
+						</a>
+					</td>
+				</tr>
+			`).join('');
+		},
+
+		/**
+		 * Capitalize first letter of string
+		 */
+		capitalize(str) {
+			if (!str) return '';
+			return str.charAt(0).toUpperCase() + str.slice(1);
+		},
+
+		/**
+		 * Format date for display
+		 */
+		formatDate(dateStr) {
+			if (!dateStr) return '';
+			const date = new Date(dateStr);
+			const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+			const month = months[date.getMonth()];
+			const day = date.getDate();
+			const year = date.getFullYear();
+			return `${month} ${day}, ${year}`;
 		}
 	};
 

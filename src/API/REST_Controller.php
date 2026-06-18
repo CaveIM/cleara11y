@@ -290,6 +290,24 @@ class REST_Controller {
 			]
 		);
 
+		// Recent scans route
+		register_rest_route(
+			self::NAMESPACE,
+			'/scans/recent',
+			[
+				'methods' => 'GET',
+				'callback' => [$this, 'get_recent_scans'],
+				'permission_callback' => [$this, 'manage_options_permission'],
+				'args' => [
+					'limit' => [
+						'type' => 'integer',
+						'default' => 10,
+						'description' => 'Number of recent scans to return.',
+					],
+				],
+			]
+		);
+
 		// Queue routes
 		register_rest_route(
 			self::NAMESPACE,
@@ -2378,5 +2396,38 @@ class REST_Controller {
 		}
 
 		return rest_ensure_response($stats);
+	}
+
+	/**
+	 * Get recent scans for the dashboard.
+	 *
+	 * @param \WP_REST_Request $request REST request object.
+	 * @return \WP_REST_Response
+	 */
+	public function get_recent_scans(\WP_REST_Request $request): \WP_REST_Response {
+		$limit = $request->get_param('limit') ?? 10;
+
+		$scans = Scan_Repository::get_all([
+			'limit' => $limit,
+			'orderby' => 'created_at',
+			'order' => 'DESC',
+		]);
+
+		// Format scans for JS consumption
+		$data = array_map(function($scan) {
+			// Get detail URL using Scans_Page method
+			$detail_url = admin_url('admin.php?page=cleara11y-scan-details&scan_id=' . $scan->id);
+
+			return [
+				'id' => $scan->id,
+				'scan_type' => $scan->scan_type,
+				'status' => $scan->status,
+				'total_issues' => (int) $scan->total_issues,
+				'created_at' => $scan->created_at,
+				'detail_url' => $detail_url,
+			];
+		}, $scans);
+
+		return rest_ensure_response(['scans' => $data]);
 	}
 }

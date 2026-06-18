@@ -145,6 +145,8 @@
 				this.updateQueueStatus();
 				this.updateSiteHealthStats();
 			}, 5000);
+
+			console.log('[ClearA11y Dashboard] Status update interval started (5s polling)');
 		},
 
 		/**
@@ -800,6 +802,13 @@
 					const existingIndicator = document.getElementById('cleara11y-queue-indicator');
 					if (existingIndicator) {
 						existingIndicator.remove();
+					}
+
+					// Stop polling if scan is complete
+					if (this.statusUpdateInterval) {
+						clearInterval(this.statusUpdateInterval);
+						this.statusUpdateInterval = null;
+						console.log('[ClearA11y Dashboard] ✅ Scan complete - stopped polling');
 					}
 				}
 

@@ -493,13 +493,37 @@ class ClearA11y_Plugin {
 	 * This function is triggered by WordPress cron based on the configured schedule.
 	 */
 	public function run_automated_scan(): void {
+		global $wpdb;
+
 		// Check if automated scanning is enabled
 		if (!get_option('cleara11y_automated_enabled', 0)) {
 			error_log('[ClearA11y] Automated scan is disabled, skipping.');
 			return;
 		}
 
-		error_log('[ClearA11y] Starting automated scan...');
+		error_log('[ClearA11y] Starting automated scan cron callback...');
+
+		// Check for active scans to prevent conflicts
+		$scans_table = \ClearA11y\Database\Schema::get_table_name('scans');
+		$active_scan = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT id, scan_name, status FROM `{$scans_table}`
+				WHERE status IN ('pending', 'in_progress')
+				ORDER BY id DESC
+				LIMIT 1"
+			)
+		);
+
+		if ($active_scan) {
+			error_log(sprintf('[ClearA11y] Automated scan skipped - active scan found: %d (%s - %s)',
+				$active_scan->id,
+				$active_scan->scan_name,
+				$active_scan->status
+			));
+			return;
+		}
+
+		error_log('[ClearA11y] No active scans found, proceeding with automated scan...');
 
 		// Get post types to scan
 		$post_types = get_option('cleara11y_scan_post_types', ['page', 'post']);
@@ -513,55 +537,94 @@ class ClearA11y_Plugin {
 		]);
 
 		if (empty($posts)) {
-			error_log('[ClearA11y] No posts found for automated scan.');
+			error_log('[ClearA11y] Automated scan skipped - no posts found to scan.');
 			return;
 		}
 
-		error_log('[ClearA11y] Found ' . count($posts) . ' posts to scan.');
+		error_log(sprintf('[ClearA11y] Found %d posts for automated scan.', count($posts)));
 
-		// Create a new scan record
-		$scan_id = \ClearA11y\Database\Scan_Repository::create([
-			'scan_type' => 'full_site',
-			'scan_name' => sprintf(__('Automated Scan %s', 'cleara11y'), current_time('mysql')),
-			'status' => 'pending',
-			'total_items' => count($posts),
-		]);
+		// Create a new automated scan record using existing repository
+		$scan = new \ClearA11y\Models\Scan();
+		$scan->scan_type = 'scheduled'; // Distinguish from manual scans
+		$scan->scan_name = sprintf(__('Automated Scan %s', 'cleara11y'), current_time('mysql'));
+		$scan->status = 'pending';
+		$scan->total_items = count($posts);
+		$scan->started_at = null; // Will be set when jobs are created
+		$scan->created_at = current_time('mysql');
+
+		$scan_id = \ClearA11y\Database\Scan_Repository::insert($scan);
 
 		if (!$scan_id) {
-			error_log('[ClearA11y] Failed to create scan record for automated scan.');
+			error_log('[ClearA11y] Automated scan failed - could not create scan record.');
 			return;
 		}
 
-		error_log('[ClearA11y] Created scan record ID: ' . $scan_id);
+		error_log(sprintf('[ClearA11y] Created automated scan record ID: %d', $scan_id));
 
-		// Create scan jobs for each post
+		// Create scan jobs for each post using existing pattern
+		$jobs_table = \ClearA11y\Database\Schema::get_table_name('scan_jobs');
 		$created_jobs = 0;
+
 		foreach ($posts as $post_id) {
 			$url = get_permalink($post_id);
 			if (!$url) {
 				continue;
 			}
 
-			$job_id = \ClearA11y\Database\Job_Repository::create([
-				'site_id' => get_current_blog_id(),
-				'url' => $url,
-				'post_id' => $post_id,
-				'scan_id' => $scan_id,
-				'status' => 'pending',
-				'priority' => 10,
-			]);
+			// Check if job already exists for this post/scan
+			$existing = $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT id FROM `{$jobs_table}` WHERE post_id = %d AND scan_id = %d",
+					$post_id,
+					$scan_id
+				)
+			);
 
-			if ($job_id) {
+			if ($existing) {
+				continue; // Skip existing jobs
+			}
+
+			// Insert job using existing pattern
+			$result = $wpdb->insert(
+				$jobs_table,
+				[
+					'site_id' => get_current_blog_id(),
+					'url' => $url,
+					'post_id' => $post_id,
+					'scan_id' => $scan_id,
+					'status' => 'pending',
+					'priority' => 10, // Lower priority for automated scans
+					'created_at' => current_time('mysql'),
+				],
+				['%d', '%s', '%d', '%d', '%s', '%d', '%s']
+			);
+
+			if ($result) {
 				$created_jobs++;
 			}
 		}
 
-		error_log('[ClearA11y] Created ' . $created_jobs . ' scan jobs for automated scan.');
+		if ($created_jobs === 0) {
+			error_log('[ClearA11y] Automated scan failed - no jobs created.');
+			return;
+		}
 
-		// Update scan status to in_progress
-		\ClearA11y\Database\Scan_Repository::update_status($scan_id, 'in_progress');
+		error_log(sprintf('[ClearA11y] Created %d jobs for automated scan %d', $created_jobs, $scan_id));
 
-		error_log('[ClearA11y] Automated scan setup complete. Scan ID: ' . $scan_id . ', Jobs: ' . $created_jobs);
+		// Update scan status to in_progress using existing repository
+		$scan->id = $scan_id;
+		$scan->status = 'in_progress';
+		$scan->started_at = current_time('mysql');
+
+		$update_result = \ClearA11y\Database\Scan_Repository::update($scan);
+
+		if ($update_result) {
+			error_log(sprintf('[ClearA11y] Automated scan %d started successfully with %d jobs',
+				$scan_id, $created_jobs
+			));
+		} else {
+			error_log('[ClearA11y] Automated scan started but status update failed.');
+		}
 	}
 
 	/**

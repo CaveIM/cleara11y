@@ -783,8 +783,8 @@
 						// Show orchestrator status
 						const totalJobs = jobsData.pending + jobsData.active + jobsData.completed;
 						const completed = jobsData.completed;
-						// text.textContent = `Parallel Scanning: ${completed}/${totalJobs} pages complete (${orchestratorStatus.activeJobs} workers active)`;
-						text.textContent = `Parallel Scanning: ${completed}/${totalJobs} pages complete`;
+						// text.textContent = `Scanning site: ${completed} of ${totalJobs} pages complete (${orchestratorStatus.activeJobs} workers active)`;
+						text.textContent = `Scanning site: ${completed} of ${totalJobs} pages complete`;
 					} else if (hasActiveJobs) {
 						// Jobs exist but orchestrator not running - show status
 						const totalJobs = jobsData.pending + jobsData.active + jobsData.completed;

@@ -10,6 +10,9 @@
 
 namespace ClearA11y\Admin;
 
+use ClearA11y\Database\Schedule_Repository;
+use ClearA11y\Models\Schedule;
+
 /**
  * Dashboard Page Class
  */
@@ -110,6 +113,9 @@ class Dashboard_Page {
 						</a>
 					</div>
 				</div>
+
+					<?php self::render_automated_scan_status_card(); ?>
+
 
 				<!-- Recent Scans -->
 				<div class="cleara11y-card cleara11y-recent-scans">
@@ -289,5 +295,120 @@ class Dashboard_Page {
 			'orderby' => 'created_at',
 			'order' => 'DESC',
 		]);
+	}
+
+	/**
+	 * Render the automated scan status card.
+	 */
+	private static function render_automated_scan_status_card(): void {
+		// Get enabled schedules from the database
+		$enabled_schedules = Schedule_Repository::get_all(['enabled' => true]);
+		$schedules_count = count($enabled_schedules);
+
+		// Get the next scheduled run time from WP-Cron
+		$next_cron_run = wp_next_scheduled('cleara11y_process_scheduled_scans');
+
+		// Determine if automated scanning is enabled
+		$is_enabled = $schedules_count > 0;
+
+		// Group schedules by frequency for display
+		$schedules_by_frequency = [];
+		$frequency_labels = [
+			'hourly' => __('Hourly', 'cleara11y'),
+			'daily' => __('Daily', 'cleara11y'),
+			'weekly' => __('Weekly', 'cleara11y'),
+			'monthly' => __('Monthly', 'cleara11y'),
+		];
+
+		foreach ($enabled_schedules as $schedule) {
+			$frequency = $schedule->frequency;
+			if (!isset($schedules_by_frequency[$frequency])) {
+				$schedules_by_frequency[$frequency] = [];
+			}
+			$schedules_by_frequency[$frequency][] = $schedule;
+		}
+		?>
+
+		<!-- Automated Scanning Status -->
+		<div class="cleara11y-card cleara11y-automated-scan-status">
+			<h2><?php esc_html_e('Automated Scanning Status', 'cleara11y'); ?></h2>
+
+			<?php if ($is_enabled) : ?>
+				<div class="cleara11y-status-enabled">
+					<span class="dashicons dashicons-yes-alt"></span>
+					<strong><?php esc_html_e('Status: Enabled', 'cleara11y'); ?></strong>
+				</div>
+
+				<div class="cleara11y-schedule-details">
+					<p>
+						<?php
+						printf(
+							/* translators: %d: number of active schedules */
+							esc_html__('Active Schedules: %d', 'cleara11y'),
+							esc_html($schedules_count)
+						);
+						?>
+					</p>
+
+					<?php if (!empty($schedules_by_frequency)) : ?>
+						<ul class="cleara11y-schedule-list">
+							<?php foreach ($schedules_by_frequency as $frequency => $schedules) : ?>
+								<li>
+									<?php
+									$label = $frequency_labels[$frequency] ?? ucfirst($frequency);
+									printf(
+										/* translators: 1: frequency label, 2: comma-separated list of schedule names */
+										esc_html__('%1$s: %2$s', 'cleara11y'),
+										esc_html($label),
+										esc_html(implode(', ', wp_list_pluck($schedules, 'schedule_name')))
+									);
+									?>
+								</li>
+							<?php endforeach; ?>
+						</ul>
+					<?php endif; ?>
+
+					<?php if ($next_cron_run) : ?>
+						<p class="cleara11y-next-run">
+							<?php
+							printf(
+								/* translators: %s: next run date and time */
+								esc_html__('Next Scheduled Run: %s', 'cleara11y'),
+								esc_html(date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $next_cron_run))
+							);
+							?>
+						</p>
+					<?php else : ?>
+						<p class="cleara11y-cron-warning">
+							<span class="dashicons dashicons-warning"></span>
+							<?php esc_html_e('Not scheduled - WP-Cron may not be running properly.', 'cleara11y'); ?>
+						</p>
+					<?php endif; ?>
+				</div>
+
+				<p class="cleara11y-cron-note">
+					<small>
+						<?php esc_html_e('Note: WP-Cron requires site traffic to trigger scheduled tasks.', 'cleara11y'); ?>
+					</small>
+				</p>
+
+			<?php else : ?>
+				<div class="cleara11y-status-disabled">
+					<span class="dashicons dashicons-no-alt"></span>
+					<strong><?php esc_html_e('Status: Disabled', 'cleara11y'); ?></strong>
+				</div>
+
+				<p class="cleara11y-empty-state">
+					<?php esc_html_e('No automated scans are currently configured.', 'cleara11y'); ?>
+				</p>
+
+				<p>
+					<a href="<?php echo esc_url(admin_url('admin.php?page=cleara11y-settings')); ?>" class="button button-secondary">
+						<?php esc_html_e('Configure Automated Scanning', 'cleara11y'); ?>
+					</a>
+				</p>
+			<?php endif; ?>
+		</div>
+		<?php
 	}
 }

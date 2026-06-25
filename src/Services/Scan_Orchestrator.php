@@ -96,61 +96,6 @@ class Scan_Orchestrator {
 	}
 
 	/**
-	 * Start a scheduled scan.
-	 *
-	 * @param string $schedule_name Schedule name.
-	 * @param array  $post_types    Post types to scan.
-	 * @return int|false Scan ID or false on failure.
-	 */
-	public static function start_scheduled_scan(string $schedule_name, array $post_types = ['page', 'post']): int|false {
-		// Check if there's already an active scan
-		if (self::has_active_scan()) {
-
-			return false;
-		}
-
-		$post_ids = self::collect_post_ids($post_types);
-
-		if (empty($post_ids)) {
-			return false;
-		}
-
-		// Create scan record
-		$scan = new Scan();
-		$scan->scan_type = 'scheduled';
-		$scan->scan_name = 'Scheduled Scan - ' . $schedule_name;
-		$scan->status = 'pending';
-		$scan->total_items = count($post_ids);
-		$scan->scanned_items = 0;
-		$scan->created_at = \current_time('mysql');
-
-		$scan_id = Scan_Repository::insert($scan);
-
-		if (!$scan_id) {
-			return false;
-		}
-
-		// Create scan items
-		Scan_Item_Repository::create_from_posts($scan_id, $post_ids);
-
-		// Create jobs for iframe-based scanner
-		$jobs_created = self::create_jobs_for_scan($scan_id);
-
-
-		// Update schedule with scan ID
-		$schedule = \ClearA11y\Database\Schedule_Repository::get_by_name($schedule_name);
-		if ($schedule) {
-			$schedule->last_scan_id = $scan_id;
-			\ClearA11y\Database\Schedule_Repository::update($schedule);
-		}
-
-		// Start processing (in background)
-		wp_schedule_single_event(time() + 10, 'cleara11y_process_scan_batch', [$scan_id]);
-
-		return $scan_id;
-	}
-
-	/**
 	 * Process a scan (main entry point).
 	 *
 	 * @param int $scan_id    Scan ID.

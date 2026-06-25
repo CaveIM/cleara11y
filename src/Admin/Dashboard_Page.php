@@ -10,9 +10,6 @@
 
 namespace ClearA11y\Admin;
 
-use ClearA11y\Database\Schedule_Repository;
-use ClearA11y\Models\Schedule;
-
 /**
  * Dashboard Page Class
  */
@@ -301,32 +298,26 @@ class Dashboard_Page {
 	 * Render the automated scan status card.
 	 */
 	private static function render_automated_scan_status_card(): void {
-		// Get enabled schedules from the database
-		$enabled_schedules = Schedule_Repository::get_all(['enabled' => true]);
-		$schedules_count = count($enabled_schedules);
+		// Get automated scan settings from options (Legacy System)
+		$automated_enabled = get_option('cleara11y_automated_enabled', 0);
+		$automated_frequency = get_option('cleara11y_automated_frequency', 'weekly');
 
 		// Get the next scheduled run time from WP-Cron
-		$next_cron_run = wp_next_scheduled('cleara11y_process_scheduled_scans');
+		$next_cron_run = wp_next_scheduled('cleara11y_automated_scan');
 
 		// Determine if automated scanning is enabled
-		$is_enabled = $schedules_count > 0;
+		$is_enabled = $automated_enabled;
 
-		// Group schedules by frequency for display
-		$schedules_by_frequency = [];
+		// Map frequency to display label
 		$frequency_labels = [
-			'hourly' => __('Hourly', 'cleara11y'),
 			'daily' => __('Daily', 'cleara11y'),
 			'weekly' => __('Weekly', 'cleara11y'),
 			'monthly' => __('Monthly', 'cleara11y'),
-		];
+			'5min' => __('Every 5 Minutes (Testing)', 'cleara11y'),
+			'10min' => __('Every 10 Minutes (Testing)', 'cleara11y'),
 
-		foreach ($enabled_schedules as $schedule) {
-			$frequency = $schedule->frequency;
-			if (!isset($schedules_by_frequency[$frequency])) {
-				$schedules_by_frequency[$frequency] = [];
-			}
-			$schedules_by_frequency[$frequency][] = $schedule;
-		}
+		];
+		$frequency_label = $frequency_labels[$automated_frequency] ?? ucfirst($automated_frequency);
 		?>
 
 		<!-- Automated Scanning Status -->
@@ -340,33 +331,17 @@ class Dashboard_Page {
 				</div>
 
 				<div class="cleara11y-schedule-details">
-					<p>
-						<?php
-						printf(
-							/* translators: %d: number of active schedules */
-							esc_html__('Active Schedules: %d', 'cleara11y'),
-							esc_html($schedules_count)
-						);
-						?>
-					</p>
-
-					<?php if (!empty($schedules_by_frequency)) : ?>
-						<ul class="cleara11y-schedule-list">
-							<?php foreach ($schedules_by_frequency as $frequency => $schedules) : ?>
-								<li>
-									<?php
-									$label = $frequency_labels[$frequency] ?? ucfirst($frequency);
-									printf(
-										/* translators: 1: frequency label, 2: comma-separated list of schedule names */
-										esc_html__('%1$s: %2$s', 'cleara11y'),
-										esc_html($label),
-										esc_html(implode(', ', wp_list_pluck($schedules, 'schedule_name')))
-									);
-									?>
-								</li>
-							<?php endforeach; ?>
-						</ul>
-					<?php endif; ?>
+					<ul class="cleara11y-schedule-list">
+						<li>
+							<?php
+							printf(
+								/* translators: %s: frequency label */
+								esc_html__('Frequency: %s', 'cleara11y'),
+								esc_html($frequency_label)
+							);
+							?>
+						</li>
+					</ul>
 
 					<?php if ($next_cron_run) : ?>
 						<p class="cleara11y-next-run">

@@ -17,7 +17,7 @@ require_once ABSPATH . 'wp-admin/includes/plugin.php';
 
 // Clear scheduled cron events
 wp_clear_scheduled_hook('cleara11y_cleanup_old_scans');
-wp_clear_scheduled_hook('cleara11y_process_scheduled_scans');
+wp_clear_scheduled_hook('cleara11y_automated_scan');
 
 // Drop all custom database tables
 ClearA11y\Database\Schema::drop_tables();
@@ -32,6 +32,8 @@ $options = [
 	'cleara11y_scan_token_expiry',
 	'cleara11y_batch_size',
 	'cleara11y_db_version',
+	'cleara11y_automated_enabled',
+	'cleara11y_automated_frequency',
 ];
 
 foreach ($options as $option) {

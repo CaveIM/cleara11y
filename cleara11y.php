@@ -101,8 +101,6 @@ class ClearA11y_Plugin {
 
 		// WP Cron hooks for background scanning
 		add_action('cleara11y_process_scan_batch', [$this, 'process_scan_batch']);
-		add_action('cleara11y_process_scheduled_scans', [$this, 'process_scheduled_scans']);
-		add_action('cleara11y_cleanup_old_scans', [$this, 'cleanup_old_scans']);
 		add_action('cleara11y_automated_scan', [$this, 'run_automated_scan']);
 
 		// Custom cron schedules
@@ -408,18 +406,10 @@ class ClearA11y_Plugin {
 		if (! wp_next_scheduled('cleara11y_cleanup_old_scans')) {
 			wp_schedule_event(time(), 'daily', 'cleara11y_cleanup_old_scans');
 		}
-
-		if (! wp_next_scheduled('cleara11y_process_scheduled_scans')) {
-			wp_schedule_event(time(), 'hourly', 'cleara11y_process_scheduled_scans');
 		}
-	}
 
-	/**
-	 * Clear scheduled WP Cron events.
-	 */
 	private function clear_cron_events(): void {
 		wp_clear_scheduled_hook('cleara11y_cleanup_old_scans');
-		wp_clear_scheduled_hook('cleara11y_process_scheduled_scans');
 		wp_clear_scheduled_hook('cleara11y_automated_scan');
 	}
 
@@ -433,28 +423,6 @@ class ClearA11y_Plugin {
 	}
 
 	/**
-	 * Process scheduled scans that are due (WP Cron callback).
-	 */
-	public function process_scheduled_scans(): void {
-		$due_schedules = ClearA11y\Database\Schedule_Repository::get_due();
-
-		foreach ($due_schedules as $schedule) {
-			if ($schedule->enabled) {
-				$post_types = $schedule->get_post_types();
-				ClearA11y\Services\Scan_Orchestrator::start_scheduled_scan(
-					$schedule->schedule_name,
-					$post_types
-				);
-
-				// Update schedule with next run time
-				ClearA11y\Database\Schedule_Repository::update_after_run(
-					$schedule->id,
-					$schedule->last_scan_id
-				);
-			}
-		}
-	}
-
 	/**
 	 * Clean up old scan data (WP Cron callback).
 	 */
@@ -484,6 +452,17 @@ class ClearA11y_Plugin {
 			'interval' => 30 * DAY_IN_SECONDS,
 			'display'  => __('ClearA11y Monthly Scan', 'cleara11y'),
 		];
+
+			$schedules['cleara11y_5min'] = [
+				'interval' => 5 * MINUTE_IN_SECONDS,
+				'display'  => __('ClearA11y Every 5 Minutes (Testing)', 'cleara11y'),
+			];
+
+			$schedules['cleara11y_10min'] = [
+				'interval' => 10 * MINUTE_IN_SECONDS,
+				'display'  => __('ClearA11y Every 10 Minutes (Testing)', 'cleara11y'),
+			];
+
 
 		return $schedules;
 	}
@@ -561,15 +540,41 @@ class ClearA11y_Plugin {
 
 		error_log(sprintf('[ClearA11y] Created automated scan record ID: %d', $scan_id));
 
-		// Create scan jobs for each post using existing pattern
+		// Create scan items and jobs for each post
 		$jobs_table = \ClearA11y\Database\Schema::get_table_name('scan_jobs');
 		$created_jobs = 0;
+		$created_items = 0;
 
 		foreach ($posts as $post_id) {
 			$url = get_permalink($post_id);
 			if (!$url) {
 				continue;
 			}
+
+			$post = get_post($post_id);
+			if (!$post) {
+				continue;
+			}
+
+			// Create scan item first (required for results processing)
+			$scan_item = new \ClearA11y\Models\Scan_Item();
+			$scan_item->scan_id = $scan_id;
+			$scan_item->post_id = $post_id;
+			$scan_item->post_type = $post->post_type;
+			$scan_item->post_title = $post->post_title;
+			$scan_item->post_url = $url;
+			$scan_item->status = 'pending';
+			$scan_item->scan_method = 'client';
+			$scan_item->created_at = current_time('mysql');
+
+			$scan_item_id = \ClearA11y\Database\Scan_Item_Repository::insert($scan_item);
+
+			if (!$scan_item_id) {
+				error_log(sprintf('[ClearA11y] Failed to create scan item for post %d', $post_id));
+				continue;
+			}
+
+			$created_items++;
 
 			// Check if job already exists for this post/scan
 			$existing = $wpdb->get_var(
@@ -604,12 +609,17 @@ class ClearA11y_Plugin {
 			}
 		}
 
+		if ($created_items === 0) {
+			error_log('[ClearA11y] Automated scan failed - no scan items created.');
+			return;
+		}
+
 		if ($created_jobs === 0) {
 			error_log('[ClearA11y] Automated scan failed - no jobs created.');
 			return;
 		}
 
-		error_log(sprintf('[ClearA11y] Created %d jobs for automated scan %d', $created_jobs, $scan_id));
+		error_log(sprintf('[ClearA11y] Created %d scan items and %d jobs for automated scan %d', $created_items, $created_jobs, $scan_id));
 
 		// Update scan status to in_progress using existing repository
 		$scan->id = $scan_id;

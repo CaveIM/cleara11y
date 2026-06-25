@@ -159,24 +159,6 @@ class Schema {
 			KEY `created_at` (`created_at`)
 		) $charset_collate;";
 
-		// 4. Schedules table - Scheduled scan configurations
-		$queries[] = "CREATE TABLE IF NOT EXISTS `{$prefix}schedules` (
-			`id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-			`schedule_name` varchar(100) NOT NULL,
-			`frequency` varchar(20) NOT NULL DEFAULT 'weekly',
-			`schedule_config` text DEFAULT NULL,
-			`enabled` tinyint(1) NOT NULL DEFAULT 1,
-			`last_scan_id` bigint(20) UNSIGNED DEFAULT NULL,
-			`last_run` datetime DEFAULT NULL,
-			`next_run` datetime DEFAULT NULL,
-			`created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			`updated_at` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
-			PRIMARY KEY (`id`),
-			KEY `schedule_name` (`schedule_name`),
-			KEY `frequency` (`frequency`),
-			KEY `enabled` (`enabled`),
-			KEY `next_run` (`next_run`)
-		) $charset_collate;";
 
 		// 5. Scan Jobs table - Job queue with leasing for parallel scanning
 		$queries[] = "CREATE TABLE IF NOT EXISTS `{$prefix}scan_jobs` (
@@ -229,7 +211,6 @@ class Schema {
 			"{$prefix}scans",
 			"{$prefix}scan_items",
 			"{$prefix}issues",
-			"{$prefix}schedules",
 			"{$prefix}scan_jobs",
 		];
 
@@ -265,7 +246,6 @@ class Schema {
 			"{$prefix}scans",
 			"{$prefix}scan_items",
 			"{$prefix}issues",
-			"{$prefix}schedules",
 			"{$prefix}scan_jobs",
 		];
 

@@ -108,7 +108,7 @@ class Settings_Page {
 		$frequency = isset($_POST['cleara11y_automated_frequency']) ? sanitize_text_field(wp_unslash($_POST['cleara11y_automated_frequency'])) : 'weekly';
 
 		// Validate frequency
-		$valid_frequencies = ['daily', 'weekly', 'monthly'];
+		$valid_frequencies = ['5min', '10min', 'daily', 'weekly', 'monthly'];
 		if (!in_array($frequency, $valid_frequencies, true)) {
 			$frequency = 'weekly'; // Default to weekly if invalid
 		}
@@ -145,6 +145,9 @@ class Settings_Page {
 		// Map frequency to custom schedule names
 		$schedule_map = [
 			'daily' => 'cleara11y_daily',
+			'5min' => 'cleara11y_5min',
+			'10min' => 'cleara11y_10min',
+
 			'weekly' => 'cleara11y_weekly',
 			'monthly' => 'cleara11y_monthly',
 		];
@@ -174,14 +177,12 @@ class Settings_Page {
 		$scans_table = \ClearA11y\Database\Schema::get_table_name('scans');
 		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
 		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
-		$schedules_table = \ClearA11y\Database\Schema::get_table_name('schedules');
 		$scan_jobs_table = \ClearA11y\Database\Schema::get_table_name('scan_jobs');
 
 		return [
 			'scans' => (int) $wpdb->get_var("SELECT COUNT(*) FROM `{$scans_table}`"),
 			'scan_items' => (int) $wpdb->get_var("SELECT COUNT(*) FROM `{$scan_items_table}`"),
 			'issues' => (int) $wpdb->get_var("SELECT COUNT(*) FROM `{$issues_table}`"),
-			'schedules' => (int) $wpdb->get_var("SELECT COUNT(*) FROM `{$schedules_table}`"),
 			'scan_jobs' => (int) $wpdb->get_var("SELECT COUNT(*) FROM `{$scan_jobs_table}`"),
 		];
 	}
@@ -193,7 +194,7 @@ class Settings_Page {
 		$instance = self::get_instance();
 		$stats = $instance->get_database_stats();
 
-		$total_records = $stats['scans'] + $stats['scan_items'] + $stats['issues'] + $stats['schedules'] + $stats['scan_jobs'];
+		$total_records = $stats['scans'] + $stats['scan_items'] + $stats['issues']  + $stats['scan_jobs'];
 		?>
 		<div class="wrap cleara11y-settings-wrap">
 			<h1><?php esc_html_e('ClearA11y Settings', 'cleara11y'); ?></h1>
@@ -234,10 +235,6 @@ class Settings_Page {
 								<tr>
 									<td><code><?php echo esc_html(\ClearA11y\Database\Schema::get_table_name('issues')); ?></code></td>
 									<td><?php echo esc_html(number_format($stats['issues'])); ?></td>
-								</tr>
-								<tr>
-									<td><code><?php echo esc_html(\ClearA11y\Database\Schema::get_table_name('schedules')); ?></code></td>
-									<td><?php echo esc_html(number_format($stats['schedules'])); ?></td>
 								</tr>
 								<tr>
 									<td><code><?php echo esc_html(\ClearA11y\Database\Schema::get_table_name('scan_jobs')); ?></code></td>
@@ -328,6 +325,15 @@ class Settings_Page {
 								<td>
 									<select name="cleara11y_automated_frequency"
 										id="cleara11y_automated_frequency">
+											<option value="5min" <?php selected(get_option('cleara11y_automated_frequency', 'weekly'), '5min'); ?>>
+												<?php esc_html_e('Every 5 Minutes (Testing)', 'cleara11y'); ?>
+											</option>
+
+											<option value="10min" <?php selected(get_option('cleara11y_automated_frequency', 'weekly'), '10min'); ?>>
+												<?php esc_html_e('Every 10 Minutes (Testing)', 'cleara11y'); ?>
+											</option>
+
+
 										<option value="daily" <?php selected(get_option('cleara11y_automated_frequency', 'weekly'), 'daily'); ?>>
 											<?php esc_html_e('Daily', 'cleara11y'); ?>
 										</option>

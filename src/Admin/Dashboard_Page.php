@@ -111,7 +111,6 @@ class Dashboard_Page {
 					</div>
 				</div>
 
-					<?php self::render_automated_scan_status_card(); ?>
 
 
 				<!-- Recent Scans -->
@@ -181,6 +180,8 @@ class Dashboard_Page {
 					</div>
 				</div>
 
+
+				<?php self::render_automated_scan_status_card(); ?>
 			</div>
 		</div>
 		<?php

@@ -128,6 +128,17 @@
 	}
 }
 
+/* Automated Scan Status */
+.cleara11y-automated-scan-status {
+	grid-column: span 12;
+}
+
+@media (min-width: 1200px) {
+	.cleara11y-automated-scan-status {
+		grid-column: span 8;
+	}
+}
+
 .cleara11y-status-badge {
 	display: inline-block;
 	padding: 4px 8px;

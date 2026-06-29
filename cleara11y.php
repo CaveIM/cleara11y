@@ -102,6 +102,7 @@ class ClearA11y_Plugin {
 		// WP Cron hooks for background scanning
 		add_action('cleara11y_process_scan_batch', [$this, 'process_scan_batch']);
 		add_action('cleara11y_automated_scan', [$this, 'run_automated_scan']);
+		add_action('cleara11y_cleanup_old_scans', [$this, 'cleanup_old_scans']);
 
 		// Custom cron schedules
 		add_filter('cron_schedules', [$this, 'add_custom_cron_schedules']);

@@ -769,26 +769,29 @@ class Admin {
 				'strings' => Ignores_Page::get_script_strings(),
 			]);
 
-			// Enqueue issues list JavaScript
-			wp_enqueue_script(
-				'cleara11y-issues-list',
-				CLEARA11Y_PLUGIN_URL . 'assets/js/issues-list.js',
-				[],
-				rand(),
-				true
-			);
 
-			// Localize issues list script
-			wp_localize_script('cleara11y-issues-list', 'cleara11yData', [
-				'apiUrl' => $rest_url . 'cleara11y/v1/',
-				'nonce' => wp_create_nonce('wp_rest'),
-				'pluginUrl' => CLEARA11Y_PLUGIN_URL,
-				'strings' => [
-					'loading' => __('Loading...', 'cleara11y'),
-					'noIssues' => __('No issues found.', 'cleara11y'),
-					'error' => __('Error loading issues.', 'cleara11y'),
-				],
-			]);
+				// Enqueue issues views JavaScript (new view system)
+				wp_enqueue_script(
+					"cleara11y-issues-views",
+					CLEARA11Y_PLUGIN_URL . "assets/js/issues-views.js",
+					[],
+					rand(),
+					true
+				);
+
+				// Localize issues views script
+				wp_localize_script("cleara11y-issues-views", "cleara11yData", [
+					"apiUrl" => $rest_url . "cleara11y/v1/",
+					"nonce" => wp_create_nonce("wp_rest"),
+					"pluginUrl" => CLEARA11Y_PLUGIN_URL,
+					"strings" => [
+						"loading" => __("Loading...", "cleara11y"),
+						"noIssues" => __("No issues found.", "cleara11y"),
+						"error" => __("Error loading view.", "cleara11y"),
+						"sortBy" => __("Sort by...", "cleara11y"),
+					],
+				]);
+
 		} elseif ($is_issue_types_page) {
 			// Enqueue issue types JavaScript
 			wp_enqueue_script(

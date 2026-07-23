@@ -705,7 +705,241 @@ class REST_Controller {
 					],
 				]
 			);
-	}
+
+			// View: By Page
+			register_rest_route(
+				self::NAMESPACE,
+				'/views/by-page',
+				[
+					'methods' => 'GET',
+					'callback' => [$this, 'get_view_by_page'],
+					'permission_callback' => [$this, 'manage_options_permission'],
+					'args' => [
+						'scan_id' => [
+							'type' => 'integer',
+							'description' => 'Scope to specific scan.',
+						],
+						'severity' => [
+							'type' => 'string',
+							'enum' => ['critical', 'moderate', 'minor'],
+							'description' => 'Filter by severity.',
+						],
+						'post_type' => [
+							'type' => 'string',
+							'description' => 'Filter by post type.',
+						],
+						'search' => [
+							'type' => 'string',
+							'description' => 'Search page title or URL.',
+						],
+						'orderby' => [
+							'type' => 'string',
+							'enum' => ['title', 'issues', 'score', 'scanned_date'],
+							'default' => 'issues',
+							'description' => 'Sort by.',
+						],
+						'order' => [
+							'type' => 'string',
+							'enum' => ['asc', 'desc'],
+							'default' => 'desc',
+							'description' => 'Sort direction.',
+						],
+						'page' => [
+							'type' => 'integer',
+							'default' => 1,
+							'minimum' => 1,
+						],
+						'per_page' => [
+							'type' => 'integer',
+							'default' => 20,
+							'minimum' => 1,
+							'maximum' => 100,
+						],
+					],
+				]
+			);
+
+			// View: By Issue Type
+			register_rest_route(
+				self::NAMESPACE,
+				'/views/by-issue-type',
+				[
+					'methods' => 'GET',
+					'callback' => [$this, 'get_view_by_issue_type'],
+					'permission_callback' => [$this, 'manage_options_permission'],
+					'args' => [
+						'scan_id' => [
+							'type' => 'integer',
+							'description' => 'Scope to specific scan.',
+						],
+						'severity' => [
+							'type' => 'string',
+							'enum' => ['critical', 'moderate', 'minor'],
+							'description' => 'Filter by severity.',
+						],
+						'search' => [
+							'type' => 'string',
+							'description' => 'Search rule or message.',
+						],
+						'wcag' => [
+							'type' => 'string',
+							'description' => 'Filter by WCAG criterion.',
+						],
+						'orderby' => [
+							'type' => 'string',
+							'enum' => ['severity', 'issues', 'pages', 'last_found'],
+							'default' => 'severity',
+							'description' => 'Sort by.',
+						],
+						'order' => [
+							'type' => 'string',
+							'enum' => ['asc', 'desc'],
+							'default' => 'desc',
+							'description' => 'Sort direction.',
+						],
+						'page' => [
+							'type' => 'integer',
+							'default' => 1,
+							'minimum' => 1,
+						],
+						'per_page' => [
+							'type' => 'integer',
+							'default' => 20,
+							'minimum' => 1,
+							'maximum' => 100,
+						],
+					],
+				]
+			);
+
+			// View: By Severity
+			register_rest_route(
+				self::NAMESPACE,
+				'/views/by-severity',
+				[
+					'methods' => 'GET',
+					'callback' => [$this, 'get_view_by_severity'],
+					'permission_callback' => [$this, 'manage_options_permission'],
+					'args' => [
+						'scan_id' => [
+							'type' => 'integer',
+							'description' => 'Scope to specific scan.',
+						],
+						'severity' => [
+							'type' => 'string',
+							'enum' => ['critical', 'moderate', 'minor'],
+							'description' => 'Filter to specific severity.',
+						],
+					],
+				]
+			);
+
+			// View: By Content Type
+			register_rest_route(
+				self::NAMESPACE,
+				'/views/by-content-type',
+				[
+					'methods' => 'GET',
+					'callback' => [$this, 'get_view_by_content_type'],
+					'permission_callback' => [$this, 'manage_options_permission'],
+					'args' => [
+						'scan_id' => [
+							'type' => 'integer',
+							'description' => 'Scope to specific scan.',
+						],
+						'content_type' => [
+							'type' => 'string',
+							'enum' => ['post_type', 'template', 'taxonomy', 'author'],
+							'default' => 'post_type',
+							'description' => 'Grouping type.',
+						],
+						'search' => [
+							'type' => 'string',
+							'description' => 'Search content type.',
+						],
+						'orderby' => [
+							'type' => 'string',
+							'enum' => ['name', 'issues', 'pages', 'score'],
+							'default' => 'issues',
+							'description' => 'Sort by.',
+						],
+						'order' => [
+							'type' => 'string',
+							'enum' => ['asc', 'desc'],
+							'default' => 'desc',
+							'description' => 'Sort direction.',
+						],
+						'page' => [
+							'type' => 'integer',
+							'default' => 1,
+							'minimum' => 1,
+						],
+						'per_page' => [
+							'type' => 'integer',
+							'default' => 20,
+							'minimum' => 1,
+							'maximum' => 100,
+						],
+					],
+				]
+			);
+
+			// View: Exceptions
+			register_rest_route(
+				self::NAMESPACE,
+				'/views/exceptions',
+				[
+					'methods' => 'GET',
+					'callback' => [$this, 'get_view_exceptions'],
+					'permission_callback' => [$this, 'manage_options_permission'],
+					'args' => [
+						'scan_id' => [
+							'type' => 'integer',
+							'description' => 'Scope to specific scan.',
+						],
+						'rule_id' => [
+							'type' => 'string',
+							'description' => 'Filter by rule.',
+						],
+						'post_id' => [
+							'type' => 'integer',
+							'description' => 'Filter by page.',
+						],
+						'severity' => [
+							'type' => 'string',
+							'enum' => ['critical', 'moderate', 'minor'],
+							'description' => 'Filter by severity.',
+						],
+						'search' => [
+							'type' => 'string',
+							'description' => 'Search rule, page, or selector.',
+						],
+						'orderby' => [
+							'type' => 'string',
+							'enum' => ['created', 'expires', 'severity', 'rule', 'page'],
+							'default' => 'created',
+							'description' => 'Sort by.',
+						],
+						'order' => [
+							'type' => 'string',
+							'enum' => ['asc', 'desc'],
+							'default' => 'desc',
+							'description' => 'Sort direction.',
+						],
+						'page' => [
+							'type' => 'integer',
+							'default' => 1,
+							'minimum' => 1,
+						],
+						'per_page' => [
+							'type' => 'integer',
+							'default' => 20,
+							'minimum' => 1,
+							'maximum' => 100,
+						],
+					],
+				]
+			);	}
 
 	/**
 	 * Generate scan token for a post.
@@ -1619,14 +1853,14 @@ class REST_Controller {
 					AND (ir.expires_at IS NULL OR ir.expires_at > NOW())
 			) active_ignores ON i.id = active_ignores.violation_id";
 
-		// Get counts by severity, excluding ignored issues
+		// Get counts by severity, excluding exceptions
 		$counts = $wpdb->get_results(
 			"SELECT
 				SUM(CASE WHEN i.severity = 'critical' AND active_ignores.violation_id IS NULL THEN 1 ELSE 0 END) as critical,
 				SUM(CASE WHEN i.severity = 'moderate' AND active_ignores.violation_id IS NULL THEN 1 ELSE 0 END) as moderate,
 				SUM(CASE WHEN i.severity = 'minor' AND active_ignores.violation_id IS NULL THEN 1 ELSE 0 END) as minor,
 				SUM(CASE WHEN active_ignores.violation_id IS NULL THEN 1 ELSE 0 END) as active,
-				SUM(CASE WHEN active_ignores.violation_id IS NOT NULL THEN 1 ELSE 0 END) as ignored,
+				SUM(CASE WHEN active_ignores.violation_id IS NOT NULL THEN 1 ELSE 0 END) as exceptions,
 				COUNT(*) as total
 			FROM `{$issues_table}` i
 			{$active_ignore_join}",
@@ -1638,16 +1872,25 @@ class REST_Controller {
 			'moderate' => 0,
 			'minor' => 0,
 			'active' => 0,
-			'ignored' => 0,
+			'exceptions' => 0,
 			'total' => 0,
 		];
 
-		// Convert to integers
-		foreach ($stats as $key => $value) {
-			$stats[$key] = (int) $value;
-		}
+		// Convert to integers and structure response consistently
+		$response = [
+			'active' => [
+				'total' => (int) ($stats['active'] ?? 0),
+				'critical' => (int) ($stats['critical'] ?? 0),
+				'moderate' => (int) ($stats['moderate'] ?? 0),
+				'minor' => (int) ($stats['minor'] ?? 0),
+			],
+			'exceptions' => [
+				'total' => (int) ($stats['exceptions'] ?? 0),
+			],
+			'total' => (int) ($stats['total'] ?? 0),
+		];
 
-		return rest_ensure_response($stats);
+		return rest_ensure_response($response);
 	}
 
 	/**
@@ -2429,5 +2672,629 @@ class REST_Controller {
 		}, $scans);
 
 		return rest_ensure_response(['scans' => $data]);
+	}
+
+	/**
+	 * Get view: By Page.
+	 *
+	 * @param \WP_REST_Request $request REST request object.
+	 * @return \WP_REST_Response
+	 */
+	public function get_view_by_page(\WP_REST_Request $request): \WP_REST_Response {
+		global $wpdb;
+
+		$scan_id = $request->get_param('scan_id');
+		$severity = $request->get_param('severity');
+		$post_type = $request->get_param('post_type');
+		$search = $request->get_param('search');
+		$orderby = $request->get_param('orderby') ?? 'issues';
+		$order = $request->get_param('order') ?? 'desc';
+		$page = $request->get_param('page') ?? 1;
+		$per_page = $request->get_param('per_page') ?? 20;
+
+		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
+		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
+		$matches_table = \ClearA11y\Database\Schema::get_table_name('violation_ignore_matches');
+		$rules_table = \ClearA11y\Database\Schema::get_table_name('ignore_rules');
+
+		// Build WHERE clause
+		$where = ["si.status = 'completed'"];
+		$params = [];
+
+		if ($scan_id) {
+			$where[] = "si.scan_id = %d";
+			$params[] = $scan_id;
+		}
+
+		if ($post_type) {
+			$where[] = "si.post_type = %s";
+			$params[] = $post_type;
+		}
+
+		if ($search) {
+			$where[] = "(si.post_title LIKE %s OR si.post_url LIKE %s)";
+			$params[] = "%$search%";
+			$params[] = "%$search%";
+		}
+
+		if ($severity) {
+			$where[] = "i.severity = %s";
+			$params[] = $severity;
+		}
+
+		$where_clause = implode(' AND ', $where);
+
+		// Build ORDER BY clause
+		$orderby_clause = match ($orderby) {
+			'title' => 'si.post_title ' . strtoupper($order),
+			'score' => 'si.pass_percentage ' . strtoupper($order),
+			'scanned_date' => 'si.scanned_at ' . strtoupper($order),
+			default => 'total_active ' . strtoupper($order),
+		};
+
+		// Get total count for pagination
+		$count_sql = "
+			SELECT COUNT(DISTINCT si.id)
+			FROM {$scan_items_table} si
+			LEFT JOIN {$issues_table} i ON i.scan_item_id = si.id
+			WHERE {$where_clause}
+		";
+		$total = (int) $wpdb->get_var($wpdb->prepare($count_sql, ...$params));
+		$total_pages = ceil($total / $per_page);
+		$offset = ($page - 1) * $per_page;
+
+		// Main query with active/exception separation
+		$active_ignore_join = \ClearA11y\Services\Issue_Query_Service::get_active_ignore_join();
+
+		$sql = "
+			SELECT si.id, si.post_id, si.post_title, si.post_url, si.post_type, si.template,
+			       si.scan_id, si.scanned_at, si.score_grade, si.pass_percentage,
+			       SUM(CASE WHEN i.severity = 'critical' AND active_exceptions.violation_id IS NULL THEN 1 ELSE 0 END) as critical_active,
+			       SUM(CASE WHEN i.severity = 'moderate' AND active_exceptions.violation_id IS NULL THEN 1 ELSE 0 END) as moderate_active,
+			       SUM(CASE WHEN i.severity = 'minor' AND active_exceptions.violation_id IS NULL THEN 1 ELSE 0 END) as minor_active,
+			       SUM(CASE WHEN active_exceptions.violation_id IS NULL THEN 1 ELSE 0 END) as total_active,
+			       SUM(CASE WHEN active_exceptions.violation_id IS NOT NULL THEN 1 ELSE 0 END) as total_exceptions,
+			       100 - SUM(CASE WHEN active_exceptions.violation_id IS NULL
+			           THEN (CASE WHEN i.severity = 'critical' THEN 10 WHEN i.severity = 'moderate' THEN 5 ELSE 2 END)
+			           ELSE 0 END) as calculated_score
+			FROM {$scan_items_table} si
+			LEFT JOIN {$issues_table} i ON i.scan_item_id = si.id
+			{$active_ignore_join}
+			WHERE {$where_clause}
+			GROUP BY si.id
+			ORDER BY {$orderby_clause}
+			LIMIT %d OFFSET %d
+		";
+
+		$params[] = $per_page;
+		$params[] = $offset;
+
+		$results = $wpdb->get_results($wpdb->prepare($sql, ...$params));
+
+		$data = [];
+		foreach ($results as $row) {
+			$data[] = [
+				'post_id' => (int) $row->post_id,
+				'post_title' => $row->post_title,
+				'post_url' => $row->post_url,
+				'post_type' => $row->post_type,
+				'template' => $row->template,
+				'scan_item_id' => (int) $row->id,
+				'scan_id' => (int) $row->scan_id,
+				'scanned_at' => $row->scanned_at,
+				'score' => (int) $row->calculated_score,
+				'score_grade' => $row->score_grade ?: 'N',
+				'issues' => [
+					'active' => [
+						'total' => (int) $row->total_active,
+						'critical' => (int) $row->critical_active,
+						'moderate' => (int) $row->moderate_active,
+						'minor' => (int) $row->minor_active,
+					],
+					'exceptions' => [
+						'total' => (int) $row->total_exceptions,
+					],
+				],
+			];
+		}
+
+		return rest_ensure_response([
+			'data' => $data,
+			'total' => $total,
+			'page' => (int) $page,
+			'per_page' => (int) $per_page,
+			'total_pages' => (int) $total_pages,
+		]);
+	}
+
+	/**
+	 * Get view: By Issue Type.
+	 *
+	 * @param \WP_REST_Request $request REST request object.
+	 * @return \WP_REST_Response
+	 */
+	public function get_view_by_issue_type(\WP_REST_Request $request): \WP_REST_Response {
+		global $wpdb;
+
+		$scan_id = $request->get_param('scan_id');
+		$severity = $request->get_param('severity');
+		$search = $request->get_param('search');
+		$wcag = $request->get_param('wcag');
+		$orderby = $request->get_param('orderby') ?? 'severity';
+		$order = $request->get_param('order') ?? 'desc';
+		$page = $request->get_param('page') ?? 1;
+		$per_page = $request->get_param('per_page') ?? 20;
+
+		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
+		$matches_table = \ClearA11y\Database\Schema::get_table_name('violation_ignore_matches');
+		$rules_table = \ClearA11y\Database\Schema::get_table_name('ignore_rules');
+		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
+
+		// Build WHERE clause
+		$where = ["1=1"];
+		$params = [];
+
+		if ($scan_id) {
+			$where[] = "i.scan_id = %d";
+			$params[] = $scan_id;
+		}
+
+		if ($severity) {
+			$where[] = "i.severity = %s";
+			$params[] = $severity;
+		}
+
+		if ($search) {
+			$where[] = "(i.rule_id LIKE %s OR i.message LIKE %s)";
+			$params[] = "%$search%";
+			$params[] = "%$search%";
+		}
+
+		if ($wcag) {
+			$where[] = "i.wcag_criterion LIKE %s";
+			$params[] = "%$wcag%";
+		}
+
+		$where_clause = implode(' AND ', $where);
+
+		// Build ORDER BY clause
+		$orderby_clause = match ($orderby) {
+			'severity' => "FIELD(i.severity, 'critical', 'moderate', 'minor') " . strtoupper($order) . ", active_issue_count " . strtoupper($order),
+			'issues' => 'active_issue_count ' . strtoupper($order),
+			'pages' => 'active_page_count ' . strtoupper($order),
+			'last_found' => 'active_last_found ' . strtoupper($order),
+			default => 'active_issue_count DESC',
+		};
+
+		// Get total count for pagination
+		$count_sql = "
+			SELECT COUNT(DISTINCT CONCAT(i.rule_id, '-', i.severity))
+			FROM {$issues_table} i
+			WHERE {$where_clause}
+		";
+		$total = (int) $wpdb->get_var($wpdb->prepare($count_sql, ...$params));
+		$total_pages = ceil($total / $per_page);
+		$offset = ($page - 1) * $per_page;
+
+		// Main query with active/exception separation
+		$active_ignore_join = \ClearA11y\Services\Issue_Query_Service::get_active_ignore_join();
+
+		$sql = "
+			SELECT i.rule_id, i.rule_type, i.severity, i.message, i.help_url, i.wcag_criterion,
+			       SUM(CASE WHEN active_exceptions.violation_id IS NULL THEN 1 ELSE 0 END) as active_issue_count,
+			       COUNT(DISTINCT CASE WHEN active_exceptions.violation_id IS NULL THEN i.post_id END) as active_page_count,
+			       MAX(CASE WHEN active_exceptions.violation_id IS NULL THEN i.created_at END) as active_last_found,
+			       SUM(CASE WHEN active_exceptions.violation_id IS NOT NULL THEN 1 ELSE 0 END) as exception_issue_count
+			FROM {$issues_table} i
+			{$active_ignore_join}
+			WHERE {$where_clause}
+			GROUP BY i.rule_id, i.rule_type, i.severity, i.message, i.help_url, i.wcag_criterion
+			ORDER BY {$orderby_clause}
+			LIMIT %d OFFSET %d
+		";
+
+		$params[] = $per_page;
+		$params[] = $offset;
+
+		$results = $wpdb->get_results($wpdb->prepare($sql, ...$params));
+
+		$data = [];
+		foreach ($results as $row) {
+			$data[] = [
+				'rule_id' => $row->rule_id,
+				'rule_type' => $row->rule_type,
+				'severity' => $row->severity,
+				'message' => $row->message,
+				'help_url' => $row->help_url,
+				'wcag_criterion' => $row->wcag_criterion,
+				'active' => [
+					'issue_count' => (int) $row->active_issue_count,
+					'page_count' => (int) $row->active_page_count,
+					'last_found' => $row->active_last_found,
+				],
+				'exceptions' => [
+					'issue_count' => (int) $row->exception_issue_count,
+				],
+			];
+		}
+
+		return rest_ensure_response([
+			'data' => $data,
+			'total' => $total,
+			'page' => (int) $page,
+			'per_page' => (int) $per_page,
+			'total_pages' => (int) $total_pages,
+		]);
+	}
+
+	/**
+	 * Get view: By Severity.
+	 *
+	 * @param \WP_REST_Request $request REST request object.
+	 * @return \WP_REST_Response
+	 */
+	public function get_view_by_severity(\WP_REST_Request $request): \WP_REST_Response {
+		global $wpdb;
+
+		$scan_id = $request->get_param('scan_id');
+		$severity_filter = $request->get_param('severity');
+
+		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
+		$matches_table = \ClearA11y\Database\Schema::get_table_name('violation_ignore_matches');
+		$rules_table = \ClearA11y\Database\Schema::get_table_name('ignore_rules');
+
+		// Build WHERE clause
+		$where = ["1=1"];
+		$params = [];
+
+		if ($scan_id) {
+			$where[] = "i.scan_id = %d";
+			$params[] = $scan_id;
+		}
+
+		if ($severity_filter) {
+			$where[] = "i.severity = %s";
+			$params[] = $severity_filter;
+		}
+
+		$where_clause = implode(' AND ', $where);
+
+		// Main query with active/exception separation
+		$active_ignore_join = \ClearA11y\Services\Issue_Query_Service::get_active_ignore_join();
+
+		$sql = "
+			SELECT i.severity,
+			       SUM(CASE WHEN active_exceptions.violation_id IS NULL THEN 1 ELSE 0 END) as active_total,
+			       COUNT(DISTINCT CASE WHEN active_exceptions.violation_id IS NULL THEN i.post_id END) as active_unique_pages,
+			       SUM(CASE WHEN active_exceptions.violation_id IS NOT NULL THEN 1 ELSE 0 END) as exception_total
+			FROM {$issues_table} i
+			{$active_ignore_join}
+			WHERE {$where_clause}
+			GROUP BY i.severity
+			ORDER BY FIELD(i.severity, 'critical', 'moderate', 'minor')
+		";
+
+		$results = $wpdb->get_results($wpdb->prepare($sql, ...$params));
+
+		$data = [];
+		foreach ($results as $row) {
+			// Get top rules for this severity
+			$where_rules = $where;
+			$params_rules = $params;
+			$where_rules[] = "i.severity = %s";
+			$params_rules[] = $row->severity;
+
+			$where_clause_rules = implode(' AND ', $where_rules);
+
+			$top_rules_sql = "
+				SELECT i.rule_id,
+				       COUNT(*) as issue_count,
+				       COUNT(DISTINCT i.post_id) as page_count
+				FROM {$issues_table} i
+				WHERE {$where_clause_rules}
+				GROUP BY i.rule_id
+				ORDER BY issue_count DESC
+				LIMIT 5
+			";
+
+			$top_rules = $wpdb->get_results($wpdb->prepare($top_rules_sql, ...$params_rules));
+
+			$top_rules_data = [];
+			foreach ($top_rules as $rule) {
+				$top_rules_data[] = [
+					'rule_id' => $rule->rule_id,
+					'issue_count' => (int) $rule->issue_count,
+					'page_count' => (int) $rule->page_count,
+				];
+			}
+
+			$data[] = [
+				'severity' => $row->severity,
+				'active' => [
+					'total' => (int) $row->active_total,
+					'unique_pages' => (int) $row->active_unique_pages,
+				],
+				'exceptions' => [
+					'total' => (int) $row->exception_total,
+				],
+				'top_rules' => $top_rules_data,
+			];
+		}
+
+		return rest_ensure_response([
+			'data' => $data,
+			'scan_id' => (int) $scan_id,
+		]);
+	}
+
+	/**
+	 * Get view: By Content Type.
+	 *
+	 * @param \WP_REST_Request $request REST request object.
+	 * @return \WP_REST_Response
+	 */
+	public function get_view_by_content_type(\WP_REST_Request $request): \WP_REST_Response {
+		global $wpdb;
+
+		$scan_id = $request->get_param('scan_id');
+		$content_type = $request->get_param('content_type') ?? 'post_type';
+		$search = $request->get_param('search');
+		$orderby = $request->get_param('orderby') ?? 'issues';
+		$order = $request->get_param('order') ?? 'desc';
+		$page = $request->get_param('page') ?? 1;
+		$per_page = $request->get_param('per_page') ?? 20;
+
+		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
+		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
+		$matches_table = \ClearA11y\Database\Schema::get_table_name('violation_ignore_matches');
+		$rules_table = \ClearA11y\Database\Schema::get_table_name('ignore_rules');
+
+		// Build WHERE clause
+		$where = ["si.status = 'completed'"];
+		$params = [];
+
+		if ($scan_id) {
+			$where[] = "si.scan_id = %d";
+			$params[] = $scan_id;
+		}
+
+		if ($search) {
+			$where[] = "si.post_type LIKE %s";
+			$params[] = "%$search%";
+		}
+
+		$where_clause = implode(' AND ', $where);
+
+		// Build GROUP BY clause based on content type
+		$group_field = match ($content_type) {
+			'template' => 'si.template',
+			'taxonomy', 'author' => 'si.post_type', // Fallback for now
+			default => 'si.post_type',
+		};
+
+		// Build ORDER BY clause
+		$orderby_clause = match ($orderby) {
+			'name' => "{$group_field} " . strtoupper($order),
+			'pages' => 'pages_count ' . strtoupper($order),
+			'score' => 'avg_score ' . strtoupper($order),
+			default => 'active_total ' . strtoupper($order),
+		};
+
+		// Get total count for pagination
+		$count_sql = "
+			SELECT COUNT(DISTINCT {$group_field})
+			FROM {$scan_items_table} si
+			WHERE {$where_clause}
+		";
+		$total = (int) $wpdb->get_var($wpdb->prepare($count_sql, ...$params));
+		$total_pages = ceil($total / $per_page);
+		$offset = ($page - 1) * $per_page;
+
+		// Main query with active/exception separation
+		$active_ignore_join = \ClearA11y\Services\Issue_Query_Service::get_active_ignore_join();
+
+		$sql = "
+			SELECT {$group_field} as content_type,
+			       COUNT(DISTINCT si.id) as pages_count,
+			       SUM(CASE WHEN i.severity = 'critical' AND active_exceptions.violation_id IS NULL THEN 1 ELSE 0 END) as active_critical,
+			       SUM(CASE WHEN i.severity = 'moderate' AND active_exceptions.violation_id IS NULL THEN 1 ELSE 0 END) as active_moderate,
+			       SUM(CASE WHEN i.severity = 'minor' AND active_exceptions.violation_id IS NULL THEN 1 ELSE 0 END) as active_minor,
+			       SUM(CASE WHEN active_exceptions.violation_id IS NULL THEN 1 ELSE 0 END) as active_total,
+			       SUM(CASE WHEN active_exceptions.violation_id IS NOT NULL THEN 1 ELSE 0 END) as exception_total,
+			       AVG(si.pass_percentage) as avg_score
+			FROM {$scan_items_table} si
+			LEFT JOIN {$issues_table} i ON i.scan_item_id = si.id
+			{$active_ignore_join}
+			WHERE {$where_clause}
+			GROUP BY {$group_field}
+			ORDER BY {$orderby_clause}
+			LIMIT %d OFFSET %d
+		";
+
+		$params[] = $per_page;
+		$params[] = $offset;
+
+		$results = $wpdb->get_results($wpdb->prepare($sql, ...$params));
+
+		$data = [];
+		foreach ($results as $row) {
+			// Generate a label for the content type
+			$content_label = $row->content_type;
+			if ($content_type === 'post_type') {
+				$post_type_obj = get_post_type_object($row->content_type);
+				$content_label = $post_type_obj ? $post_type_obj->labels->name : $row->content_type;
+			} elseif ($content_type === 'template') {
+				$content_label = $row->content_type ?: 'Default Template';
+			}
+
+			$data[] = [
+				'content_type' => $row->content_type,
+				'content_label' => $content_label,
+				'pages_count' => (int) $row->pages_count,
+				'active' => [
+					'total_issues' => (int) $row->active_total,
+					'critical' => (int) $row->active_critical,
+					'moderate' => (int) $row->active_moderate,
+					'minor' => (int) $row->active_minor,
+				],
+				'exceptions' => [
+					'total_issues' => (int) $row->exception_total,
+				],
+				'avg_score' => (int) round($row->avg_score ?: 0),
+			];
+		}
+
+		return rest_ensure_response([
+			'data' => $data,
+			'total' => $total,
+			'page' => (int) $page,
+			'per_page' => (int) $per_page,
+			'total_pages' => (int) $total_pages,
+		]);
+	}
+
+	/**
+	 * Get view: Exceptions.
+	 *
+	 * @param \WP_REST_Request $request REST request object.
+	 * @return \WP_REST_Response
+	 */
+	public function get_view_exceptions(\WP_REST_Request $request): \WP_REST_Response {
+		global $wpdb;
+
+		$scan_id = $request->get_param('scan_id');
+		$rule_id = $request->get_param('rule_id');
+		$post_id = $request->get_param('post_id');
+		$severity = $request->get_param('severity');
+		$search = $request->get_param('search');
+		$orderby = $request->get_param('orderby') ?? 'created';
+		$order = $request->get_param('order') ?? 'desc';
+		$page = $request->get_param('page') ?? 1;
+		$per_page = $request->get_param('per_page') ?? 20;
+
+		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
+		$matches_table = \ClearA11y\Database\Schema::get_table_name('violation_ignore_matches');
+		$rules_table = \ClearA11y\Database\Schema::get_table_name('ignore_rules');
+		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
+
+		// Build WHERE clause
+		$where = ["ir.status = 'active'", "(ir.expires_at IS NULL OR ir.expires_at > NOW())"];
+		$params = [];
+
+		if ($scan_id) {
+			$where[] = "i.scan_id = %d";
+			$params[] = $scan_id;
+		}
+
+		if ($rule_id) {
+			$where[] = "i.rule_id = %s";
+			$params[] = $rule_id;
+		}
+
+		if ($post_id) {
+			$where[] = "si.post_id = %d";
+			$params[] = $post_id;
+		}
+
+		if ($severity) {
+			$where[] = "i.severity = %s";
+			$params[] = $severity;
+		}
+
+		if ($search) {
+			$where[] = "(i.rule_id LIKE %s OR i.message LIKE %s OR i.selector LIKE %s OR si.post_title LIKE %s)";
+			$params[] = "%$search%";
+			$params[] = "%$search%";
+			$params[] = "%$search%";
+			$params[] = "%$search%";
+		}
+
+		$where_clause = implode(' AND ', $where);
+
+		// Build ORDER BY clause
+		$orderby_clause = match ($orderby) {
+			'created' => 'ir.created_at ' . strtoupper($order),
+			'expires' => 'ir.expires_at ' . strtoupper($order),
+			'severity' => "FIELD(i.severity, 'critical', 'moderate', 'minor') " . strtoupper($order),
+			'rule' => 'i.rule_id ' . strtoupper($order),
+			'page' => 'si.post_title ' . strtoupper($order),
+			default => 'ir.created_at DESC',
+		};
+
+		// Get total count for pagination
+		$count_sql = "
+			SELECT COUNT(DISTINCT i.id)
+			FROM {$issues_table} i
+			INNER JOIN {$scan_items_table} si ON i.scan_item_id = si.id
+			INNER JOIN {$matches_table} vm ON i.id = vm.violation_id
+			INNER JOIN {$rules_table} ir ON vm.ignore_rule_id = ir.id
+			WHERE {$where_clause}
+		";
+		$total = (int) $wpdb->get_var($wpdb->prepare($count_sql, ...$params));
+		$total_pages = ceil($total / $per_page);
+		$offset = ($page - 1) * $per_page;
+
+		// Main query
+		$sql = "
+			SELECT i.id as issue_id, i.rule_id, i.severity, i.message, i.selector,
+			       si.post_id, si.post_title, si.post_url,
+			       ir.id as exception_rule_id, ir.reason_category, ir.note, ir.duration_type, ir.expires_at,
+			       ir.created_at, ir.created_by,
+			       vm.matched_at, vm.match_confidence
+			FROM {$issues_table} i
+			INNER JOIN {$scan_items_table} si ON i.scan_item_id = si.id
+			INNER JOIN {$matches_table} vm ON i.id = vm.violation_id
+			INNER JOIN {$rules_table} ir ON vm.ignore_rule_id = ir.id
+			WHERE {$where_clause}
+			ORDER BY {$orderby_clause}
+			LIMIT %d OFFSET %d
+		";
+
+		$params[] = $per_page;
+		$params[] = $offset;
+
+		$results = $wpdb->get_results($wpdb->prepare($sql, ...$params));
+
+		$data = [];
+		foreach ($results as $row) {
+			// Get user display name
+			$created_by_user = get_userdata($row->created_by);
+			$display_name = $created_by_user ? $created_by_user->display_name : 'Unknown';
+
+			$data[] = [
+				'issue_id' => (int) $row->issue_id,
+				'rule_id' => $row->rule_id,
+				'severity' => $row->severity,
+				'message' => $row->message,
+				'page' => [
+					'post_id' => (int) $row->post_id,
+					'post_title' => $row->post_title,
+					'post_url' => $row->post_url,
+				],
+				'selector' => $row->selector,
+				'exception' => [
+					'rule_id' => $row->exception_rule_id,
+					'reason_category' => $row->reason_category,
+					'note' => $row->note,
+					'duration_type' => $row->duration_type,
+					'expires_at' => $row->expires_at,
+					'created_at' => $row->created_at,
+					'created_by' => [
+						'user_id' => (int) $row->created_by,
+						'display_name' => $display_name,
+					],
+				],
+				'matched_at' => $row->matched_at,
+				'match_confidence' => $row->match_confidence,
+			];
+		}
+
+		return rest_ensure_response([
+			'data' => $data,
+			'total' => $total,
+			'page' => (int) $page,
+			'per_page' => (int) $per_page,
+			'total_pages' => (int) $total_pages,
+		]);
 	}
 }

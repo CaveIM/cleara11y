@@ -34,7 +34,7 @@ define('CLEARA11Y_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('CLEARA11Y_PLUGIN_BASENAME', plugin_basename(__FILE__));
 
 // Database version constant.
-define('CLEARA11Y_DB_VERSION', '1.8.0');
+define('CLEARA11Y_DB_VERSION', '1.9.0');
 
 /**
  * PSR-4 Autoloader
@@ -269,6 +269,13 @@ class ClearA11y_Plugin {
 		if (version_compare($current_db_version, '1.8.0', '<')) {
 			if (\ClearA11y\Database\Schema::add_issue_explorer_indexes()) {
 				update_option('cleara11y_db_version', '1.8.0');
+			}
+		}
+
+		// Store axe result classification independently from rule severity/type.
+		if (version_compare($current_db_version, '1.9.0', '<')) {
+			if (\ClearA11y\Database\Schema::add_result_type_column()) {
+				update_option('cleara11y_db_version', '1.9.0');
 			}
 		}
 	}

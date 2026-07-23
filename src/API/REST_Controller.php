@@ -31,6 +31,17 @@ class REST_Controller {
 	private const NAMESPACE = 'cleara11y/v1';
 
 	/**
+	 * Maximum request size accepted by scan result endpoints.
+	 *
+	 * This remains below the plugin's documented minimum PHP post limit so
+	 * oversized evidence fails with an actionable response when WordPress can
+	 * still receive the request.
+	 *
+	 * @var int
+	 */
+	private const MAX_SCAN_RESULT_REQUEST_BYTES = 6291456;
+
+	/**
 	 * Constructor.
 	 */
 	public function __construct() {
@@ -814,18 +825,41 @@ class REST_Controller {
 	 * Submit scan results from client-side scanner.
 	 *
 	 * @param \WP_REST_Request $request REST request object.
-	 * @return \WP_REST_Response
+	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function submit_scan_results(\WP_REST_Request $request): \WP_REST_Response {
+	public function submit_scan_results(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
 		$token = $request->get_param('token');
 		$results = $request->get_param('results');
 		$evidence = $request->get_param('evidence');
+		$request_bytes = strlen($request->get_body());
 
-		// Debug: Log received evidence data
-		error_log('ClearA11y REST: Received evidence type: ' . gettype($evidence));
-		error_log('ClearA11y REST: Received evidence count: ' . (is_array($evidence) ? count($evidence) : 'N/A'));
-		error_log('ClearA11y REST: Received evidence data: ' . wp_json_encode($evidence));
-		error_log('ClearA11y REST: Raw body: ' . $request->get_body());
+		if ($request_bytes > self::MAX_SCAN_RESULT_REQUEST_BYTES) {
+			error_log(
+				sprintf(
+					'ClearA11y ERROR: Rejected oversized scan result request. body_bytes=%d limit_bytes=%d',
+					$request_bytes,
+					self::MAX_SCAN_RESULT_REQUEST_BYTES
+				)
+			);
+			return rest_ensure_response(
+				new \WP_Error(
+					'scan_results_too_large',
+					'The scan evidence payload is too large to store safely. Reduce the scan scope or increase the server request limits.',
+					['status' => 413]
+				)
+			);
+		}
+
+		if (defined('WP_DEBUG') && WP_DEBUG) {
+			error_log(
+				sprintf(
+					'ClearA11y REST: scan results received body_bytes=%d evidence_records=%d result_keys=%s',
+					strlen($request->get_body()),
+					is_array($evidence) ? count($evidence) : 0,
+					is_array($results) ? implode(',', array_map('sanitize_key', array_keys($results))) : 'invalid'
+				)
+			);
+		}
 
 		// Validate token
 		$token_data = Scan_Token_Manager::validate_token($token);
@@ -836,10 +870,33 @@ class REST_Controller {
 			);
 		}
 
-		// Ensure evidence is an array
-		if (!is_array($evidence)) {
-			error_log('ClearA11y REST: Evidence is not an array, converting to empty array');
-			$evidence = [];
+		if (! is_array($results) || ! is_array($evidence)) {
+			error_log('ClearA11y ERROR: Rejected malformed scan result payload.');
+			return rest_ensure_response(
+				new \WP_Error(
+					'invalid_scan_results',
+					'The scan results or evidence payload is malformed. Run the scan again.',
+					['status' => 400]
+				)
+			);
+		}
+
+		$finding_nodes = self::count_finding_nodes($results);
+		if (count($evidence) < $finding_nodes) {
+			error_log(
+				sprintf(
+					'ClearA11y ERROR: Rejected incomplete scan evidence. finding_nodes=%d evidence_records=%d',
+					$finding_nodes,
+					count($evidence)
+				)
+			);
+			return rest_ensure_response(
+				new \WP_Error(
+					'incomplete_scan_evidence',
+					'The browser did not return evidence for every accessibility finding. Run the scan again and check the browser console if this continues.',
+					['status' => 422]
+				)
+			);
 		}
 
 		// Process results with evidence
@@ -2248,9 +2305,9 @@ class REST_Controller {
 	 * Complete a job (success or failure).
 	 *
 	 * @param \WP_REST_Request $request REST request object.
-	 * @return \WP_REST_Response
+	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function complete_job(\WP_REST_Request $request): \WP_REST_Response {
+	public function complete_job(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
 		global $wpdb;
 
 		$job_id = (int) $request->get_param('jobId');
@@ -2258,9 +2315,25 @@ class REST_Controller {
 		$status = $request->get_param('status'); // 'done' or 'failed'
 		$result_json = $request->get_param('resultJson');
 		$error = $request->get_param('error');
+		$request_bytes = strlen($request->get_body());
 
-		error_log(sprintf('[ClearA11y] complete_job called - jobId: %d, status: %s, resultJson length: %d',
-			$job_id, $status, strlen($result_json ?? '')));
+		if ($request_bytes > self::MAX_SCAN_RESULT_REQUEST_BYTES) {
+			error_log(
+				sprintf(
+					'ClearA11y ERROR: Rejected oversized job result. job_id=%d body_bytes=%d limit_bytes=%d',
+					$job_id,
+					$request_bytes,
+					self::MAX_SCAN_RESULT_REQUEST_BYTES
+				)
+			);
+			return rest_ensure_response(
+				new \WP_Error(
+					'scan_results_too_large',
+					'The scan evidence payload is too large to store safely. Reduce the scan scope or increase the server request limits.',
+					['status' => 413]
+				)
+			);
+		}
 
 		// Get job first for additional processing
 		$job = Job_Repository::get_by_id($job_id);
@@ -2269,6 +2342,55 @@ class REST_Controller {
 			return rest_ensure_response(
 				new \WP_Error('job_not_found', 'Invalid job ID or lease token.', ['status' => 404])
 			);
+		}
+
+		$results = null;
+		if ('done' === $status) {
+			$results = is_string($result_json) ? json_decode($result_json, true) : null;
+			$evidence = is_array($results) ? ($results['evidence'] ?? null) : null;
+			$finding_nodes = is_array($results) ? self::count_finding_nodes($results) : 0;
+
+			if (
+				! is_array($results)
+				|| JSON_ERROR_NONE !== json_last_error()
+				|| ! isset($results['violations'], $results['incomplete'])
+				|| ! is_array($results['violations'])
+				|| ! is_array($results['incomplete'])
+				|| ! is_array($evidence)
+			) {
+				error_log(
+					sprintf(
+						'ClearA11y ERROR: Rejected malformed job result. job_id=%d json_error=%s',
+						$job_id,
+						json_last_error_msg()
+					)
+				);
+				return rest_ensure_response(
+					new \WP_Error(
+						'invalid_scan_results',
+						'The browser returned malformed scan results. Run the scan again.',
+						['status' => 400]
+					)
+				);
+			}
+
+			if (count($evidence) < $finding_nodes) {
+				error_log(
+					sprintf(
+						'ClearA11y ERROR: Rejected incomplete job evidence. job_id=%d finding_nodes=%d evidence_records=%d',
+						$job_id,
+						$finding_nodes,
+						count($evidence)
+					)
+				);
+				return rest_ensure_response(
+					new \WP_Error(
+						'incomplete_scan_evidence',
+						'The browser did not return evidence for every accessibility finding. Run the scan again and check the browser console if this continues.',
+						['status' => 422]
+					)
+				);
+			}
 		}
 
 		// Complete the job using repository
@@ -2292,8 +2414,6 @@ class REST_Controller {
 
 		// Additional processing for completed jobs.
 		if ($status === 'done' && $result_json && $scan_item) {
-			$results = json_decode($result_json, true);
-
 			if ($results && isset($results['violations'])) {
 				// Store results via Scan_Results_Processor.
 				$results_processor = new Scan_Results_Processor();
@@ -2316,6 +2436,26 @@ class REST_Controller {
 		return rest_ensure_response([
 			'ok' => true,
 		]);
+	}
+
+	/**
+	 * Count axe finding nodes that require evidence records.
+	 *
+	 * @param array $results Axe scan results.
+	 * @return int
+	 */
+	private static function count_finding_nodes(array $results): int {
+		$count = 0;
+
+		foreach (['violations', 'incomplete'] as $result_type) {
+			foreach (($results[$result_type] ?? []) as $finding) {
+				if (is_array($finding) && isset($finding['nodes']) && is_array($finding['nodes'])) {
+					$count += count($finding['nodes']);
+				}
+			}
+		}
+
+		return $count;
 	}
 
 	/**

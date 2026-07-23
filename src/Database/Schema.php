@@ -119,6 +119,7 @@ class Schema {
 			`post_id` bigint(20) UNSIGNED NOT NULL,
 			`rule_id` varchar(100) NOT NULL,
 			`rule_type` varchar(20) NOT NULL,
+			`result_type` varchar(20) NOT NULL DEFAULT 'violation',
 			`severity` varchar(20) NOT NULL,
 			`impact` varchar(20) DEFAULT NULL,
 			`selector` varchar(500) DEFAULT NULL,
@@ -154,6 +155,7 @@ class Schema {
 			KEY `scan_item_id` (`scan_item_id`),
 			KEY `post_id` (`post_id`),
 			KEY `rule_id` (`rule_id`),
+			KEY `result_type` (`result_type`),
 			KEY `severity` (`severity`),
 			KEY `dismissed` (`dismissed`),
 			KEY `dismissed_global` (`dismissed_global`),
@@ -641,6 +643,47 @@ class Schema {
 				if (! $exists && false === $wpdb->query("ALTER TABLE `{$table}` ADD INDEX `{$name}` {$columns}")) {
 					return false;
 				}
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Add explicit axe result classification to observations.
+	 *
+	 * @return bool True on success.
+	 */
+	public static function add_result_type_column(): bool {
+		global $wpdb;
+
+		$table = self::get_table_name('issues');
+		$column_exists = $wpdb->get_var(
+			"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+			WHERE TABLE_SCHEMA = DATABASE()
+			AND TABLE_NAME = '{$table}'
+			AND COLUMN_NAME = 'result_type'"
+		);
+
+		if (! $column_exists) {
+			$result = $wpdb->query(
+				"ALTER TABLE `{$table}`
+				ADD COLUMN result_type VARCHAR(20) NOT NULL DEFAULT 'violation' AFTER rule_type"
+			);
+			if (false === $result) {
+				error_log('ClearA11y: Failed to add result_type to issues table.');
+				return false;
+			}
+		}
+
+		$index_exists = $wpdb->get_var(
+			"SHOW INDEX FROM `{$table}` WHERE Key_name = 'result_type'"
+		);
+		if (! $index_exists) {
+			$result = $wpdb->query("ALTER TABLE `{$table}` ADD INDEX result_type (result_type)");
+			if (false === $result) {
+				error_log('ClearA11y: Failed to index issues.result_type.');
+				return false;
 			}
 		}
 

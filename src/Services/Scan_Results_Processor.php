@@ -57,11 +57,16 @@ class Scan_Results_Processor {
 		// Delete existing issues for this scan item
 		$deleted = Issue_Repository::delete_by_scan_item_id($scan_item_id);
 
-		// Build evidence index by selector for quick lookup
+		// Build evidence index by result type, rule, and selector.
 		$evidence_index = [];
 		foreach ($evidence as $ev) {
 			if (!empty($ev['selector'])) {
-				$evidence_index[$ev['selector']] = $ev;
+				$key = self::evidence_key(
+					(string) ($ev['result_type'] ?? 'violation'),
+					(string) ($ev['rule_id'] ?? ''),
+					(string) $ev['selector']
+				);
+				$evidence_index[$key] = $ev;
 			}
 		}
 
@@ -73,6 +78,12 @@ class Scan_Results_Processor {
 			'review' => $results['incomplete'] ?? [],
 		];
 		$issues_inserted = 0;
+		$evidence_diagnostics = [
+			'expected' => 0,
+			'matched' => 0,
+			'persisted' => 0,
+			'missing' => 0,
+		];
 		$severity_counts = [
 			'critical' => 0,
 			'moderate' => 0,
@@ -93,8 +104,21 @@ class Scan_Results_Processor {
 					// Find matching evidence record.
 					$node_selector = $node['target'][0] ?? null;
 					$node_evidence = [];
-					if ($node_selector && isset($evidence_index[$node_selector])) {
-						$node_evidence = $evidence_index[$node_selector];
+					$result_type = 'review' === $finding_type ? 'incomplete' : 'violation';
+					$selector_is_resolvable = is_string($node_selector) && '' !== $node_selector;
+					if ($selector_is_resolvable) {
+						$evidence_diagnostics['expected']++;
+					}
+					$evidence_key = self::evidence_key(
+						$result_type,
+						(string) ($violation['id'] ?? ''),
+						$selector_is_resolvable ? $node_selector : ''
+					);
+					if ($selector_is_resolvable && isset($evidence_index[$evidence_key])) {
+						$node_evidence = $evidence_index[$evidence_key];
+						if (! empty($node_evidence['node_evidence'])) {
+							$evidence_diagnostics['matched']++;
+						}
 					}
 
 					$issue = Issue::from_axe_result(
@@ -105,6 +129,7 @@ class Scan_Results_Processor {
 						$node_evidence
 					);
 					$issue->rule_type = $finding_type;
+					$issue->result_type = $result_type;
 					if ('review' === $finding_type && ! empty($node['failureSummary'])) {
 						$issue->message = sanitize_textarea_field($node['failureSummary']);
 					}
@@ -112,6 +137,13 @@ class Scan_Results_Processor {
 					$inserted_id = Issue_Repository::insert($issue);
 					if ($inserted_id) {
 						$issue->id = (int) $inserted_id;
+						if ($selector_is_resolvable) {
+							if (self::verify_evidence_persistence($issue)) {
+								$evidence_diagnostics['persisted']++;
+							} else {
+								$evidence_diagnostics['missing']++;
+							}
+						}
 						if (Ignore_Schema::tables_exist()) {
 							$ignore_matches = Ignore_Matcher_Service::find_matches($issue, get_current_blog_id());
 							foreach ($ignore_matches as $ignore_match) {
@@ -177,7 +209,54 @@ class Scan_Results_Processor {
 				'minor' => $severity_counts['minor'],
 			],
 			'scoring' => Scoring_Service::format_for_display($scoring_data),
+			'evidence' => $evidence_diagnostics,
 		];
+	}
+
+	/**
+	 * Create a collision-resistant lookup key for extracted node evidence.
+	 *
+	 * @param string $result_type Axe result type.
+	 * @param string $rule_id Axe rule ID.
+	 * @param string $selector Node selector.
+	 * @return string
+	 */
+	private static function evidence_key(string $result_type, string $rule_id, string $selector): string {
+		return $result_type . "\0" . $rule_id . "\0" . $selector;
+	}
+
+	/**
+	 * Verify evidence survived the database write.
+	 *
+	 * @param Issue $issue Inserted issue.
+	 * @return bool True when expected evidence is present and complete.
+	 */
+	private static function verify_evidence_persistence(Issue $issue): bool {
+		$stored = Issue_Repository::get_by_id($issue->id);
+		$expected_bytes = strlen((string) $issue->node_evidence);
+		$stored_bytes = $stored ? strlen((string) $stored->node_evidence) : 0;
+		$valid = $stored
+			&& $expected_bytes > 0
+			&& $expected_bytes === $stored_bytes
+			&& ! empty($stored->xpath)
+			&& ! empty($stored->fingerprint_strict)
+			&& ! empty($stored->fingerprint_loose);
+
+		if (! $valid) {
+			error_log(
+				sprintf(
+					'ClearA11y WARNING: Evidence missing or truncated after occurrence write. issue_id=%d scan_item_id=%d rule_id=%s result_type=%s expected_bytes=%d stored_bytes=%d',
+					$issue->id,
+					$issue->scan_item_id,
+					sanitize_key($issue->rule_id),
+					sanitize_key($issue->result_type),
+					$expected_bytes,
+					$stored_bytes
+				)
+			);
+		}
+
+		return $valid;
 	}
 
 	/**

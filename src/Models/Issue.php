@@ -65,6 +65,13 @@ class Issue {
 	public string $rule_type = 'error';
 
 	/**
+	 * Axe result classification (violation or incomplete).
+	 *
+	 * @var string
+	 */
+	public string $result_type = 'violation';
+
+	/**
 	 * Issue severity.
 	 *
 	 * @var string
@@ -287,6 +294,7 @@ class Issue {
 		$issue->post_id = (int) $row->post_id;
 		$issue->rule_id = $row->rule_id ?? '';
 		$issue->rule_type = $row->rule_type ?? 'error';
+		$issue->result_type = $row->result_type ?? ('review' === $issue->rule_type ? 'incomplete' : 'violation');
 		$issue->severity = $row->severity ?? 'moderate';
 		$issue->impact = $row->impact ?? null;
 		$issue->selector = $row->selector ?? null;
@@ -349,7 +357,8 @@ class Issue {
 		// Extract selector and HTML from first node
 		if (!empty($result['nodes'][0])) {
 			$node = $result['nodes'][0];
-			$issue->selector = $node['target'][0] ?? null;
+			$selector = $node['target'][0] ?? null;
+			$issue->selector = is_string($selector) ? $selector : null;
 			$issue->html = $node['html'] ?? null;
 		}
 
@@ -478,6 +487,7 @@ class Issue {
 			'post_id' => $this->post_id,
 			'rule_id' => $this->rule_id,
 			'rule_type' => $this->rule_type,
+			'result_type' => $this->result_type,
 			'severity' => $this->severity,
 			'impact' => $this->impact,
 			'selector' => $this->selector,

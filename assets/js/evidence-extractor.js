@@ -29,58 +29,67 @@ async function extractEvidenceFromAxeResults(results, options = {}) {
 
   const out = [];
 
-  for (const v of results.violations || []) {
-    for (const node of v.nodes || []) {
-      const selector = node?.target?.[0] ?? null;
+  const resultSets = [
+    { resultType: "violation", findings: results.violations || [] },
+    { resultType: "incomplete", findings: results.incomplete || [] },
+  ];
 
-      const record = {
-        rule_id: v.id,
-        impact: v.impact || null,
-        message: v.description || v.help || null,
-        help_url: v.helpUrl || null,
-        failure_summary: node.failureSummary || null,
+  for (const { resultType, findings } of resultSets) {
+    for (const v of findings) {
+      for (const node of v.nodes || []) {
+        const rawSelector = node?.target?.[0] ?? null;
+        const selector = typeof rawSelector === "string" ? rawSelector : null;
 
-        selector: selector,
-        selector_match_count: null,
-        selector_score: null,
-        node_evidence: null,
+        const record = {
+          result_type: resultType,
+          rule_id: v.id,
+          impact: v.impact || null,
+          message: v.description || v.help || null,
+          help_url: v.helpUrl || null,
+          failure_summary: node.failureSummary || null,
 
-        axe_node_raw: {
-          html: node.html || null,
-          target: node.target || null,
-          any: node.any || null,
-          all: node.all || null,
-          none: node.none || null,
-        },
-      };
+          selector: selector,
+          selector_match_count: null,
+          selector_score: null,
+          node_evidence: null,
 
-      if (!selector) {
+          axe_node_raw: {
+            html: node.html || null,
+            target: node.target || null,
+            any: node.any || null,
+            all: node.all || null,
+            none: node.none || null,
+          },
+        };
+
+        if (!selector) {
+          out.push(record);
+          continue;
+        }
+
+        // Resolve element and match count
+        const { matchCount, element } = resolveSelector(selector, document);
+        record.selector_match_count = matchCount;
+
+        // Score selector even if element not found
+        record.selector_score = scoreCssSelector(selector, matchCount);
+
+        if (!element) {
+          out.push(record);
+          continue;
+        }
+
+        // Extract evidence from element
+        record.node_evidence = await buildNodeEvidence(element, {
+          maxSnippetLen,
+          maxTextLen,
+          ancestorDepth,
+          allowDataAttrs,
+          dataAttrWhitelist,
+        });
+
         out.push(record);
-        continue;
       }
-
-      // Resolve element and match count
-      const { matchCount, element } = resolveSelector(selector, document);
-      record.selector_match_count = matchCount;
-
-      // Score selector even if element not found
-      record.selector_score = scoreCssSelector(selector, matchCount);
-
-      if (!element) {
-        out.push(record);
-        continue;
-      }
-
-      // Extract evidence from element
-      record.node_evidence = await buildNodeEvidence(element, {
-        maxSnippetLen,
-        maxTextLen,
-        ancestorDepth,
-        allowDataAttrs,
-        dataAttrWhitelist,
-      });
-
-      out.push(record);
     }
   }
 

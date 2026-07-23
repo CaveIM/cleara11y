@@ -231,12 +231,28 @@
 				const iframeWindow = iframe.contentWindow;
 				const iframeDoc = iframeWindow.document;
 
-				// console.log('  [Job ' + this.currentJob?.jobId + '] Injecting axe-core scanner...');
+				const loadEvidenceExtractor = () => {
+					if (typeof iframeWindow.extractEvidenceFromAxeResults === 'function') {
+						this.runScan(iframeWindow);
+						return;
+					}
 
-				// Check if axe-core is already loaded
+					const evidenceScript = iframeDoc.createElement('script');
+					evidenceScript.src = cleara11yData.pluginUrl + 'assets/js/evidence-extractor.js';
+					evidenceScript.async = false;
+					evidenceScript.onload = () => {
+						if (typeof iframeWindow.extractEvidenceFromAxeResults !== 'function') {
+							this.postMessageError('Evidence extractor loaded but is unavailable');
+							return;
+						}
+						this.runScan(iframeWindow);
+					};
+					evidenceScript.onerror = () => this.postMessageError('Failed to load evidence extractor');
+					iframeDoc.head.appendChild(evidenceScript);
+				};
+
 				if (iframeWindow.axe) {
-					// console.log('  [Job ' + this.currentJob?.jobId + '] axe-core already loaded');
-					this.runScan(iframeWindow);
+					loadEvidenceExtractor();
 					return;
 				}
 
@@ -253,10 +269,7 @@
 						return;
 					}
 					console.log('  [Job ' + this.currentJob?.jobId + '] axe-core version:', iframeWindow.axe.version);
-					// Wait a bit for axe to fully initialize
-					setTimeout(() => {
-						this.runScan(iframeWindow);
-					}, 200);
+					loadEvidenceExtractor();
 				};
 				script.onerror = (error) => {
 					console.error('  [Job ' + this.currentJob?.jobId + '] Failed to load axe-core script:', error);
@@ -327,6 +340,12 @@
 							});
 							return;
 						}
+						if (typeof window.extractEvidenceFromAxeResults !== 'function') {
+							postResult('CLEARA11Y_SCAN_ERROR', {
+								error: 'Evidence extractor is unavailable'
+							});
+							return;
+						}
 
 						// Remove WP admin bar if present (affects layout)
 						try {
@@ -357,53 +376,67 @@
 
 						// Filter out ClearA11y plugin's own UI elements from results
 						const filterClearA11yElements = (results) => {
-							if (!results.violations) return results;
+							for (const resultType of ['violations', 'incomplete']) {
+								if (!results[resultType]) continue;
+								const originalCount = results[resultType].length;
+								results[resultType] = results[resultType].filter(violation => {
+									// Check all nodes in this violation
+									return violation.nodes.some(node => {
+										// node.target is an array of target paths, each path is an array of selector strings
+										if (!node.target || node.target.length === 0) return true;
 
-							const originalCount = results.violations.length;
-							results.violations = results.violations.filter(violation => {
-								// Check all nodes in this violation
-								return violation.nodes.some(node => {
-									// node.target is an array of target paths, each path is an array of selector strings
-									if (!node.target || node.target.length === 0) return true;
+										// Check each target path
+										for (const targetPath of node.target) {
+											// targetPath is an array of selector strings (e.g., ["html", "body", ".cleara11y-toggle"])
+											if (!Array.isArray(targetPath)) continue;
 
-									// Check each target path
-									for (const targetPath of node.target) {
-										// targetPath is an array of selector strings (e.g., ["html", "body", ".cleara11y-toggle"])
-										if (!Array.isArray(targetPath)) continue;
+											// Join the path to check for our patterns
+											const selectorPath = targetPath.join(' ');
 
-										// Join the path to check for our patterns
-										const selectorPath = targetPath.join(' ');
+											// Filter out violations targeting ClearA11y elements
+											const isClearA11yElement = [
+												selectorPath.includes('[data-cleara11y-plugin]'),
+												selectorPath.includes('[data-cleara11y-highlighted]'),
+												selectorPath.includes('.cleara11y-toggle'),
+												selectorPath.includes('.cleara11y-panel'),
+												selectorPath.includes('.cleara11y-backdrop'),
+												selectorPath.includes('.cleara11y-summary'),
+												selectorPath.includes('.cleara11y-stat'),
+												selectorPath.includes('.cleara11y-tooltip'),
+												selectorPath.includes('.cleara11y-highlight-issue'),
+												selectorPath.includes('.cleara11y-highlight-panel'),
+												selectorPath.includes('.cleara11y-issue-severity'),
+												selectorPath.includes('[data-issue-index]')
+											].some(check => check);
 
-										// Filter out violations targeting ClearA11y elements
-										const isClearA11yElement = [
-											selectorPath.includes('[data-cleara11y-plugin]'),
-											selectorPath.includes('[data-cleara11y-highlighted]'),
-											selectorPath.includes('.cleara11y-toggle'),
-											selectorPath.includes('.cleara11y-panel'),
-											selectorPath.includes('.cleara11y-backdrop'),
-											selectorPath.includes('.cleara11y-summary'),
-											selectorPath.includes('.cleara11y-stat'),
-											selectorPath.includes('.cleara11y-tooltip'),
-											selectorPath.includes('.cleara11y-highlight-issue'),
-											selectorPath.includes('.cleara11y-highlight-panel'),
-											selectorPath.includes('.cleara11y-issue-severity'),
-											selectorPath.includes('[data-issue-index]')
-										].some(check => check);
-
-										if (isClearA11yElement) {
-											return false; // This node targets a ClearA11y element, filter it out
+											if (isClearA11yElement) {
+												return false; // This node targets a ClearA11y element, filter it out
+											}
 										}
-									}
 
-									return true; // This node doesn't target ClearA11y elements
+										return true; // This node doesn't target ClearA11y elements
+									});
 								});
-							});
 
-							if (results.violations.length !== originalCount) {
-								console.log('[ClearA11y iframe] Filtered out', originalCount - results.violations.length, 'ClearA11y plugin violations');
+								if (results[resultType].length !== originalCount) {
+									console.log('[ClearA11y iframe] Filtered out', originalCount - results[resultType].length, 'ClearA11y plugin findings');
+								}
 							}
 
 							return results;
+						};
+
+						const finalizeResults = async results => {
+							const filteredResults = filterClearA11yElements(results);
+							const evidence = await window.extractEvidenceFromAxeResults(filteredResults);
+							const serializedEvidence = JSON.stringify(evidence);
+							filteredResults.evidence = evidence;
+							filteredResults.evidenceDiagnostics = {
+								records: evidence.length,
+								resolvedRecords: evidence.filter(record => record.node_evidence).length,
+								bytes: new Blob([serializedEvidence]).size
+							};
+							return filteredResults;
 						};
 
 						// Run the scan with proper error handling
@@ -413,10 +446,10 @@
 							// Handle both promise and callback API
 							if (runPromise && typeof runPromise.then === 'function') {
 								// Promise API
-								runPromise.then(results => {
+								runPromise.then(async results => {
 									console.log('[ClearA11y iframe] Scan completed via Promise');
 									console.log('[ClearA11y iframe] Violations:', results.violations.length);
-									const filteredResults = filterClearA11yElements(results);
+									const filteredResults = await finalizeResults(results);
 									postResult('CLEARA11Y_SCAN_COMPLETE', {
 										payload: filteredResults
 									});
@@ -429,7 +462,7 @@
 							} else {
 								// Callback API (shouldn't happen with modern axe-core)
 								console.warn('[ClearA11y iframe] axe.run did not return a promise, using callback');
-								window.axe.run(document, axeOptions, (error, results) => {
+								window.axe.run(document, axeOptions, async (error, results) => {
 									if (error) {
 										console.error('[ClearA11y iframe] Scan failed via callback:', error);
 										postResult('CLEARA11Y_SCAN_ERROR', {
@@ -448,10 +481,16 @@
 
 									console.log('[ClearA11y iframe] Scan completed via callback');
 									console.log('[ClearA11y iframe] Violations:', results.violations.length);
-									const filteredResults = filterClearA11yElements(results);
-									postResult('CLEARA11Y_SCAN_COMPLETE', {
-										payload: filteredResults
-									});
+									try {
+										const filteredResults = await finalizeResults(results);
+										postResult('CLEARA11Y_SCAN_COMPLETE', {
+											payload: filteredResults
+										});
+									} catch (e) {
+										postResult('CLEARA11Y_SCAN_ERROR', {
+											error: 'Evidence extraction failed: ' + e.message
+										});
+									}
 								});
 							}
 						} catch (e) {

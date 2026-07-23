@@ -4,6 +4,7 @@
   "scripts": {
     "test": "node --test tests/js/*.test.js",
     "test:e2e": "playwright test",
+    "test:wp": "wp eval-file tests/integration/evidence-persistence.php --path=/var/www/html --allow-root",
     "test:all": "npm test && npm run test:e2e"
   },
   "devDependencies": {

@@ -42,6 +42,7 @@ class Issue_Repository {
 			'post_id' => $issue->post_id,
 			'rule_id' => $issue->rule_id,
 			'rule_type' => $issue->rule_type,
+			'result_type' => $issue->result_type,
 			'severity' => $issue->severity,
 			'impact' => $issue->impact,
 			'selector' => $issue->selector,
@@ -73,7 +74,7 @@ class Issue_Repository {
 
 		$format = [
 			'%d', '%d', '%d', // scan_id, scan_item_id, post_id
-			'%s', '%s', '%s', // rule_id, rule_type, severity
+			'%s', '%s', '%s', '%s', // rule_id, rule_type, result_type, severity
 			'%s', // impact
 			'%s', '%s', '%s', '%s', '%s', '%s', // selector, html, message, help_text, help_url, wcag_criterion
 			'%d', '%d', '%s', '%s', // dismissed, dismissed_by, dismissed_at, dismissal_comment
@@ -739,7 +740,7 @@ class Issue_Repository {
 			],
 			'severity' => (string) $row['severity'],
 			'impact' => $row['impact'] ?: null,
-			'finding_type' => 'review' === $row['rule_type'] ? 'review' : 'violation',
+			'finding_type' => ('incomplete' === ($row['result_type'] ?? '') || 'review' === $row['rule_type']) ? 'review' : 'violation',
 			'status' => ! empty($row['is_ignored']) ? 'ignored' : 'active',
 			'message' => (string) ($row['message'] ?? ''),
 			'help_text' => (string) ($row['help_text'] ?? ''),

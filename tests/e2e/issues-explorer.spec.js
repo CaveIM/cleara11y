@@ -94,3 +94,30 @@ test('narrow view presents occurrence detail as the primary content', async ({pa
 	await expect(page.locator('#cleara11y-results-region')).toBeHidden();
 	await expect(page.locator('#cleara11y-detail-panel')).toBeVisible();
 });
+
+test('evidence extractor covers violations and incomplete findings', async ({page}) => {
+	await page.setContent(`
+		<style>body, h1 { color: #fff; background: #fff; }</style>
+		<h1>Invisible heading</h1>
+		<img src="missing-alt.png">
+	`);
+	await page.addScriptTag({path: path.resolve(__dirname, '../../assets/js/axe.min.js')});
+	await page.addScriptTag({path: path.resolve(__dirname, '../../assets/js/evidence-extractor.js')});
+
+	const extracted = await page.evaluate(async () => {
+		const results = await axe.run(document, {
+			runOnly: {type: 'rule', values: ['image-alt', 'color-contrast']},
+			resultTypes: ['violations', 'incomplete']
+		});
+		const evidence = await extractEvidenceFromAxeResults(results);
+		return {
+			resultTypes: [...new Set(evidence.map(record => record.result_type))],
+			resolved: evidence.filter(record => record.node_evidence).length,
+			total: evidence.length
+		};
+	});
+
+	expect(extracted.resultTypes).toContain('violation');
+	expect(extracted.resultTypes).toContain('incomplete');
+	expect(extracted.resolved).toBe(extracted.total);
+});

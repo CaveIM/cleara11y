@@ -97,6 +97,7 @@ class Schema {
 			`rules_passed_list` longtext DEFAULT NULL,
 			`rules_failed_list` longtext DEFAULT NULL,
 			`rules_incomplete_list` longtext DEFAULT NULL,
+			`template` varchar(255) DEFAULT NULL,
 			`created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (`id`),
 			KEY `scan_id` (`scan_id`),
@@ -630,5 +631,38 @@ class Schema {
 		} else {
 			return 'F';
 		}
+	}
+
+	/**
+	 * Add template column to scan_items table (for existing installations).
+	 *
+	 * @return bool True if successful.
+	 */
+	public static function add_template_column(): bool {
+		global $wpdb;
+
+		$table = self::get_table_name('scan_items');
+
+		// Check if template column already exists
+		$column_exists = $wpdb->get_var(
+			"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+			WHERE TABLE_SCHEMA = DATABASE()
+			AND TABLE_NAME = '{$table}'
+			AND COLUMN_NAME = 'template'"
+		);
+
+		if ($column_exists) {
+			return true; // Already migrated
+		}
+
+		// Add template column
+		$result = $wpdb->query("ALTER TABLE `{$table}` ADD COLUMN `template` VARCHAR(255) DEFAULT NULL");
+
+		if ($result === false) {
+			error_log("ClearA11y: Failed to add template column to {$table}");
+			return false;
+		}
+
+		return true;
 	}
 }

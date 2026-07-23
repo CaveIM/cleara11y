@@ -264,6 +264,18 @@ class ClearA11y_Plugin {
 				});
 			}
 			}
+
+		// Need to run migration if version is older than 1.7.1 or template column is missing.
+		if (version_compare($current_db_version, '1.7.1', '<')) {
+			$result = \ClearA11y\Database\Schema::add_template_column();
+
+			if ($result) {
+				update_option('cleara11y_db_version', '1.7.1');
+				add_action('admin_notices', function() {
+					echo '<div class="notice notice-success is-dismissible"><p>ClearA11y: Template column added to scan_items table for content type grouping!</p></div>';
+				});
+			}
+		}
 	}
 
 	/**

@@ -2747,8 +2747,8 @@ class REST_Controller {
 		$active_ignore_join = \ClearA11y\Services\Issue_Query_Service::get_active_ignore_join();
 
 		$sql = "
-			SELECT si.id, si.post_id, si.post_title, si.post_url, si.post_type, si.template,
-			       si.scan_id, si.scanned_at, si.score_grade, si.pass_percentage,
+			SELECT si.id, si.post_id, si.post_title, si.post_url, si.post_type,
+			       si.template, si.scan_id, si.scanned_at, si.score_grade, si.pass_percentage,
 			       SUM(CASE WHEN i.severity = 'critical' AND active_exceptions.violation_id IS NULL THEN 1 ELSE 0 END) as critical_active,
 			       SUM(CASE WHEN i.severity = 'moderate' AND active_exceptions.violation_id IS NULL THEN 1 ELSE 0 END) as moderate_active,
 			       SUM(CASE WHEN i.severity = 'minor' AND active_exceptions.violation_id IS NULL THEN 1 ELSE 0 END) as minor_active,
@@ -3068,7 +3068,6 @@ class REST_Controller {
 		// Build GROUP BY clause based on content type
 		$group_field = match ($content_type) {
 			'template' => 'si.template',
-			'taxonomy', 'author' => 'si.post_type', // Fallback for now
 			default => 'si.post_type',
 		};
 

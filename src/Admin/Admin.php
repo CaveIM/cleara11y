@@ -546,20 +546,11 @@ class Admin {
 				$token = \ClearA11y\Services\Scan_Token_Manager::generate_token($post_id, 'test');
 				if (isset($token['error'])) {
 					echo '<div class="notice notice-error"><p>Error: ' . esc_html($token['error']) . '</p></div>';
-				} else {
-					// Redirect to the page with the scan token (in foreground mode for testing)
-					$scan_url = add_query_arg(
-						['cleara11y_scan' => $token['token']],
-						get_permalink($post_id)
-					);
-					echo '<p>Redirecting to scan page... <a href="' . esc_url($scan_url) . '">Click here if not redirected</a></p>';
-					echo '<script>window.location.href = ' . wp_json_encode($scan_url) . ';</script>';
-					return;
 				}
 			}
 		}
 
-		// Check if reset form was submitted
+		// Handle reset stuck scans request
 		if (isset($_POST['cleara11y_reset_stuck']) && check_admin_referer('cleara11y_reset_stuck')) {
 			global $wpdb;
 			$items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
@@ -731,6 +722,15 @@ class Admin {
 		$is_issue_types_page = ($hook_suffix === 'cleara11y_page_cleara11y-issue-types');
 		$is_issue_reference_page = ($hook_suffix === 'cleara11y_page_cleara11y-issue-reference');
 		$is_ignores_page = ($hook_suffix === 'cleara11y_page_cleara11y-ignores');
+		$is_scan_detail_page = ($hook_suffix === 'cleara11y_page_cleara11y-scan-detail');
+
+		// Also check for scan_id parameter (more reliable)
+		$has_scan_id_param = isset($_GET['scan_id']) && !empty($_GET['scan_id']);
+
+		if ($has_scan_id_param && !$is_scan_detail_page) {
+			// Force scan detail page detection if scan_id is present
+			$is_scan_detail_page = true;
+		}
 
 		// Enqueue the appropriate JavaScript
 		if ($is_issues_page) {
@@ -780,7 +780,7 @@ class Admin {
 				);
 
 				// Localize issues views script
-				wp_localize_script("cleara11y-issues-views", "cleara11yData", [
+				wp_localize_script("cleara11y-issues-views", "cleara11yScanData", [
 					"apiUrl" => $rest_url . "cleara11y/v1/",
 					"nonce" => wp_create_nonce("wp_rest"),
 					"pluginUrl" => CLEARA11Y_PLUGIN_URL,
@@ -854,8 +854,36 @@ class Admin {
 				'nonce' => wp_create_nonce('wp_rest'),
 				'strings' => Ignores_Page::get_script_strings(),
 			]);
-		} else {
-			// Enqueue scanner orchestrator first (loaded but not executed directly)
+
+			} elseif ($is_scan_detail_page) {
+				// Enqueue issues views JavaScript for scan detail pages
+				wp_enqueue_script(
+					"cleara11y-issues-views",
+					CLEARA11Y_PLUGIN_URL . "assets/js/issues-views.js",
+					[],
+					rand(),
+					true
+				);
+
+			error_log("ClearA11y Debug: Enqueueing issues-views.js for scan detail page");
+
+
+				// Localize issues views script for scan detail pages
+				wp_localize_script("cleara11y-issues-views", "cleara11yScanData", [
+						"scanId" => isset($_GET["scan_id"]) ? absint($_GET["scan_id"]) : 0,
+						"apiUrl" => $rest_url . "cleara11y/v1/",
+						"nonce" => wp_create_nonce("wp_rest"),
+						"pluginUrl" => CLEARA11Y_PLUGIN_URL,
+						"strings" => [
+							"loading" => __("Loading...", "cleara11y"),
+							"noIssues" => __("No issues found.", "cleara11y"),
+							"error" => __("Error loading view.", "cleara11y"),
+							"sortBy" => __("Sort by...", "cleara11y"),
+						],
+					]);
+
+			} else {
+
 			wp_enqueue_script(
 				'cleara11y-scanner-orchestrator',
 				CLEARA11Y_PLUGIN_URL . 'assets/js/scanner-orchestrator.js',

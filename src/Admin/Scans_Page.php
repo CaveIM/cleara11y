@@ -191,6 +191,9 @@ class Scans_Page {
 				<strong><a href="<?php echo esc_url(self::get_detail_url($scan->id)); ?>"><?php echo esc_html($name); ?></a></strong>
 				<div class="row-actions">
 					<span class="view"><a href="<?php echo esc_url(self::get_detail_url($scan->id)); ?>"><?php esc_html_e('View details', 'cleara11y'); ?></a></span>
+					<?php if ($scan->total_issues > 0) : ?>
+						<span class="view-issues"> | <a href="<?php echo esc_url(Issues_List_Page::get_url(['scanId' => $scan->id, 'groupBy' => 'rule'])); ?>"><?php esc_html_e('View issues', 'cleara11y'); ?></a></span>
+					<?php endif; ?>
 				</div>
 			</td>
 			<td><?php echo esc_html(self::format_label($scan->scan_type)); ?></td>

@@ -12,6 +12,8 @@
 namespace ClearA11y\Services;
 
 use ClearA11y\Database\Issue_Repository;
+use ClearA11y\Database\Ignore_Rule_Repository;
+use ClearA11y\Database\Ignore_Schema;
 use ClearA11y\Database\Scan_Item_Repository;
 use ClearA11y\Models\Issue;
 
@@ -264,7 +266,19 @@ class PHP_Bulk_Scanner {
 				$issue->dismissed = false;
 				$issue->created_at = current_time('mysql');
 
-				if (Issue_Repository::insert($issue)) {
+				$inserted_id = Issue_Repository::insert($issue);
+				if ($inserted_id) {
+					$issue->id = (int) $inserted_id;
+					if (Ignore_Schema::tables_exist()) {
+						foreach (Ignore_Matcher_Service::find_matches($issue, get_current_blog_id()) as $ignore_match) {
+							Ignore_Rule_Repository::create_match(
+								$issue->id,
+								$ignore_match['rule']->id,
+								get_current_blog_id(),
+								$ignore_match['confidence']
+							);
+						}
+					}
 					$issues[] = $issue;
 				}
 			}

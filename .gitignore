@@ -22,6 +22,8 @@ debug.log
 # Node modules (if we add any build tools later)
 node_modules/
 npm-debug.log*
+test-results/
+playwright-report/
 yarn-debug.log*
 yarn-error.log*
 

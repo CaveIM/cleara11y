@@ -10,6 +10,7 @@
 
 namespace ClearA11y\API;
 
+use ClearA11y\Admin\Scans_Page;
 use ClearA11y\Database\Issue_Repository;
 use ClearA11y\Database\Job_Repository;
 use ClearA11y\Database\Scan_Item_Repository;
@@ -402,6 +403,74 @@ class REST_Controller {
 		);
 
 		// Issues routes
+		register_rest_route(
+			self::NAMESPACE,
+			'/issues/occurrences',
+			[
+				'methods' => 'GET',
+				'callback' => [$this, 'get_issue_occurrences'],
+				'permission_callback' => [$this, 'manage_options_permission'],
+				'args' => [
+					'status' => [
+						'type' => 'string',
+						'enum' => ['active', 'ignored', 'all'],
+						'default' => 'active',
+					],
+					'severity' => [
+						'type' => 'string',
+						'enum' => ['critical', 'moderate', 'minor'],
+					],
+					'rule_id' => ['type' => 'string'],
+					'page_id' => ['type' => 'integer', 'minimum' => 1],
+					'scan_id' => ['type' => 'integer', 'minimum' => 1],
+					'search' => ['type' => 'string'],
+					'group_by' => [
+						'type' => 'string',
+						'enum' => ['page', 'rule', 'none'],
+						'default' => 'page',
+					],
+					'sort' => [
+						'type' => 'string',
+						'enum' => ['severity', 'newest', 'page', 'rule'],
+						'default' => 'severity',
+					],
+					'page' => ['type' => 'integer', 'minimum' => 1, 'default' => 1],
+					'per_page' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 20],
+				],
+			]
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/issues/occurrences/(?P<id>\d+)',
+			[
+				'methods' => 'GET',
+				'callback' => [$this, 'get_issue_occurrence'],
+				'permission_callback' => [$this, 'manage_options_permission'],
+				'args' => [
+					'id' => ['required' => true, 'type' => 'integer', 'minimum' => 1],
+				],
+			]
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/issues/filter-options',
+			[
+				'methods' => 'GET',
+				'callback' => [$this, 'get_issue_filter_options'],
+				'permission_callback' => [$this, 'manage_options_permission'],
+				'args' => [
+					'type' => [
+						'required' => true,
+						'type' => 'string',
+						'enum' => ['rule', 'page', 'scan'],
+					],
+					'search' => ['type' => 'string'],
+				],
+			]
+		);
+
 		register_rest_route(
 			self::NAMESPACE,
 			'/issues/list',
@@ -1497,6 +1566,139 @@ class REST_Controller {
 	}
 
 	/**
+	 * Get canonical issue occurrences for the explorer.
+	 *
+	 * @param \WP_REST_Request $request REST request.
+	 * @return \WP_REST_Response|\WP_Error Response.
+	 */
+	public function get_issue_occurrences(\WP_REST_Request $request) {
+		$scan_id = absint($request->get_param('scan_id'));
+		$page_id = absint($request->get_param('page_id'));
+
+		$scan = null;
+		if ($scan_id > 0) {
+			$scan = Scan_Repository::get_by_id($scan_id);
+			if (! $scan) {
+				return new \WP_Error('scan_not_found', __('Scan not found.', 'cleara11y'), ['status' => 404]);
+			}
+		}
+
+		if ($page_id > 0 && ! get_post($page_id)) {
+			return new \WP_Error('page_not_found', __('Page not found.', 'cleara11y'), ['status' => 404]);
+		}
+
+		$args = [
+			'status' => $scan_id > 0 ? 'all' : ($request->get_param('status') ?: 'active'),
+			'severity' => $request->get_param('severity') ?: '',
+			'rule_id' => sanitize_key((string) $request->get_param('rule_id')),
+			'post_id' => $page_id,
+			'scan_id' => $scan_id,
+			'search' => sanitize_text_field((string) $request->get_param('search')),
+			'group_by' => $request->get_param('group_by') ?: 'page',
+			'sort' => $request->get_param('sort') ?: 'severity',
+			'page' => max(1, absint($request->get_param('page'))),
+			'per_page' => min(100, max(1, absint($request->get_param('per_page')) ?: 20)),
+		];
+
+		$result = Issue_Repository::query_explorer($args);
+		$result['context'] = [
+			'mode' => $scan ? 'scan' : 'live',
+			'status' => $scan ? null : $args['status'],
+			'rule' => $args['rule_id'] ? [
+				'id' => $args['rule_id'],
+				'label' => $this->get_rule_label($args['rule_id']),
+			] : null,
+			'page' => $page_id ? [
+				'id' => $page_id,
+				'label' => get_the_title($page_id) ?: sprintf(__('Page #%d', 'cleara11y'), $page_id),
+			] : null,
+			'scan' => $scan ? $this->format_explorer_scan_context($scan) : null,
+		];
+
+		return rest_ensure_response($result);
+	}
+
+	/**
+	 * Get one issue occurrence.
+	 *
+	 * @param \WP_REST_Request $request REST request.
+	 * @return \WP_REST_Response|\WP_Error Response.
+	 */
+	public function get_issue_occurrence(\WP_REST_Request $request) {
+		$issue = Issue_Repository::get_explorer_occurrence(absint($request->get_param('id')));
+		if (! $issue) {
+			return new \WP_Error('occurrence_not_found', __('Issue occurrence not found.', 'cleara11y'), ['status' => 404]);
+		}
+
+		$issue['inspect_url'] = null;
+		if (! empty($issue['selector']) && get_option('cleara11y_enable_frontend_highlighting', true)) {
+			$issue['inspect_url'] = \ClearA11y\Frontend\Highlighter::get_highlight_url(
+				$issue['id'],
+				$issue['page']['id']
+			);
+		}
+
+		return rest_ensure_response(['occurrence' => $issue]);
+	}
+
+	/**
+	 * Get explorer filter options.
+	 *
+	 * @param \WP_REST_Request $request REST request.
+	 * @return \WP_REST_Response Response.
+	 */
+	public function get_issue_filter_options(\WP_REST_Request $request): \WP_REST_Response {
+		$options = Issue_Repository::get_explorer_filter_options(
+			(string) $request->get_param('type'),
+			sanitize_text_field((string) $request->get_param('search'))
+		);
+		return rest_ensure_response(['options' => $options]);
+	}
+
+	/**
+	 * Format scan context for the explorer.
+	 *
+	 * @param \ClearA11y\Models\Scan $scan Scan.
+	 * @return array Context.
+	 */
+	private function format_explorer_scan_context(\ClearA11y\Models\Scan $scan): array {
+		$latest_completed = Scan_Repository::get_all([
+			'status' => 'completed',
+			'limit' => 1,
+			'orderby' => 'completed_at',
+			'order' => 'DESC',
+		]);
+		$latest_id = ! empty($latest_completed) ? (int) $latest_completed[0]->id : 0;
+
+		return [
+			'id' => $scan->id,
+			'label' => $scan->scan_name ?: sprintf(__('Scan #%d', 'cleara11y'), $scan->id),
+			'status' => $scan->status,
+			'date' => $scan->completed_at ?: ($scan->started_at ?: $scan->created_at),
+			'is_historical' => 'completed' === $scan->status && $latest_id > 0 && $latest_id !== $scan->id,
+			'is_provisional' => in_array($scan->status, ['pending', 'in_progress'], true),
+		];
+	}
+
+	/**
+	 * Get a human-readable label for a stored rule.
+	 *
+	 * @param string $rule_id Rule ID.
+	 * @return string Label.
+	 */
+	private function get_rule_label(string $rule_id): string {
+		global $wpdb;
+		$table = \ClearA11y\Database\Schema::get_table_name('issues');
+		$label = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT help_text FROM `{$table}` WHERE rule_id = %s AND help_text IS NOT NULL ORDER BY id DESC LIMIT 1",
+				$rule_id
+			)
+		);
+		return $label ?: $rule_id;
+	}
+
+	/**
 	 * Get issues list with filters and pagination.
 	 *
 	 * @param \WP_REST_Request $request REST request object.
@@ -2415,8 +2617,7 @@ class REST_Controller {
 
 		// Format scans for JS consumption
 		$data = array_map(function($scan) {
-			// Get detail URL using Scans_Page method
-			$detail_url = admin_url('admin.php?page=cleara11y-scan-details&scan_id=' . $scan->id);
+			$detail_url = Scans_Page::get_detail_url((int) $scan->id);
 
 			return [
 				'id' => $scan->id,

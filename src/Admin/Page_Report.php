@@ -142,11 +142,15 @@ class Page_Report {
 
 					<div class="cleara11y-report-actions-card">
 						<h3><?php esc_html_e('Quick Actions', 'cleara11y'); ?></h3>
-						<a href="<?php echo esc_url(get_permalink($post_id)); ?>" target="_blank" class="button button-secondary button-large">
-							<span class="dashicons dashicons-visibility"></span>
-							<?php esc_html_e('View on Page', 'cleara11y'); ?>
+						<a href="<?php echo esc_url(Issues_List_Page::get_url(['status' => 'active', 'pageId' => $post_id, 'groupBy' => 'rule'])); ?>" class="button button-primary button-large">
+							<span class="dashicons dashicons-search"></span>
+							<?php esc_html_e('View issues', 'cleara11y'); ?>
 						</a>
-						<a href="<?php echo esc_url(get_edit_post_link($post_id)); ?>#cleara11y-metabox" class="button button-primary button-large">
+						<a href="<?php echo esc_url(get_permalink($post_id)); ?>" target="_blank" rel="noopener noreferrer" class="button button-secondary button-large">
+							<span class="dashicons dashicons-visibility"></span>
+							<?php esc_html_e('Open page', 'cleara11y'); ?>
+						</a>
+						<a href="<?php echo esc_url(get_edit_post_link($post_id)); ?>#cleara11y-metabox" class="button button-large">
 							<span class="dashicons dashicons-edit"></span>
 							<?php esc_html_e('Edit Page', 'cleara11y'); ?>
 						</a>

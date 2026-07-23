@@ -78,15 +78,21 @@ class Dashboard_Page {
 					<?php endif; ?>
 					<div class="cleara11y-stats-grid">
 						<div class="cleara11y-stat-box">
-							<div class="cleara11y-stat-value cleara11y-stat-critical" id="cleara11y-total-critical"><?php echo esc_html($stats['total_critical']); ?></div>
+							<div class="cleara11y-stat-value cleara11y-stat-critical" id="cleara11y-total-critical">
+								<a href="<?php echo esc_url(Issues_List_Page::get_url(['scanId' => $stats['scan_id'], 'severity' => 'critical', 'groupBy' => 'rule'])); ?>"><?php echo esc_html($stats['total_critical']); ?></a>
+							</div>
 							<div class="cleara11y-stat-label"><?php esc_html_e('Critical Issues', 'cleara11y'); ?></div>
 						</div>
 						<div class="cleara11y-stat-box">
-							<div class="cleara11y-stat-value cleara11y-stat-moderate" id="cleara11y-total-moderate"><?php echo esc_html($stats['total_moderate']); ?></div>
+							<div class="cleara11y-stat-value cleara11y-stat-moderate" id="cleara11y-total-moderate">
+								<a href="<?php echo esc_url(Issues_List_Page::get_url(['scanId' => $stats['scan_id'], 'severity' => 'moderate', 'groupBy' => 'rule'])); ?>"><?php echo esc_html($stats['total_moderate']); ?></a>
+							</div>
 							<div class="cleara11y-stat-label"><?php esc_html_e('Moderate Issues', 'cleara11y'); ?></div>
 						</div>
 						<div class="cleara11y-stat-box">
-							<div class="cleara11y-stat-value cleara11y-stat-minor" id="cleara11y-total-minor"><?php echo esc_html($stats['total_minor']); ?></div>
+							<div class="cleara11y-stat-value cleara11y-stat-minor" id="cleara11y-total-minor">
+								<a href="<?php echo esc_url(Issues_List_Page::get_url(['scanId' => $stats['scan_id'], 'severity' => 'minor', 'groupBy' => 'rule'])); ?>"><?php echo esc_html($stats['total_minor']); ?></a>
+							</div>
 							<div class="cleara11y-stat-label"><?php esc_html_e('Minor Issues', 'cleara11y'); ?></div>
 						</div>
 						<div class="cleara11y-stat-box">
@@ -155,6 +161,11 @@ class Dashboard_Page {
 										<a class="button button-small" href="<?php echo esc_url(Scans_Page::get_detail_url($scan->id)); ?>">
 											<?php esc_html_e('View Details', 'cleara11y'); ?>
 										</a>
+										<?php if ($scan->total_issues > 0) : ?>
+											<a class="button button-small" href="<?php echo esc_url(Issues_List_Page::get_url(['scanId' => $scan->id, 'groupBy' => 'rule'])); ?>">
+												<?php esc_html_e('View issues', 'cleara11y'); ?>
+											</a>
+										<?php endif; ?>
 									</td>
 									</tr>
 								<?php endforeach; ?>
@@ -207,6 +218,7 @@ class Dashboard_Page {
 			'rules_passed' => 0,
 			'rules_failed' => 0,
 			'last_scan_date' => null,
+			'scan_id' => 0,
 		];
 
 		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
@@ -216,6 +228,7 @@ class Dashboard_Page {
 		if (!$dashboard_scan) {
 			return $stats;
 		}
+		$stats['scan_id'] = (int) $dashboard_scan->id;
 
 		// Get issue counts by severity for the current dashboard scan only.
 		$active_issues = $wpdb->get_results(

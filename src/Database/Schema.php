@@ -101,11 +101,14 @@ class Schema {
 			PRIMARY KEY (`id`),
 			KEY `scan_id` (`scan_id`),
 			KEY `post_id` (`post_id`),
+			KEY `latest_completed_post` (`post_id`, `status`, `scanned_at`, `id`),
 			KEY `status` (`status`),
 			KEY `scan_method` (`scan_method`),
 			KEY `pass_percentage` (`pass_percentage`),
 			KEY `score_grade` (`score_grade`),
-			KEY `created_at` (`created_at`)
+			KEY `created_at` (`created_at`),
+			KEY `explorer_scan_filters` (`scan_id`, `severity`, `rule_id`, `post_id`, `id`),
+			KEY `explorer_live_filters` (`scan_item_id`, `severity`, `rule_id`, `id`)
 		) $charset_collate;";
 
 		// 3. Issues table - Individual accessibility issues
@@ -610,6 +613,38 @@ class Schema {
 				$updated
 			),
 		];
+	}
+
+	/**
+	 * Add indexes used by the issue explorer projections.
+	 *
+	 * @return bool True when all indexes exist.
+	 */
+	public static function add_issue_explorer_indexes(): bool {
+		global $wpdb;
+
+		$indexes = [
+			self::get_table_name('scan_items') => [
+				'latest_completed_post' => '(`post_id`, `status`, `scanned_at`, `id`)',
+			],
+			self::get_table_name('issues') => [
+				'explorer_scan_filters' => '(`scan_id`, `severity`, `rule_id`, `post_id`, `id`)',
+				'explorer_live_filters' => '(`scan_item_id`, `severity`, `rule_id`, `id`)',
+			],
+		];
+
+		foreach ($indexes as $table => $table_indexes) {
+			foreach ($table_indexes as $name => $columns) {
+				$exists = $wpdb->get_var(
+					$wpdb->prepare("SHOW INDEX FROM `{$table}` WHERE Key_name = %s", $name)
+				);
+				if (! $exists && false === $wpdb->query("ALTER TABLE `{$table}` ADD INDEX `{$name}` {$columns}")) {
+					return false;
+				}
+			}
+		}
+
+		return true;
 	}
 
 	/**

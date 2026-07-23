@@ -511,9 +511,10 @@
 
 			const statusText = counts.total === 0 ? 'No issues' : counts.total + ' issue' + (counts.total !== 1 ? 's' : '');
 
-			// Add view report button if there are issues
+			// Add investigation actions if there are issues.
 			const viewReportButton = counts.total > 0
-				? `<a href="${this.getReportUrl(post.id)}" class="button button-small button-primary">View Report</a>`
+				? `<a href="${this.getIssuesUrl(post.id)}" class="button button-small button-primary">View issues</a>
+					<a href="${this.getReportUrl(post.id)}" class="button button-small">Page summary</a>`
 				: '';
 
 			return `
@@ -1291,6 +1292,10 @@
 			return `${window.location.origin}/wp-admin/admin.php?page=cleara11y-page-report&post_id=${postId}`;
 		},
 
+		getIssuesUrl(postId) {
+			return `${window.location.origin}/wp-admin/admin.php?page=cleara11y-issues&status=active&pageId=${postId}&groupBy=rule`;
+		},
+
 		/**
 		 * Load Recent Scans via AJAX and update the DOM
 		 */
@@ -1348,6 +1353,10 @@
 						<a class="button button-small" href="${scan.detail_url}">
 							View Details
 						</a>
+						${scan.total_issues > 0
+							? `<a class="button button-small" href="${window.location.origin}/wp-admin/admin.php?page=cleara11y-issues&scanId=${scan.id}&groupBy=rule">View issues</a>`
+							: ''
+						}
 					</td>
 				</tr>
 			`).join('');

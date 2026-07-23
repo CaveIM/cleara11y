@@ -450,4 +450,334 @@ class Issue_Repository {
 
 		return $result;
 	}
+
+	/**
+	 * Query issue occurrences for the global explorer.
+	 *
+	 * Live mode is a projection over the latest successfully completed scan item
+	 * for each post. Scan mode returns the immutable observations for one scan.
+	 *
+	 * @param array $args Validated explorer arguments.
+	 * @return array Explorer result data.
+	 */
+	public static function query_explorer(array $args = []): array {
+		global $wpdb;
+
+		$args = wp_parse_args(
+			$args,
+			[
+				'status' => 'active',
+				'severity' => '',
+				'rule_id' => '',
+				'post_id' => 0,
+				'scan_id' => 0,
+				'search' => '',
+				'group_by' => 'page',
+				'sort' => 'severity',
+				'page' => 1,
+				'per_page' => 20,
+			]
+		);
+
+		$issues_table = self::get_table();
+		$items_table = Schema::get_table_name('scan_items');
+		$scans_table = Schema::get_table_name('scans');
+		$matches_table = Ignore_Schema::get_table_name('violation_ignore_matches');
+		$rules_table = Ignore_Schema::get_table_name('ignore_rules');
+
+		$active_ignores = "
+			LEFT JOIN (
+				SELECT DISTINCT vm.violation_id
+				FROM `{$matches_table}` vm
+				INNER JOIN `{$rules_table}` ir ON ir.id = vm.ignore_rule_id
+				WHERE ir.status = 'active'
+					AND (ir.expires_at IS NULL OR ir.expires_at > NOW())
+			) active_ignores ON active_ignores.violation_id = i.id";
+
+		$from = "FROM `{$issues_table}` i
+			INNER JOIN `{$items_table}` si ON si.id = i.scan_item_id
+			INNER JOIN `{$scans_table}` s ON s.id = i.scan_id
+			{$active_ignores}";
+
+		$where = [];
+		$params = [];
+		$scan_id = absint($args['scan_id']);
+
+		if ($scan_id > 0) {
+			$where[] = 'i.scan_id = %d';
+			$params[] = $scan_id;
+		} else {
+			$where[] = "si.status = 'completed'";
+			$where[] = "s.status = 'completed'";
+			$where[] = "NOT EXISTS (
+				SELECT 1
+				FROM `{$items_table}` newer_si
+				INNER JOIN `{$scans_table}` newer_s ON newer_s.id = newer_si.scan_id
+				WHERE newer_si.post_id = si.post_id
+					AND newer_si.status = 'completed'
+					AND newer_s.status = 'completed'
+					AND (
+						newer_si.scanned_at > si.scanned_at
+						OR (newer_si.scanned_at = si.scanned_at AND newer_si.id > si.id)
+					)
+			)";
+
+			$exception_expression = '(i.dismissed = 1 OR i.dismissed_global = 1 OR active_ignores.violation_id IS NOT NULL)';
+			if ('active' === $args['status']) {
+				$where[] = "NOT {$exception_expression}";
+			} elseif ('ignored' === $args['status']) {
+				$where[] = $exception_expression;
+			}
+		}
+
+		if (! empty($args['severity'])) {
+			$where[] = 'i.severity = %s';
+			$params[] = $args['severity'];
+		}
+		if (! empty($args['rule_id'])) {
+			$where[] = 'i.rule_id = %s';
+			$params[] = $args['rule_id'];
+		}
+		if (absint($args['post_id']) > 0) {
+			$where[] = 'i.post_id = %d';
+			$params[] = absint($args['post_id']);
+		}
+		if (! empty($args['search'])) {
+			$term = '%' . $wpdb->esc_like($args['search']) . '%';
+			$where[] = '(i.rule_id LIKE %s OR i.message LIKE %s OR i.help_text LIKE %s
+				OR i.selector LIKE %s OR i.accessible_name LIKE %s
+				OR i.inner_text_snippet LIKE %s OR si.post_title LIKE %s OR si.post_url LIKE %s)';
+			for ($index = 0; $index < 8; $index++) {
+				$params[] = $term;
+			}
+		}
+
+		$where_sql = empty($where) ? '1=1' : implode(' AND ', $where);
+		$count_sql = "SELECT COUNT(DISTINCT i.id) {$from} WHERE {$where_sql}";
+		$pages_sql = "SELECT COUNT(DISTINCT i.post_id) {$from} WHERE {$where_sql}";
+		$severity_sql = "SELECT i.severity, COUNT(DISTINCT i.id) AS count
+			{$from} WHERE {$where_sql} GROUP BY i.severity";
+
+		$total = (int) self::get_var_prepared($count_sql, $params);
+		$affected_pages = (int) self::get_var_prepared($pages_sql, $params);
+		$severity_rows = self::get_results_prepared($severity_sql, $params, ARRAY_A);
+		$by_severity = ['critical' => 0, 'moderate' => 0, 'minor' => 0];
+		foreach ($severity_rows as $row) {
+			if (isset($by_severity[$row['severity']])) {
+				$by_severity[$row['severity']] = (int) $row['count'];
+			}
+		}
+
+		$sorts = [
+			'severity' => "FIELD(i.severity, 'critical', 'moderate', 'minor'), i.id DESC",
+			'newest' => 'i.created_at DESC, i.id DESC',
+			'page' => 'si.post_title ASC, i.id DESC',
+			'rule' => 'i.rule_id ASC, i.id DESC',
+		];
+		$order_by = $sorts[$args['sort']] ?? $sorts['severity'];
+		if ('page' === $args['group_by']) {
+			$order_by = "si.post_title ASC, {$order_by}";
+		} elseif ('rule' === $args['group_by']) {
+			$order_by = "i.rule_id ASC, {$order_by}";
+		}
+
+		$page = max(1, absint($args['page']));
+		$per_page = min(100, max(1, absint($args['per_page'])));
+		$offset = ($page - 1) * $per_page;
+		$item_sql = "SELECT i.*, si.post_title, si.post_url, si.scanned_at,
+				s.scan_name, s.status AS scan_status, s.completed_at AS scan_completed_at,
+				CASE WHEN i.dismissed = 1 OR i.dismissed_global = 1
+					OR active_ignores.violation_id IS NOT NULL THEN 1 ELSE 0 END AS is_ignored
+			{$from}
+			WHERE {$where_sql}
+			ORDER BY {$order_by}
+			LIMIT %d OFFSET %d";
+		$item_params = array_merge($params, [$per_page, $offset]);
+		$items = self::get_results_prepared($item_sql, $item_params, ARRAY_A);
+
+		return [
+			'items' => array_map([self::class, 'normalize_explorer_row'], $items),
+			'summary' => [
+				'total_occurrences' => $total,
+				'affected_pages' => $affected_pages,
+				'by_severity' => $by_severity,
+			],
+			'pagination' => [
+				'page' => $page,
+				'per_page' => $per_page,
+				'total_pages' => max(1, (int) ceil($total / $per_page)),
+			],
+		];
+	}
+
+	/**
+	 * Get a normalized explorer occurrence by ID.
+	 *
+	 * @param int $issue_id Issue ID.
+	 * @return array|null Normalized occurrence.
+	 */
+	public static function get_explorer_occurrence(int $issue_id): ?array {
+		global $wpdb;
+
+		$issues_table = self::get_table();
+		$items_table = Schema::get_table_name('scan_items');
+		$scans_table = Schema::get_table_name('scans');
+		$matches_table = Ignore_Schema::get_table_name('violation_ignore_matches');
+		$rules_table = Ignore_Schema::get_table_name('ignore_rules');
+
+		$row = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT i.*, si.post_title, si.post_url, si.scanned_at,
+					s.scan_name, s.status AS scan_status, s.created_at AS scan_created_at,
+					s.completed_at AS scan_completed_at,
+					CASE WHEN i.dismissed = 1 OR i.dismissed_global = 1 OR EXISTS (
+						SELECT 1 FROM `{$matches_table}` vm
+						INNER JOIN `{$rules_table}` ir ON ir.id = vm.ignore_rule_id
+						WHERE vm.violation_id = i.id AND ir.status = 'active'
+							AND (ir.expires_at IS NULL OR ir.expires_at > NOW())
+					) THEN 1 ELSE 0 END AS is_ignored
+				FROM `{$issues_table}` i
+				INNER JOIN `{$items_table}` si ON si.id = i.scan_item_id
+				INNER JOIN `{$scans_table}` s ON s.id = i.scan_id
+				WHERE i.id = %d",
+				$issue_id
+			),
+			ARRAY_A
+		);
+
+		return $row ? self::normalize_explorer_row($row) : null;
+	}
+
+	/**
+	 * Get filter choices for an explorer combobox.
+	 *
+	 * @param string $type Filter type.
+	 * @param string $search Search text.
+	 * @param int    $limit Maximum results.
+	 * @return array Filter options.
+	 */
+	public static function get_explorer_filter_options(string $type, string $search = '', int $limit = 50): array {
+		global $wpdb;
+
+		$limit = min(100, max(1, $limit));
+		$term = '%' . $wpdb->esc_like($search) . '%';
+		$issues_table = self::get_table();
+		$items_table = Schema::get_table_name('scan_items');
+		$scans_table = Schema::get_table_name('scans');
+
+		if ('rule' === $type) {
+			return $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT rule_id AS id, MAX(COALESCE(help_text, rule_id)) AS label
+					FROM `{$issues_table}`
+					WHERE rule_id LIKE %s OR help_text LIKE %s
+					GROUP BY rule_id ORDER BY label ASC LIMIT %d",
+					$term,
+					$term,
+					$limit
+				),
+				ARRAY_A
+			);
+		}
+
+		if ('page' === $type) {
+			return $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT post_id AS id, MAX(COALESCE(NULLIF(post_title, ''), post_url)) AS label
+					FROM `{$items_table}`
+					WHERE post_title LIKE %s OR post_url LIKE %s
+					GROUP BY post_id ORDER BY label ASC LIMIT %d",
+					$term,
+					$term,
+					$limit
+				),
+				ARRAY_A
+			);
+		}
+
+		return $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT id, COALESCE(NULLIF(scan_name, ''), CONCAT('Scan #', id)) AS label
+				FROM `{$scans_table}`
+				WHERE scan_name LIKE %s OR CAST(id AS CHAR) LIKE %s
+				ORDER BY created_at DESC LIMIT %d",
+				$term,
+				$term,
+				$limit
+			),
+			ARRAY_A
+		);
+	}
+
+	/**
+	 * Normalize a database row for the explorer API.
+	 *
+	 * @param array $row Database row.
+	 * @return array Normalized row.
+	 */
+	private static function normalize_explorer_row(array $row): array {
+		return [
+			'id' => (int) $row['id'],
+			'rule' => [
+				'id' => (string) $row['rule_id'],
+				'title' => (string) ($row['help_text'] ?: $row['rule_id']),
+				'description' => (string) ($row['message'] ?? ''),
+				'help_url' => $row['help_url'] ?: null,
+				'wcag_criterion' => $row['wcag_criterion'] ?: null,
+			],
+			'page' => [
+				'id' => (int) $row['post_id'],
+				'title' => (string) ($row['post_title'] ?: __('Untitled', 'cleara11y')),
+				'url' => (string) $row['post_url'],
+			],
+			'scan' => [
+				'id' => (int) $row['scan_id'],
+				'name' => (string) ($row['scan_name'] ?: sprintf(__('Scan #%d', 'cleara11y'), $row['scan_id'])),
+				'status' => (string) ($row['scan_status'] ?? ''),
+				'scanned_at' => $row['scanned_at'] ?? null,
+				'completed_at' => $row['scan_completed_at'] ?? null,
+			],
+			'severity' => (string) $row['severity'],
+			'impact' => $row['impact'] ?: null,
+			'finding_type' => 'review' === $row['rule_type'] ? 'review' : 'violation',
+			'status' => ! empty($row['is_ignored']) ? 'ignored' : 'active',
+			'message' => (string) ($row['message'] ?? ''),
+			'help_text' => (string) ($row['help_text'] ?? ''),
+			'selector' => $row['selector'] ?: null,
+			'xpath' => $row['xpath'] ?: null,
+			'html' => $row['html'] ?: null,
+			'accessible_name' => $row['accessible_name'] ?: null,
+			'inner_text_snippet' => $row['inner_text_snippet'] ?: null,
+			'node_evidence' => $row['node_evidence'] ?: null,
+			'created_at' => $row['created_at'] ?? null,
+		];
+	}
+
+	/**
+	 * Run a prepared scalar query, allowing queries with no placeholders.
+	 *
+	 * @param string $sql Query SQL.
+	 * @param array  $params Query parameters.
+	 * @return mixed Query result.
+	 */
+	private static function get_var_prepared(string $sql, array $params) {
+		global $wpdb;
+		return empty($params) ? $wpdb->get_var($sql) : $wpdb->get_var($wpdb->prepare($sql, ...$params));
+	}
+
+	/**
+	 * Run a prepared results query, allowing queries with no placeholders.
+	 *
+	 * @param string     $sql Query SQL.
+	 * @param array      $params Query parameters.
+	 * @param string|int $output Output format.
+	 * @return array Query results.
+	 */
+	private static function get_results_prepared(string $sql, array $params, $output = OBJECT): array {
+		global $wpdb;
+		$results = empty($params)
+			? $wpdb->get_results($sql, $output)
+			: $wpdb->get_results($wpdb->prepare($sql, ...$params), $output);
+		return $results ?: [];
+	}
 }

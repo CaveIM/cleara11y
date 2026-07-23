@@ -1,8 +1,6 @@
 <?php
 /**
- * Issues List Page
- *
- * Renders the admin page for listing all accessibility issues.
+ * Issues Explorer Page.
  *
  * @package ClearA11y
  * @namespace ClearA11y\Admin
@@ -11,138 +9,160 @@
 namespace ClearA11y\Admin;
 
 /**
- * Issues List Page Class
+ * Issues Explorer Page Class.
  */
 class Issues_List_Page {
 
 	/**
-	 * Single instance of the class.
+	 * Build an explorer URL from a meaningful scope.
 	 *
-	 * @var Issues_List_Page|null
+	 * @param array $scope Explorer query arguments.
+	 * @return string Explorer URL.
 	 */
-	private static ?Issues_List_Page $instance = null;
-
-	/**
-	 * Get the single instance of the class.
-	 *
-	 * @return Issues_List_Page
-	 */
-	public static function get_instance(): Issues_List_Page {
-		if (null === self::$instance) {
-			self::$instance = new self();
-		}
-
-		return self::$instance;
+	public static function get_url(array $scope = []): string {
+		return add_query_arg(
+			array_merge(['page' => 'cleara11y-issues'], $scope),
+			admin_url('admin.php')
+		);
 	}
 
 	/**
-	 * Constructor.
-	 */
-	private function __construct() {
-		// Hooks are registered in Admin class
-	}
-
-	/**
-	 * Render the issues list page.
+	 * Render the issues explorer shell.
+	 *
+	 * @return void
 	 */
 	public static function render(): void {
 		?>
-		<div class="wrap cleara11y-issues-list-wrap">
-			<h1 class="wp-heading-inline"><?php esc_html_e('Accessibility Issues', 'cleara11y'); ?></h1>
-			<hr class="wp-header-end">
+		<div class="wrap cleara11y-explorer" id="cleara11y-issues-explorer">
+			<nav class="cleara11y-explorer__breadcrumbs" aria-label="<?php esc_attr_e('Breadcrumb', 'cleara11y'); ?>">
+				<a href="<?php echo esc_url(admin_url('admin.php?page=cleara11y-issues')); ?>">
+					<?php esc_html_e('Accessibility Issues', 'cleara11y'); ?>
+				</a>
+				<span aria-hidden="true">/</span>
+				<span id="cleara11y-breadcrumb-current"><?php esc_html_e('Active issues', 'cleara11y'); ?></span>
+			</nav>
 
-			<div class="cleara11y-issues-filters" style="margin: 20px 0; padding: 15px; background: #fff; border: 1px solid #c3c4c7; box-shadow: 0 1px 1px rgba(0,0,0,.04);">
-				<div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
-					<label for="cleara11y-filter-severity" style="font-weight: 600;">
-						<?php esc_html_e('Severity:', 'cleara11y'); ?>
-					</label>
-					<select id="cleara11y-filter-severity" class="regular-text">
-						<option value=""><?php esc_html_e('All Severities', 'cleara11y'); ?></option>
-						<option value="critical"><?php esc_html_e('Critical', 'cleara11y'); ?></option>
-						<option value="moderate"><?php esc_html_e('Moderate', 'cleara11y'); ?></option>
-						<option value="minor"><?php esc_html_e('Minor', 'cleara11y'); ?></option>
-					</select>
-
-					<label for="cleara11y-filter-status" style="font-weight: 600;">
-						<?php esc_html_e('Status:', 'cleara11y'); ?>
-					</label>
-					<select id="cleara11y-filter-status" class="regular-text">
-						<option value="active"><?php esc_html_e('Active Detected Issues', 'cleara11y'); ?></option>
-						<option value="ignored"><?php esc_html_e('Exceptions', 'cleara11y'); ?></option>
-						<option value="all"><?php esc_html_e('All', 'cleara11y'); ?></option>
-					</select>
-
-					<label for="cleara11y-search-issues" style="font-weight: 600;">
-						<?php esc_html_e('Search:', 'cleara11y'); ?>
-					</label>
-					<input type="text" id="cleara11y-search-issues" class="regular-text" placeholder="<?php esc_attr_e('Search by rule, page, or URL...', 'cleara11y'); ?>">
-
-					<button type="button" class="button" id="cleara11y-reset-filters">
-						<?php esc_html_e('Reset', 'cleara11y'); ?>
-					</button>
-				</div>
+			<div class="cleara11y-explorer__header">
+				<h1 id="cleara11y-explorer-title"><?php esc_html_e('Active accessibility issues', 'cleara11y'); ?></h1>
+				<p id="cleara11y-explorer-summary" class="description">
+					<?php esc_html_e('Loading issue occurrences…', 'cleara11y'); ?>
+				</p>
 			</div>
 
-			<div class="cleara11y-issues-stats" style="margin: 20px 0; padding: 15px; background: #fff; border: 1px solid #c3c4c7; box-shadow: 0 1px 1px rgba(0,0,0,.04);">
-				<div style="display: flex; gap: 30px;">
-					<div>
-						<span class="cleara11y-stat-label" style="color: #646970;"><?php esc_html_e('Active Issues:', 'cleara11y'); ?></span>
-						<span class="cleara11y-stat-value" id="cleara11y-total-issues" style="font-weight: 600; margin-left: 5px;">-</span>
-					</div>
-					<div>
-						<span class="cleara11y-stat-label" style="color: #d63638;"><?php esc_html_e('Critical:', 'cleara11y'); ?></span>
-						<span class="cleara11y-stat-value" id="cleara11y-critical-issues" style="font-weight: 600; margin-left: 5px;">-</span>
-					</div>
-					<div>
-						<span class="cleara11y-stat-label" style="color: #f56e28;"><?php esc_html_e('Moderate:', 'cleara11y'); ?></span>
-						<span class="cleara11y-stat-value" id="cleara11y-moderate-issues" style="font-weight: 600; margin-left: 5px;">-</span>
-					</div>
-					<div>
-						<span class="cleara11y-stat-label" style="color: #ffb900;"><?php esc_html_e('Minor:', 'cleara11y'); ?></span>
-						<span class="cleara11y-stat-value" id="cleara11y-minor-issues" style="font-weight: 600; margin-left: 5px;">-</span>
-					</div>
-					<div>
-						<span class="cleara11y-stat-label" style="color: #646970;"><?php esc_html_e('Exceptions:', 'cleara11y'); ?></span>
-						<span class="cleara11y-stat-value" id="cleara11y-ignored-issues" style="font-weight: 600; margin-left: 5px; color: #646970;">-</span>
-					</div>
-				</div>
-			</div>
+			<div id="cleara11y-snapshot-banner" class="cleara11y-snapshot-banner" hidden></div>
 
-			<div class="cleara11y-issues-container" style="margin-top: 20px;">
-				<div class="cleara11y-loading-spinner" style="text-align: center; padding: 40px;">
-					<span class="spinner is-active" style="float: none; margin: 0;"></span>
-					<p style="margin-top: 15px;"><?php esc_html_e('Loading issues...', 'cleara11y'); ?></p>
+			<section class="cleara11y-filter-bar" aria-labelledby="cleara11y-filter-heading">
+				<h2 id="cleara11y-filter-heading" class="screen-reader-text"><?php esc_html_e('Filter issues', 'cleara11y'); ?></h2>
+				<div class="cleara11y-filter-bar__primary">
+					<label>
+						<span><?php esc_html_e('Status', 'cleara11y'); ?></span>
+						<select id="cleara11y-filter-status">
+							<option value="active"><?php esc_html_e('Active', 'cleara11y'); ?></option>
+							<option value="ignored"><?php esc_html_e('Exceptions', 'cleara11y'); ?></option>
+							<option value="all"><?php esc_html_e('All workflow states', 'cleara11y'); ?></option>
+						</select>
+					</label>
+					<label>
+						<span><?php esc_html_e('Severity', 'cleara11y'); ?></span>
+						<select id="cleara11y-filter-severity">
+							<option value=""><?php esc_html_e('All severities', 'cleara11y'); ?></option>
+							<option value="critical"><?php esc_html_e('Critical', 'cleara11y'); ?></option>
+							<option value="moderate"><?php esc_html_e('Moderate', 'cleara11y'); ?></option>
+							<option value="minor"><?php esc_html_e('Minor', 'cleara11y'); ?></option>
+						</select>
+					</label>
+					<label class="cleara11y-filter-bar__search">
+						<span><?php esc_html_e('Search', 'cleara11y'); ?></span>
+						<input type="search" id="cleara11y-search-issues" placeholder="<?php esc_attr_e('Rule, page, selector, or text', 'cleara11y'); ?>">
+					</label>
+					<label>
+						<span><?php esc_html_e('Group by', 'cleara11y'); ?></span>
+						<select id="cleara11y-group-by">
+							<option value="page"><?php esc_html_e('Page', 'cleara11y'); ?></option>
+							<option value="rule"><?php esc_html_e('Rule', 'cleara11y'); ?></option>
+							<option value="none"><?php esc_html_e('No grouping', 'cleara11y'); ?></option>
+						</select>
+					</label>
+					<label>
+						<span><?php esc_html_e('Sort', 'cleara11y'); ?></span>
+						<select id="cleara11y-sort">
+							<option value="severity"><?php esc_html_e('Severity', 'cleara11y'); ?></option>
+							<option value="newest"><?php esc_html_e('Newest observation', 'cleara11y'); ?></option>
+							<option value="page"><?php esc_html_e('Page', 'cleara11y'); ?></option>
+							<option value="rule"><?php esc_html_e('Rule', 'cleara11y'); ?></option>
+						</select>
+					</label>
+					<button type="button" class="button" id="cleara11y-clear-filters"><?php esc_html_e('Clear filters', 'cleara11y'); ?></button>
 				</div>
-			</div>
+				<details class="cleara11y-more-filters">
+					<summary><?php esc_html_e('More filters', 'cleara11y'); ?></summary>
+					<div class="cleara11y-more-filters__grid">
+						<?php self::render_entity_filter('rule', __('Rule', 'cleara11y')); ?>
+						<?php self::render_entity_filter('page', __('Page', 'cleara11y')); ?>
+						<?php self::render_entity_filter('scan', __('Scan', 'cleara11y')); ?>
+					</div>
+				</details>
+			</section>
 
-			<!-- Pagination -->
-			<div class="cleara11y-pagination" style="margin: 20px 0; display: none; justify-content: center; align-items: center; gap: 15px;">
-				<button type="button" class="button" id="cleara11y-prev-page" disabled>
-					<span class="dashicons dashicons-arrow-left-alt2"></span>
-					<?php esc_html_e('Previous', 'cleara11y'); ?>
-				</button>
-				<span id="cleara11y-page-info" style="font-weight: 600;">Page 1 of 1</span>
-				<button type="button" class="button" id="cleara11y-next-page" disabled>
-					<?php esc_html_e('Next', 'cleara11y'); ?>
-					<span class="dashicons dashicons-arrow-right-alt2"></span>
-				</button>
+			<p id="cleara11y-results-announcer" class="screen-reader-text" aria-live="polite" aria-atomic="true"></p>
+
+			<div class="cleara11y-master-detail">
+				<section id="cleara11y-results-region" class="cleara11y-results" aria-labelledby="cleara11y-results-heading" tabindex="-1">
+					<h2 id="cleara11y-results-heading"><?php esc_html_e('Issue occurrences', 'cleara11y'); ?></h2>
+					<div id="cleara11y-issues-container" aria-busy="true">
+						<?php self::render_loading_state(); ?>
+					</div>
+					<nav id="cleara11y-pagination" class="cleara11y-pagination" aria-label="<?php esc_attr_e('Issue results pages', 'cleara11y'); ?>" hidden>
+						<button type="button" class="button" id="cleara11y-prev-page"><?php esc_html_e('Previous', 'cleara11y'); ?></button>
+						<span id="cleara11y-page-info"></span>
+						<button type="button" class="button" id="cleara11y-next-page"><?php esc_html_e('Next', 'cleara11y'); ?></button>
+					</nav>
+				</section>
+
+				<aside id="cleara11y-detail-panel" class="cleara11y-detail" aria-labelledby="cleara11y-detail-title" hidden>
+					<div id="cleara11y-detail-content"></div>
+				</aside>
 			</div>
 		</div>
+		<?php
+	}
 
-		<!-- Issue Detail Modal -->
-		<div id="cleara11y-issue-modal" class="cleara11y-modal-overlay" style="display: none;">
-			<div class="cleara11y-modal" style="max-width: 700px;">
-				<div class="cleara11y-modal-header">
-					<h3 class="cleara11y-modal-title">Issue Details</h3>
-					<button type="button" class="cleara11y-modal-close">×</button>
-				</div>
-				<div class="cleara11y-modal-body" style="max-height: 70vh; overflow-y: auto;">
-					<div class="cleara11y-issue-detail-content"></div>
-				</div>
-				<div class="cleara11y-modal-footer">
-					<button type="button" class="button cleara11y-modal-close-btn"><?php esc_html_e('Close', 'cleara11y'); ?></button>
-				</div>
-			</div>
+	/**
+	 * Render a server-backed entity filter.
+	 *
+	 * @param string $type Filter type.
+	 * @param string $label Filter label.
+	 * @return void
+	 */
+	private static function render_entity_filter(string $type, string $label): void {
+		?>
+		<div class="cleara11y-entity-filter" data-filter-type="<?php echo esc_attr($type); ?>">
+			<label for="cleara11y-<?php echo esc_attr($type); ?>-filter"><?php echo esc_html($label); ?></label>
+			<input
+				type="search"
+				id="cleara11y-<?php echo esc_attr($type); ?>-filter"
+				autocomplete="off"
+				role="combobox"
+				aria-autocomplete="list"
+				aria-expanded="false"
+				aria-controls="cleara11y-<?php echo esc_attr($type); ?>-options"
+				placeholder="<?php echo esc_attr(sprintf(__('Find a %s…', 'cleara11y'), strtolower($label))); ?>"
+			>
+			<ul id="cleara11y-<?php echo esc_attr($type); ?>-options" class="cleara11y-entity-options" role="listbox" hidden></ul>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Render stable loading markup.
+	 *
+	 * @return void
+	 */
+	private static function render_loading_state(): void {
+		?>
+		<div class="cleara11y-loading-state" role="status">
+			<span class="spinner is-active" aria-hidden="true"></span>
+			<span><?php esc_html_e('Loading issue occurrences…', 'cleara11y'); ?></span>
 		</div>
 		<?php
 	}

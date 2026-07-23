@@ -11,6 +11,8 @@
 namespace ClearA11y\Services;
 
 use ClearA11y\Database\Issue_Repository;
+use ClearA11y\Database\Ignore_Rule_Repository;
+use ClearA11y\Database\Ignore_Schema;
 use ClearA11y\Database\Scan_Repository;
 use ClearA11y\Database\Scan_Item_Repository;
 use ClearA11y\Models\Issue;
@@ -63,8 +65,13 @@ class Scan_Results_Processor {
 			}
 		}
 
-		// Process new issues
-		$violations = $results['violations'] ?? [];
+		// Persist both confirmed violations and findings axe could not fully
+		// classify. Incomplete findings require review, but hiding them creates a
+		// dangerous false-negative in an auditing product.
+		$findings = [
+			'error' => $results['violations'] ?? [],
+			'review' => $results['incomplete'] ?? [],
+		];
 		$issues_inserted = 0;
 		$severity_counts = [
 			'critical' => 0,
@@ -72,36 +79,53 @@ class Scan_Results_Processor {
 			'minor' => 0,
 		];
 
-		foreach ($violations as $violation) {
-			// Apply filters to allow skipping certain rules
-			if (!apply_filters('cleara11y_include_issue', true, $violation, $scan_item)) {
-				continue;
-			}
-
-			foreach ($violation['nodes'] ?? [] as $node) {
-				$issue_data = $violation;
-				$issue_data['nodes'] = [$node];
-
-				// Find matching evidence record
-				$node_selector = $node['target'][0] ?? null;
-				$node_evidence = [];
-				if ($node_selector && isset($evidence_index[$node_selector])) {
-					$node_evidence = $evidence_index[$node_selector];
-				} else {
+		foreach ($findings as $finding_type => $rules) {
+			foreach ($rules as $violation) {
+				// Apply filters to allow skipping certain rules.
+				if (!apply_filters('cleara11y_include_issue', true, $violation, $scan_item)) {
+					continue;
 				}
 
-				$issue = Issue::from_axe_result(
-					$issue_data,
-					$scan_item->scan_id,
-					$scan_item_id,
-					$scan_item->post_id,
-					$node_evidence
-				);
+				foreach ($violation['nodes'] ?? [] as $node) {
+					$issue_data = $violation;
+					$issue_data['nodes'] = [$node];
 
-				$inserted_id = Issue_Repository::insert($issue);
-				if ($inserted_id) {
-					$issues_inserted++;
-					$severity_counts[$issue->severity]++;
+					// Find matching evidence record.
+					$node_selector = $node['target'][0] ?? null;
+					$node_evidence = [];
+					if ($node_selector && isset($evidence_index[$node_selector])) {
+						$node_evidence = $evidence_index[$node_selector];
+					}
+
+					$issue = Issue::from_axe_result(
+						$issue_data,
+						$scan_item->scan_id,
+						$scan_item_id,
+						$scan_item->post_id,
+						$node_evidence
+					);
+					$issue->rule_type = $finding_type;
+					if ('review' === $finding_type && ! empty($node['failureSummary'])) {
+						$issue->message = sanitize_textarea_field($node['failureSummary']);
+					}
+
+					$inserted_id = Issue_Repository::insert($issue);
+					if ($inserted_id) {
+						$issue->id = (int) $inserted_id;
+						if (Ignore_Schema::tables_exist()) {
+							$ignore_matches = Ignore_Matcher_Service::find_matches($issue, get_current_blog_id());
+							foreach ($ignore_matches as $ignore_match) {
+								Ignore_Rule_Repository::create_match(
+									$issue->id,
+									$ignore_match['rule']->id,
+									get_current_blog_id(),
+									$ignore_match['confidence']
+								);
+							}
+						}
+						$issues_inserted++;
+						$severity_counts[$issue->severity]++;
+					}
 				}
 			}
 		}

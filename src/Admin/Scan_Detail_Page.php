@@ -63,6 +63,11 @@ class Scan_Detail_Page {
 			<a href="<?php echo esc_url(admin_url('admin.php?page=cleara11y-scans')); ?>" class="page-title-action">
 				<?php esc_html_e('Back to Scans', 'cleara11y'); ?>
 			</a>
+			<?php if ($scan->total_issues > 0) : ?>
+				<a href="<?php echo esc_url(Issues_List_Page::get_url(['scanId' => $scan->id, 'groupBy' => 'rule'])); ?>" class="page-title-action">
+					<?php esc_html_e('View issues', 'cleara11y'); ?>
+				</a>
+			<?php endif; ?>
 			<hr class="wp-header-end">
 
 			<?php self::render_summary($scan); ?>
@@ -210,7 +215,10 @@ class Scan_Detail_Page {
 			<td><?php echo esc_html($item->scanned_at ? Scans_Page::format_date($item->scanned_at) : '-'); ?></td>
 			<td>
 				<?php if ($item->post_id > 0) : ?>
-					<a href="<?php echo esc_url(admin_url('admin.php?page=cleara11y-page-report&post_id=' . absint($item->post_id))); ?>" class="button button-small"><?php esc_html_e('Page Report', 'cleara11y'); ?></a>
+					<?php if ($item->total_issues > 0) : ?>
+						<a href="<?php echo esc_url(Issues_List_Page::get_url(['scanId' => $item->scan_id, 'pageId' => $item->post_id, 'groupBy' => 'rule'])); ?>" class="button button-small"><?php esc_html_e('View issues', 'cleara11y'); ?></a>
+					<?php endif; ?>
+					<a href="<?php echo esc_url($item->post_url); ?>" target="_blank" rel="noopener noreferrer" class="button button-small"><?php esc_html_e('Open page', 'cleara11y'); ?></a>
 					<a href="<?php echo esc_url(get_edit_post_link($item->post_id)); ?>" class="button button-small"><?php esc_html_e('Edit', 'cleara11y'); ?></a>
 				<?php endif; ?>
 			</td>

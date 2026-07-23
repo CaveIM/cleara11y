@@ -136,9 +136,9 @@ document.addEventListener('DOMContentLoaded', function() {
 							</div>
 						</div>
 						<div class="cleara11y-issue-actions">
-							<button class="button view-pages" data-rule-id="${issueType.rule_id}">
-								View Pages
-							</button>
+							<a class="button view-issues" href="${window.location.origin}/wp-admin/admin.php?page=cleara11y-issues&status=active&ruleId=${encodeURIComponent(issueType.rule_id)}&groupBy=page">
+								View issues
+							</a>
 						</div>
 					</div>
 				`;
@@ -151,14 +151,7 @@ document.addEventListener('DOMContentLoaded', function() {
 		},
 
 		bindActionButtons() {
-			// View pages buttons
-			this.elements.issueTypesList.querySelectorAll('.view-pages').forEach(btn => {
-				btn.addEventListener('click', (e) => {
-					const ruleId = e.target.dataset.ruleId;
-					this.viewIssuePages(ruleId);
-				});
-			});
-
+			// Issue investigation now uses the canonical explorer links rendered above.
 		},
 
 		async viewIssuePages(ruleId) {

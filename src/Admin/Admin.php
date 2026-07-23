@@ -734,6 +734,13 @@ class Admin {
 
 		// Enqueue the appropriate JavaScript
 		if ($is_issues_page) {
+			wp_enqueue_style(
+				'cleara11y-issues-explorer',
+				CLEARA11Y_PLUGIN_URL . 'assets/css/issues-explorer.css',
+				[],
+				CLEARA11Y_VERSION
+			);
+
 			// Enqueue toast CSS for notifications
 			wp_enqueue_style(
 				'cleara11y-toast',
@@ -769,12 +776,20 @@ class Admin {
 				'strings' => Ignores_Page::get_script_strings(),
 			]);
 
-			// Enqueue issues list JavaScript
+			wp_enqueue_script(
+				'cleara11y-issues-query',
+				CLEARA11Y_PLUGIN_URL . 'assets/js/issues-explorer-query.js',
+				[],
+				CLEARA11Y_VERSION,
+				true
+			);
+
+			// Enqueue issues explorer JavaScript.
 			wp_enqueue_script(
 				'cleara11y-issues-list',
 				CLEARA11Y_PLUGIN_URL . 'assets/js/issues-list.js',
-				[],
-				rand(),
+				['cleara11y-issues-query'],
+				CLEARA11Y_VERSION,
 				true
 			);
 
@@ -784,8 +799,11 @@ class Admin {
 				'nonce' => wp_create_nonce('wp_rest'),
 				'pluginUrl' => CLEARA11Y_PLUGIN_URL,
 				'strings' => [
-					'loading' => __('Loading...', 'cleara11y'),
-					'noIssues' => __('No issues found.', 'cleara11y'),
+					'loadingOccurrences' => __('Loading issue occurrences…', 'cleara11y'),
+					'activeTitle' => __('Active accessibility issues', 'cleara11y'),
+					'noIssues' => __('No active issues exist in this scope.', 'cleara11y'),
+					'noFilteredIssues' => __('No issues match the current filters.', 'cleara11y'),
+					'noScanIssues' => __('This scan did not report any issues matching this scope.', 'cleara11y'),
 					'error' => __('Error loading issues.', 'cleara11y'),
 				],
 			]);

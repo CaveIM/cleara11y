@@ -322,6 +322,9 @@
 				}
 
 				// Inject a comprehensive scan script into the iframe
+				const axeTags = Array.isArray(window.cleara11yData?.axeTags)
+					? window.cleara11yData.axeTags
+					: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 				const scanScript = iframeWindow.document.createElement('script');
 				scanScript.id = 'cleara11y-scan-script';
 				scanScript.textContent = `
@@ -376,7 +379,7 @@
 							// Run only specific rules to speed up scanning
 							runOnly: {
 								type: 'tag',
-								values: cleara11yData.axeTags || ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
+								values: ${JSON.stringify(axeTags)}
 							},
 							// Set result limits
 							resultLimit: 50000,

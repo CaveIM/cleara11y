@@ -437,7 +437,7 @@ class Scan_Results_Processor {
 		$default_config = [
 			'runOnly' => [
 				'type' => 'tag',
-				'values' => [$wcag_level],
+				'values' => self::get_wcag_tags((string) $wcag_level),
 			],
 			// Note: reporter option removed for axe-core v4.x compatibility
 			// In v4, the reporter format is auto-detected
@@ -450,6 +450,30 @@ class Scan_Results_Processor {
 		 * @param array $config Axe-core configuration.
 		 */
 		return apply_filters('cleara11y_axe_config', $default_config);
+	}
+
+	/**
+	 * Resolve a configured WCAG target to cumulative axe-core tags.
+	 *
+	 * Axe tags identify only the rules introduced at a particular version and
+	 * level. A WCAG 2.1 AA scan therefore needs the 2.0 A/AA and 2.1 A/AA tags,
+	 * rather than only the literal wcag21aa tag.
+	 *
+	 * @param string $wcag_level Configured WCAG target.
+	 * @return array<int, string> Cumulative axe-core tags.
+	 */
+	public static function get_wcag_tags(string $wcag_level = 'wcag21aa'): array {
+		$levels = [
+			'wcag2a' => ['wcag2a'],
+			'wcag2aa' => ['wcag2a', 'wcag2aa'],
+			'wcag2aaa' => ['wcag2a', 'wcag2aa', 'wcag2aaa'],
+			'wcag21a' => ['wcag2a', 'wcag21a'],
+			'wcag21aa' => ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'],
+		];
+
+		$wcag_level = sanitize_key($wcag_level);
+
+		return $levels[$wcag_level] ?? $levels['wcag21aa'];
 	}
 
 	/**

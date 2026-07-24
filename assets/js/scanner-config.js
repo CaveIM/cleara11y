@@ -43,8 +43,8 @@
 		PROGRESS_UPDATE_INTERVAL: 100,         // Progress bar update interval
 
 		// Axe-core configuration
-		AXE_RUN_TAGS: ['wcag2aa'],             // WCAG level to test against
-		AXE_ORCHESTRATOR_TAGS: ['wcag2a', 'wcag2aa', 'wcag21aa'], // More comprehensive for orchestrator
+		AXE_RUN_TAGS: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'],
+		AXE_ORCHESTRATOR_TAGS: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'],
 
 		// API endpoints (relative to REST API base)
 		ENDPOINTS: {

@@ -376,7 +376,7 @@
 							// Run only specific rules to speed up scanning
 							runOnly: {
 								type: 'tag',
-								values: ['wcag2a', 'wcag2aa', 'wcag21aa']
+								values: cleara11yData.axeTags || ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
 							},
 							// Set result limits
 							resultLimit: 50000,

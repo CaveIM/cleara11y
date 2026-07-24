@@ -234,7 +234,7 @@
 				const results = await axe.run(document, {
 					runOnly: {
 						type: 'tag',
-						values: ClearA11yScannerConfig.AXE_RUN_TAGS
+						values: cleara11yScanData.axeTags || ClearA11yScannerConfig.AXE_RUN_TAGS
 					}
 				});
 

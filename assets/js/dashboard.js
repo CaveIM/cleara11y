@@ -1017,7 +1017,7 @@
 																// Run all WCAG 2.0 A, AA and WCAG 2.1 AA rules
 																runOnly: {
 																	type: 'tag',
-																	values: ['wcag2a', 'wcag2aa', 'wcag21aa']
+																	values: cleara11yData.axeTags || ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']
 																},
 																// Get all result types for comprehensive analysis
 																resultTypes: ['violations', 'passes', 'incomplete']

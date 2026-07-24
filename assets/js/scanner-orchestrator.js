@@ -522,7 +522,9 @@
 				}
 
 				runSimpleBootstrap(win, doc, scanId) {
-				const axeTags = window.ClearA11yScannerConfig?.AXE_ORCHESTRATOR_TAGS || ['wcag2a', 'wcag2aa', 'wcag21aa'];
+				const axeTags = window.cleara11yData?.axeTags
+					|| window.ClearA11yScannerConfig?.AXE_ORCHESTRATOR_TAGS
+					|| ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 				const maxSnippet = window.ClearA11yConstants?.MAX_SNIPPET_LENGTH || 4000;
 				const maxText = window.ClearA11yConstants?.MAX_TEXT_LENGTH || 400;
 				const ancestorDepth = window.ClearA11yConstants?.ANCESTOR_DEPTH || 6;

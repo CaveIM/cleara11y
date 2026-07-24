@@ -161,6 +161,9 @@ class Scanner {
 		);
 
 		$rest_url = rest_url('cleara11y/v1/scan/results');
+		$axe_tags = \ClearA11y\Services\Scan_Results_Processor::get_wcag_tags(
+			(string) get_option('cleara11y_wcag_level', 'wcag21aa')
+		);
 
 		if ($is_background) {
 			// Background mode - load minimal scanner
@@ -182,6 +185,7 @@ class Scanner {
 				'nonce' => wp_create_nonce('wp_rest'),
 				'isBackground' => $is_background,
 				'debug' => defined('WP_DEBUG') && WP_DEBUG,
+				'axeTags' => $axe_tags,
 			]);
 		} else {
 			// Regular mode - load full scanner with UI
@@ -203,6 +207,7 @@ class Scanner {
 				'nonce' => wp_create_nonce('wp_rest'),
 				'isBackground' => $is_background,
 				'debug' => defined('WP_DEBUG') && WP_DEBUG,
+				'axeTags' => $axe_tags,
 			]);
 
 			// Enqueue scanner CSS (overlay and loading indicator)

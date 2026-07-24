@@ -323,6 +323,9 @@ class Admin {
 			'ajaxNonce' => wp_create_nonce('cleara11y-nonce'),
 			'pluginUrl' => CLEARA11Y_PLUGIN_URL,
 			'workerId' => sanitize_text_field($_COOKIE['cleara11y_worker_id'] ?? ''),
+			'axeTags' => \ClearA11y\Services\Scan_Results_Processor::get_wcag_tags(
+				(string) get_option('cleara11y_wcag_level', 'wcag21aa')
+			),
 		];
 
 		// Enqueue toolbar styles
@@ -896,6 +899,9 @@ class Admin {
 			'nonce' => wp_create_nonce('wp_rest'),
 			'ajaxNonce' => wp_create_nonce('cleara11y-nonce'),
 			'pluginUrl' => CLEARA11Y_PLUGIN_URL,
+			'axeTags' => \ClearA11y\Services\Scan_Results_Processor::get_wcag_tags(
+				(string) get_option('cleara11y_wcag_level', 'wcag21aa')
+			),
 			'strings' => [
 				'scanInProgress' => __('Scan in progress...', 'cleara11y'),
 				'scanComplete' => __('Scan complete!', 'cleara11y'),

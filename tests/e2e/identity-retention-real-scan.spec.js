@@ -2,6 +2,7 @@ const {test, expect} = require('@playwright/test');
 const {execFileSync} = require('node:child_process');
 
 const WP_PATH = process.env.CLEARA11Y_WP_PATH || '/var/www/html';
+const AXE_MINOR_CANDIDATE = require.resolve('axe-core/axe.min.js');
 
 function wp(args) {
 	return execFileSync(
@@ -84,7 +85,7 @@ function identityForOccurrence(identities, {ruleId, tagName, inputType = null}) 
 	return matches[0];
 }
 
-async function runScan(browser, postId) {
+async function runScan(browser, postId, options = {}) {
 	const tokenCode = `echo wp_json_encode(
 		\\ClearA11y\\Services\\Scan_Token_Manager::generate_token(${Number(postId)})
 	);`;
@@ -92,6 +93,13 @@ async function runScan(browser, postId) {
 	const page = await browser.newPage();
 
 	try {
+		if (options.axeSourcePath) {
+			await page.route('**/assets/js/axe.min.js*', route => route.fulfill({
+				path: options.axeSourcePath,
+				contentType: 'application/javascript'
+			}));
+		}
+
 		const resultRequest = page.waitForResponse(
 			response => response.url().includes('/cleara11y/v1/scan/results')
 				&& response.request().method() === 'POST',
@@ -103,6 +111,11 @@ async function runScan(browser, postId) {
 		});
 		const response = await resultRequest;
 		expect(response.status(), `Scan ${tokenData.scan_id} did not persist`).toBe(200);
+		if (options.expectedAxeVersion) {
+			const actualAxeVersion = await page.evaluate(() => window.axe?.version || '');
+			expect(actualAxeVersion, 'The M8 scan did not use the candidate axe build')
+				.toBe(options.expectedAxeVersion);
+		}
 		return Number(tokenData.scan_id);
 	} finally {
 		await page.close();
@@ -164,6 +177,15 @@ test('real scans retain identity across the mutation corpus', async ({browser}) 
 		createdScanIds.push(baselineScan);
 		const baseline = identitiesForScan(baselineScan);
 		expect(baseline.size, 'The real-scan fixture produced no v2 identities').toBeGreaterThan(0);
+		const baselineRules = new Set(
+			[...baseline.values()].map(evidence => evidence.violationInputs.rule_id)
+		);
+		for (const ruleId of ['button-name', 'image-alt', 'label', 'color-contrast']) {
+			expect(
+				baselineRules.has(ruleId),
+				`The cumulative WCAG scan omitted the representative ${ruleId} rule`
+			).toBe(true);
+		}
 		const unrelatedPageIds = [];
 
 		const mutations = [
@@ -239,6 +261,16 @@ test('real scans retain identity across the mutation corpus', async ({browser}) 
 				}
 			},
 			{
+				id: 'M8',
+				allowNew: true,
+				exactRetention: true,
+				scanOptions: {
+					axeSourcePath: AXE_MINOR_CANDIDATE,
+					expectedAxeVersion: '4.11.0'
+				},
+				apply() {}
+			},
+			{
 				id: 'M9',
 				apply() {
 					wp(['user', 'meta', 'update', '1', 'admin_color', 'midnight']);
@@ -252,7 +284,7 @@ test('real scans retain identity across the mutation corpus', async ({browser}) 
 		for (const mutation of mutations) {
 			resetFixture();
 			mutation.apply();
-			const scanId = await runScan(browser, postId);
+			const scanId = await runScan(browser, postId, mutation.scanOptions);
 			createdScanIds.push(scanId);
 			const after = identitiesForScan(scanId);
 			const report = compareIdentitySets(
@@ -277,6 +309,9 @@ test('real scans retain identity across the mutation corpus', async ({browser}) 
 					2
 				)}`
 			).toBeGreaterThanOrEqual(95);
+			if (mutation.exactRetention) {
+				expect(report.retention, `${mutation.id} moved an existing identity`).toBe(100);
+			}
 			if (!mutation.allowNew) {
 				expect(
 					report.spuriouslyNew,

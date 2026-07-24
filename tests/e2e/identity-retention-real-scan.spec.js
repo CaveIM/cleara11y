@@ -51,6 +51,39 @@ function identitiesForScan(scanId) {
 	return identities;
 }
 
+function occurrenceStatus(identity) {
+	const code = `
+		$table = \\ClearA11y\\Database\\Occurrence_Repository::get_table();
+		echo (string) $GLOBALS['wpdb']->get_var(
+			$GLOBALS['wpdb']->prepare(
+				"SELECT status FROM {$table} WHERE violation_identity_v2 = %s",
+				${JSON.stringify(identity)}
+			)
+		);
+	`;
+	return wp(['eval', code]);
+}
+
+function identityForOccurrence(identities, {ruleId, tagName, inputType = null}) {
+	const matches = [...identities.entries()].filter(([, evidence]) => (
+		evidence.violationInputs.rule_id === ruleId
+		&& evidence.elementInputs.tag_name === tagName
+		&& (inputType === null || evidence.elementInputs.input_type === inputType)
+	));
+	expect(
+		matches,
+		`Expected one ${ruleId} occurrence for ${tagName}; observed ${JSON.stringify(
+			[...identities.values()].map(evidence => ({
+				ruleId: evidence.violationInputs.rule_id,
+				tagName: evidence.elementInputs.tag_name,
+				inputType: evidence.elementInputs.input_type,
+				selector: evidence.selector
+			}))
+		)}`
+	).toHaveLength(1);
+	return matches[0];
+}
+
 async function runScan(browser, postId) {
 	const tokenCode = `echo wp_json_encode(
 		\\ClearA11y\\Services\\Scan_Token_Manager::generate_token(${Number(postId)})
@@ -93,14 +126,15 @@ function compareIdentitySets(mutation, baseline, after) {
 	};
 }
 
-test('real scans retain v2 identity across M1-M7 content mutations', async ({browser}) => {
-	test.setTimeout(180000);
+test('real scans retain identity across the mutation corpus', async ({browser}) => {
+	test.setTimeout(240000);
 
-	const blockA = '<!-- wp:html --><section><button></button><img src="/cleara11y-missing-alt.png"></section><!-- /wp:html -->';
+	const blockA = '<!-- wp:html --><section><button id="cleara11y-mutation-button"></button><img id="cleara11y-mutation-image" src="/cleara11y-missing-alt.png"><strong id="cleara11y-fix-target" style="color:#fff;background:#fff">Fix target</strong><em id="cleara11y-delete-target" style="color:#fff;background:#fff">Delete target</em></section><!-- /wp:html -->';
 	const copy = '<!-- wp:paragraph --><p style="color:#111;background:#fff">Stable unrelated copy.</p><!-- /wp:paragraph -->';
 	const blockB = '<!-- wp:html --><aside><a href="/identity-harness-docs"></a><input type="text"></aside><!-- /wp:html -->';
 	const baselineContent = blockA + copy + blockB;
 	const originalPermalink = wp(['option', 'get', 'permalink_structure']);
+	const originalAdminColor = wp(['user', 'meta', 'get', '1', 'admin_color']);
 	const postId = Number(wp([
 		'post',
 		'create',
@@ -167,8 +201,8 @@ test('real scans retain v2 identity across M1-M7 content mutations', async ({bro
 				apply() {
 					updatePost(postId, {
 						post_content: baselineContent.replace(
-							'<section><button></button><img src="/cleara11y-missing-alt.png"></section>',
-							'<div><section><button></button><img src="/cleara11y-missing-alt.png"></section></div>'
+							'<section><button id="cleara11y-mutation-button"></button><img id="cleara11y-mutation-image" src="/cleara11y-missing-alt.png"><strong id="cleara11y-fix-target" style="color:#fff;background:#fff">Fix target</strong><em id="cleara11y-delete-target" style="color:#fff;background:#fff">Delete target</em></section>',
+							'<div><section><button id="cleara11y-mutation-button"></button><img id="cleara11y-mutation-image" src="/cleara11y-missing-alt.png"><strong id="cleara11y-fix-target" style="color:#fff;background:#fff">Fix target</strong><em id="cleara11y-delete-target" style="color:#fff;background:#fff">Delete target</em></section></div>'
 						)
 					});
 				}
@@ -202,6 +236,15 @@ test('real scans retain v2 identity across M1-M7 content mutations', async ({bro
 				apply() {
 					wp(['option', 'update', 'permalink_structure', '/index.php/%postname%/']);
 					wp(['rewrite', 'flush']);
+				}
+			},
+			{
+				id: 'M9',
+				apply() {
+					wp(['user', 'meta', 'update', '1', 'admin_color', 'midnight']);
+				},
+				cleanup() {
+					wp(['user', 'meta', 'update', '1', 'admin_color', originalAdminColor || 'fresh']);
 				}
 			}
 		];
@@ -243,10 +286,87 @@ test('real scans retain v2 identity across M1-M7 content mutations', async ({bro
 			if (mutation.cleanup) mutation.cleanup();
 		}
 
+		resetFixture();
+		const [fixedIdentity] = identityForOccurrence(
+			baseline,
+			{ruleId: 'color-contrast', tagName: 'strong'}
+		);
+		updatePost(postId, {
+			post_content: baselineContent.replace(
+				'<strong id="cleara11y-fix-target" style="color:#fff;background:#fff">Fix target</strong>',
+				'<strong id="cleara11y-fix-target" style="color:#111;background:#fff">Fix target</strong>'
+			)
+		});
+		const fixedScanId = await runScan(browser, postId);
+		createdScanIds.push(fixedScanId);
+		const afterFix = identitiesForScan(fixedScanId);
+		const fixedAbsent = !afterFix.has(fixedIdentity);
+		reports.push({
+			mutation: 'M10',
+			before: 1,
+			after: fixedAbsent ? 0 : 1,
+			retained: 1,
+			lost: [],
+			spuriouslyNew: [],
+			resolved: fixedAbsent ? 1 : 0,
+			retention: 100
+		});
+		expect(fixedAbsent, 'M10 did not remove the fixed contrast violation').toBe(true);
+		expect(occurrenceStatus(fixedIdentity), 'M10 did not resolve canonical state').toBe('resolved');
+
+		resetFixture();
+		const [deletedIdentity] = identityForOccurrence(
+			baseline,
+			{ruleId: 'color-contrast', tagName: 'em'}
+		);
+		updatePost(postId, {
+			post_content: baselineContent.replace(
+				'<em id="cleara11y-delete-target" style="color:#fff;background:#fff">Delete target</em>',
+				''
+			)
+		});
+		const deletedScanId = await runScan(browser, postId);
+		createdScanIds.push(deletedScanId);
+		const afterDelete = identitiesForScan(deletedScanId);
+		const deletedAbsent = !afterDelete.has(deletedIdentity);
+		reports.push({
+			mutation: 'M11',
+			before: 1,
+			after: deletedAbsent ? 0 : 1,
+			retained: 0,
+			lost: [],
+			spuriouslyNew: [],
+			resolved: deletedAbsent ? 1 : 0,
+			retention: 100
+		});
+		expect(deletedAbsent, 'M11 retained the deleted contrast violation').toBe(true);
+		expect(occurrenceStatus(deletedIdentity), 'M11 did not resolve canonical state').toBe('resolved');
+
+		resetFixture();
+		updatePost(postId, {
+			post_content: baselineContent.replace(
+				'</aside>',
+				'<mark id="cleara11y-new-contrast" style="color:#fff;background:#fff">New target</mark></aside>'
+			)
+		});
+		const newViolationScanId = await runScan(browser, postId);
+		createdScanIds.push(newViolationScanId);
+		const afterNewViolation = identitiesForScan(newViolationScanId);
+		const newReport = compareIdentitySets('M12', baseline, afterNewViolation);
+		const newTargetMatches = [...afterNewViolation.values()].filter(evidence => (
+			evidence.violationInputs.rule_id === 'color-contrast'
+			&& evidence.elementInputs.tag_name === 'mark'
+		));
+		reports.push({...newReport, resolved: 0});
+		expect(newReport.retention, 'M12 lost a baseline identity').toBe(100);
+		expect(newTargetMatches, 'M12 did not produce one genuinely new violation').toHaveLength(1);
+		expect(newReport.spuriouslyNew.length, 'M12 new violation collided with existing identity').toBeGreaterThan(0);
+
 		console.log(JSON.stringify(reports, null, 2));
 	} finally {
 		wp(['option', 'update', 'permalink_structure', originalPermalink]);
 		wp(['rewrite', 'flush']);
+		wp(['user', 'meta', 'update', '1', 'admin_color', originalAdminColor || 'fresh']);
 
 		if (createdScanIds.length) {
 			const scanIds = createdScanIds.map(Number).join(',');
@@ -274,7 +394,7 @@ test('real scans retain v2 identity across M1-M7 content mutations', async ({bro
 
 		createdPostIds.forEach(createdPostId => {
 			try {
-				wp(['post', 'delete', String(createdPostId)]);
+				wp(['post', 'delete', String(createdPostId), '--force']);
 			} catch (error) {
 				// The primary assertion should remain the reported failure.
 			}

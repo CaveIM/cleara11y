@@ -28,6 +28,16 @@ async function extractEvidenceFromAxeResults(results, options = {}) {
   } = options;
 
   const out = [];
+  const attribution = buildAttributionIndex(document);
+
+  if (
+    new URLSearchParams(window.location.search).has("cleara11y_scan") &&
+    !attribution.available
+  ) {
+    throw new Error(
+      "Template attribution markers are missing. The scan page may have been served from a cache."
+    );
+  }
 
   const resultSets = [
     { resultType: "violation", findings: results.violations || [] },
@@ -39,6 +49,7 @@ async function extractEvidenceFromAxeResults(results, options = {}) {
       for (const node of v.nodes || []) {
         const rawSelector = node?.target?.[0] ?? null;
         const selector = typeof rawSelector === "string" ? rawSelector : null;
+        let sourceDescriptor = null;
 
         const record = {
           result_type: resultType,
@@ -79,6 +90,10 @@ async function extractEvidenceFromAxeResults(results, options = {}) {
           continue;
         }
 
+        sourceDescriptor = attribution.forElement(element);
+        record.source_descriptor = sourceDescriptor;
+        record.source_key = sourceDescriptor?.source_key || null;
+
         // Extract evidence from element
         record.node_evidence = await buildNodeEvidence(element, {
           maxSnippetLen,
@@ -94,6 +109,66 @@ async function extractEvidenceFromAxeResults(results, options = {}) {
   }
 
   return out;
+}
+
+/**
+ * Build an element-to-source lookup from paired attribution comments.
+ *
+ * @param {Document} rootDoc Document containing scan-only markers and map.
+ * @return {Object} Attribution lookup.
+ */
+function buildAttributionIndex(rootDoc) {
+  const mapElement = rootDoc.getElementById("cleara11y-attribution-map");
+  let payload = null;
+
+  if (mapElement) {
+    try {
+      payload = JSON.parse(mapElement.textContent || "{}");
+    } catch (error) {
+      throw new Error("Template attribution source map is malformed.");
+    }
+  }
+
+  const sources = payload?.sources || {};
+  const fallback = payload?.documentSourceId
+    ? sources[payload.documentSourceId] || null
+    : null;
+  const elementSources = new WeakMap();
+  const stack = [];
+  const walker = rootDoc.createTreeWalker(
+    rootDoc.documentElement,
+    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT
+  );
+  let current = walker.currentNode;
+
+  while (current) {
+    if (current.nodeType === Node.COMMENT_NODE) {
+      const marker = current.nodeValue?.trim().match(/^a11y:([se]):([a-z0-9]{6,8})$/);
+      if (marker?.[1] === "s") {
+        stack.push(marker[2]);
+      } else if (marker?.[1] === "e") {
+        const index = stack.lastIndexOf(marker[2]);
+        if (index !== -1) stack.splice(index, 1);
+      }
+    } else if (current.nodeType === Node.ELEMENT_NODE && stack.length) {
+      elementSources.set(current, stack[stack.length - 1]);
+    }
+
+    current = walker.nextNode();
+  }
+
+  return {
+    available: Boolean(mapElement && Object.keys(sources).length),
+    forElement(element) {
+      let currentElement = element;
+      while (currentElement) {
+        const sourceId = elementSources.get(currentElement);
+        if (sourceId && sources[sourceId]) return sources[sourceId];
+        currentElement = currentElement.parentElement;
+      }
+      return fallback;
+    },
+  };
 }
 
 /**
@@ -291,6 +366,14 @@ async function buildNodeEvidence(el, options) {
   };
 
   const accessibleName = deriveAccessibleName(el);
+  const computedRole = getComputedRole(el);
+  const inputType = tagName === "input"
+    ? (el.getAttribute("type") || "text").toLowerCase()
+    : null;
+  const hrefPath = el.hasAttribute("href")
+    ? normalizeHrefPath(el.getAttribute("href"))
+    : null;
+  const ancestorRoleChain = buildAncestorRoleChain(el, 5);
 
   const strictSource = JSON.stringify({
     tagName,
@@ -316,6 +399,10 @@ async function buildNodeEvidence(el, options) {
 
   return {
     tag_name: tagName,
+    computed_role: computedRole,
+    input_type: inputType,
+    href_path: hrefPath,
+    ancestor_role_chain: ancestorRoleChain,
     attributes: attrs,
     accessible_name: accessibleName,
 
@@ -334,6 +421,107 @@ async function buildNodeEvidence(el, options) {
     fingerprint_loose: fingerprintLoose,
     signature_version: 1,
   };
+}
+
+/**
+ * Resolve an element's explicit or implicit ARIA role.
+ *
+ * @param {Element} el DOM element.
+ * @return {string|null} Computed role.
+ */
+function getComputedRole(el) {
+  const explicit = (el.getAttribute("role") || "").trim().split(/\s+/)[0];
+  if (explicit) return explicit.toLowerCase();
+
+  const tag = el.tagName.toLowerCase();
+  const inputType = (el.getAttribute("type") || "text").toLowerCase();
+  const mappings = {
+    article: "article",
+    aside: "complementary",
+    button: "button",
+    details: "group",
+    dialog: "dialog",
+    main: "main",
+    nav: "navigation",
+    ol: "list",
+    option: "option",
+    progress: "progressbar",
+    table: "table",
+    tbody: "rowgroup",
+    textarea: "textbox",
+    tfoot: "rowgroup",
+    thead: "rowgroup",
+    tr: "row",
+    ul: "list",
+  };
+
+  if (mappings[tag]) return mappings[tag];
+  if (/^h[1-6]$/.test(tag)) return "heading";
+  if ((tag === "a" || tag === "area") && el.hasAttribute("href")) return "link";
+  if (tag === "li") return "listitem";
+  if (tag === "img") return el.getAttribute("alt") === "" ? "presentation" : "img";
+  if (tag === "select") {
+    return el.multiple || Number(el.getAttribute("size") || 0) > 1 ? "listbox" : "combobox";
+  }
+  if (tag === "td") return "cell";
+  if (tag === "th") return el.getAttribute("scope") === "row" ? "rowheader" : "columnheader";
+  if (tag === "input") {
+    const roles = {
+      button: "button",
+      checkbox: "checkbox",
+      email: "textbox",
+      image: "button",
+      number: "spinbutton",
+      radio: "radio",
+      range: "slider",
+      reset: "button",
+      search: "searchbox",
+      submit: "button",
+      tel: "textbox",
+      text: "textbox",
+      url: "textbox",
+    };
+    return roles[inputType] || null;
+  }
+
+  return null;
+}
+
+/**
+ * Build a depth-capped chain containing ancestor roles only.
+ *
+ * @param {Element} el DOM element.
+ * @param {number} maxDepth Maximum number of role-bearing ancestors.
+ * @return {Array<string>} Ancestor role chain.
+ */
+function buildAncestorRoleChain(el, maxDepth) {
+  const roles = [];
+  let ancestor = el.parentElement;
+
+  while (ancestor && roles.length < maxDepth) {
+    const role = getComputedRole(ancestor);
+    if (role) roles.push(role);
+    ancestor = ancestor.parentElement;
+  }
+
+  return roles;
+}
+
+/**
+ * Normalize a link target to its path only.
+ *
+ * @param {string|null} href Link target.
+ * @return {string|null} Normalized path.
+ */
+function normalizeHrefPath(href) {
+  if (!href) return null;
+
+  try {
+    const path = new URL(href, document.baseURI).pathname || "/";
+    return path.length > 1 ? path.replace(/\/+$/, "") : path;
+  } catch (error) {
+    return null;
+  }
 }
 
 /**

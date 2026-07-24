@@ -34,7 +34,7 @@ define('CLEARA11Y_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('CLEARA11Y_PLUGIN_BASENAME', plugin_basename(__FILE__));
 
 // Database version constant.
-define('CLEARA11Y_DB_VERSION', '1.9.0');
+define('CLEARA11Y_DB_VERSION', '2.3.0');
 
 /**
  * PSR-4 Autoloader
@@ -276,6 +276,34 @@ class ClearA11y_Plugin {
 		if (version_compare($current_db_version, '1.9.0', '<')) {
 			if (\ClearA11y\Database\Schema::add_result_type_column()) {
 				update_option('cleara11y_db_version', '1.9.0');
+			}
+		}
+
+		// Persist stable template attribution alongside occurrence evidence.
+		if (version_compare($current_db_version, '2.0.0', '<')) {
+			if (\ClearA11y\Database\Schema::add_source_attribution_columns()) {
+				update_option('cleara11y_db_version', '2.0.0');
+			}
+		}
+
+		// Store the separated v2 element and violation identity layers.
+		if (version_compare($current_db_version, '2.1.0', '<')) {
+			if (\ClearA11y\Database\Schema::add_v2_identity_columns()) {
+				update_option('cleara11y_db_version', '2.1.0');
+			}
+		}
+
+		// Replace probabilistic occurrence suppression with fail-safe v2 matching.
+		if (version_compare($current_db_version, '2.2.0', '<')) {
+			if (\ClearA11y\Database\Ignore_Schema::add_v2_matching_columns()) {
+				update_option('cleara11y_db_version', '2.2.0');
+			}
+		}
+
+		// Track live occurrence lifecycle separately from immutable observations.
+		if (version_compare($current_db_version, '2.3.0', '<')) {
+			if (\ClearA11y\Database\Schema::add_occurrence_state_table()) {
+				update_option('cleara11y_db_version', '2.3.0');
 			}
 		}
 	}

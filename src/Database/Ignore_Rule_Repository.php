@@ -70,6 +70,13 @@ class Ignore_Rule_Repository {
 			'created_at' => $rule->created_at ?? current_time('mysql'),
 			'expires_at' => $rule->expires_at,
 			'match_count' => 0,
+			'violation_identity_v2' => $rule->violation_identity_v2,
+			'element_identity_v2' => $rule->element_identity_v2,
+			'identity_signature_version' => $rule->identity_signature_version,
+			'legacy_reanchor_status' => 'rule' === $rule->target_type
+				? 'not_required'
+				: $rule->legacy_reanchor_status,
+			'legacy_reanchor_attempted_at' => $rule->legacy_reanchor_attempted_at,
 		];
 
 		$format = [
@@ -77,6 +84,7 @@ class Ignore_Rule_Repository {
 			'%s', '%s', '%s', '%s', // rule_ids, element_match, scope, duration
 			'%s', '%s', '%d', '%d', // reason_category, note, system_generated, created_by
 			'%s', '%s', '%d', // created_at, expires_at, match_count
+			'%s', '%s', '%d', '%s', '%s',
 		];
 
 		$result = $wpdb->insert(self::get_table(), $data, $format);
@@ -111,13 +119,18 @@ class Ignore_Rule_Repository {
 			'reason_category' => $rule->reason_category,
 			'note' => $rule->note,
 			'expires_at' => $rule->expires_at,
+			'violation_identity_v2' => $rule->violation_identity_v2,
+			'element_identity_v2' => $rule->element_identity_v2,
+			'identity_signature_version' => $rule->identity_signature_version,
+			'legacy_reanchor_status' => $rule->legacy_reanchor_status,
+			'legacy_reanchor_attempted_at' => $rule->legacy_reanchor_attempted_at,
 		];
 
 		$result = $wpdb->update(
 			self::get_table(),
 			$data,
 			['id' => $rule->id],
-			['%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s'],
+			['%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s'],
 			['%s']
 		);
 
@@ -347,6 +360,222 @@ class Ignore_Rule_Repository {
 	}
 
 	/**
+	 * Get stable post IDs from observations previously suppressed by a rule.
+	 *
+	 * @param string $rule_id Rule ID.
+	 * @return int[] WordPress post IDs.
+	 */
+	public static function get_legacy_anchor_post_ids(string $rule_id): array {
+		global $wpdb;
+
+		$issues_table = Schema::get_table_name('issues');
+		$rows = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT DISTINCT i.post_id
+				FROM `" . self::get_matches_table() . "` vm
+				INNER JOIN `{$issues_table}` i ON i.id = vm.violation_id
+				WHERE vm.ignore_rule_id = %s AND i.post_id > 0",
+				$rule_id
+			)
+		);
+
+		return array_map('intval', $rows ?: []);
+	}
+
+	/**
+	 * Anchor a legacy occurrence exception to exact v2 identities.
+	 *
+	 * @param string $rule_id Rule ID.
+	 * @param string $violation_identity Exact violation identity.
+	 * @param string $element_identity Element identity.
+	 * @param int    $signature_version Identity signature version.
+	 * @return bool True when the anchor was stored.
+	 */
+	public static function reanchor_to_v2(
+		string $rule_id,
+		string $violation_identity,
+		string $element_identity,
+		int $signature_version
+	): bool {
+		global $wpdb;
+
+		$result = $wpdb->update(
+			self::get_table(),
+			[
+				'violation_identity_v2' => $violation_identity,
+				'element_identity_v2' => $element_identity,
+				'identity_signature_version' => $signature_version,
+				'legacy_reanchor_status' => 'anchored',
+				'legacy_reanchor_attempted_at' => current_time('mysql'),
+			],
+			[
+				'id' => $rule_id,
+				'legacy_reanchor_status' => 'pending',
+			],
+			['%s', '%s', '%d', '%s', '%s'],
+			['%s', '%s']
+		);
+
+		if (false === $result) {
+			error_log(
+				sprintf(
+					'ClearA11y ERROR: Failed to re-anchor legacy exception. rule_id=%s database_error=%s',
+					$rule_id,
+					$wpdb->last_error
+				)
+			);
+			return false;
+		}
+
+		if (1 === $result) {
+			self::insert_audit_log(
+				'ignore_reanchored_v2',
+				$rule_id,
+				null,
+				['identity_signature_version' => $signature_version]
+			);
+		}
+
+		return 1 === $result;
+	}
+
+	/**
+	 * Mark still-pending legacy occurrence exceptions unmatched after a scan.
+	 *
+	 * @param int         $site_id Site ID.
+	 * @param string|null $since Only count anchors attempted during this scan.
+	 * @param int|null    $scan_id Scan whose coverage determines unmatched rules.
+	 * @return array{anchored:int,unmatched:int} Re-anchor results.
+	 */
+	public static function finalize_legacy_reanchoring(
+		int $site_id,
+		?string $since = null,
+		?int $scan_id = null
+	): array {
+		global $wpdb;
+
+		$pending_rules = array_filter(
+			self::get_active($site_id),
+			static fn(Ignore_Rule $rule): bool => in_array(
+				$rule->target_type,
+				['element', 'rule_on_element'],
+				true
+			) && 'pending' === $rule->legacy_reanchor_status
+		);
+		$covered_rule_ids = [];
+		foreach ($pending_rules as $pending_rule) {
+			if (self::legacy_rule_scope_was_scanned($pending_rule, $scan_id)) {
+				$covered_rule_ids[] = $pending_rule->id;
+			}
+		}
+
+		$unmatched = 0;
+		foreach ($covered_rule_ids as $rule_id) {
+			$result = $wpdb->update(
+				self::get_table(),
+				[
+					'legacy_reanchor_status' => 'unmatched',
+					'legacy_reanchor_attempted_at' => current_time('mysql'),
+				],
+				[
+					'id' => $rule_id,
+					'legacy_reanchor_status' => 'pending',
+				],
+				['%s', '%s'],
+				['%s', '%s']
+			);
+			if (false === $result) {
+				error_log(
+					sprintf(
+						'ClearA11y ERROR: Failed finalizing legacy exception re-anchoring. rule_id=%s database_error=%s',
+						$rule_id,
+						$wpdb->last_error
+					)
+				);
+				continue;
+			}
+			$unmatched += (int) $result;
+		}
+
+		$anchored = 0;
+		if ($since) {
+			$anchored = (int) $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT COUNT(*) FROM `" . self::get_table() . "`
+					WHERE site_id = %d
+						AND legacy_reanchor_status = 'anchored'
+						AND legacy_reanchor_attempted_at >= %s",
+					$site_id,
+					$since
+				)
+			);
+		}
+
+		return [
+			'anchored' => $anchored,
+			'unmatched' => $unmatched,
+		];
+	}
+
+	/**
+	 * Check whether a completed scan covered a legacy rule's declared scope.
+	 *
+	 * @param Ignore_Rule $rule Rule awaiting a one-time re-anchor.
+	 * @param int|null    $scan_id Completed scan ID, or null for test/admin use.
+	 * @return bool True when absence from this scan is meaningful.
+	 */
+	private static function legacy_rule_scope_was_scanned(Ignore_Rule $rule, ?int $scan_id): bool {
+		if (null === $scan_id) {
+			return true;
+		}
+
+		global $wpdb;
+
+		$scans_table = Schema::get_table_name('scans');
+		$items_table = Schema::get_table_name('scan_items');
+		$scan_type = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT scan_type FROM `{$scans_table}` WHERE id = %d",
+				$scan_id
+			)
+		);
+		$items = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT post_id, post_url, post_type FROM `{$items_table}` WHERE scan_id = %d",
+				$scan_id
+			)
+		);
+		if (! $scan_type || empty($items)) {
+			return false;
+		}
+
+		$scope_type = $rule->scope['scope_type'] ?? '';
+		if ('page' === $scope_type) {
+			$anchor_post_ids = self::get_legacy_anchor_post_ids($rule->id);
+			$scope_url = \ClearA11y\Services\Fingerprint_Service::normalize_url(
+				(string) ($rule->scope['url'] ?? '')
+			);
+			foreach ($items as $item) {
+				if (
+					in_array((int) $item->post_id, $anchor_post_ids, true)
+					||
+					$scope_url === \ClearA11y\Services\Fingerprint_Service::normalize_url(
+						(string) $item->post_url
+					)
+				) {
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		// A partial scan cannot prove that a site-, content-type-, or
+		// URL-pattern-scoped legacy exception has no corresponding occurrence.
+		return 'full' === $scan_type;
+	}
+
+	/**
 	 * Check if a matching quick ignore already exists.
 	 *
 	 * @param int    $site_id    Site ID.
@@ -531,10 +760,19 @@ class Ignore_Rule_Repository {
 	 * @param string $ignore_rule_id Ignore rule ID.
 	 * @param int    $site_id      Site ID.
 	 * @param string $confidence   Match confidence level.
+	 * @param string $action       Match action: suppressed or resembles.
 	 * @return bool True on success, false on failure.
 	 */
-	public static function create_match(int $violation_id, string $ignore_rule_id, int $site_id, string $confidence = 'high'): bool {
+	public static function create_match(
+		int $violation_id,
+		string $ignore_rule_id,
+		int $site_id,
+		string $confidence = 'high',
+		string $action = 'suppressed'
+	): bool {
 		global $wpdb;
+
+		$action = in_array($action, ['suppressed', 'resembles'], true) ? $action : 'resembles';
 
 		// Check if match already exists
 		$existing = $wpdb->get_var(
@@ -546,7 +784,18 @@ class Ignore_Rule_Repository {
 		);
 
 		if ($existing) {
-			return true; // Already exists
+			$result = $wpdb->update(
+				self::get_matches_table(),
+				[
+					'matched_at' => current_time('mysql'),
+					'match_confidence' => $confidence,
+					'match_action' => $action,
+				],
+				['id' => (int) $existing],
+				['%s', '%s', '%s'],
+				['%d']
+			);
+			return false !== $result;
 		}
 
 		$result = $wpdb->insert(
@@ -557,11 +806,12 @@ class Ignore_Rule_Repository {
 				'site_id' => $site_id,
 				'matched_at' => current_time('mysql'),
 				'match_confidence' => $confidence,
+				'match_action' => $action,
 			],
-			['%d', '%s', '%d', '%s', '%s']
+			['%d', '%s', '%d', '%s', '%s', '%s']
 		);
 
-		if ($result !== false) {
+		if ($result !== false && 'suppressed' === $action) {
 			// Increment match count on rule
 			self::increment_match_count($ignore_rule_id);
 		}

@@ -64,12 +64,20 @@ class Ignore_Schema {
 			`updated_at` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
 			`expires_at` datetime DEFAULT NULL,
 			`match_count` int(11) NOT NULL DEFAULT 0,
+			`violation_identity_v2` varchar(64) DEFAULT NULL,
+			`element_identity_v2` varchar(64) DEFAULT NULL,
+			`identity_signature_version` int(11) DEFAULT NULL,
+			`legacy_reanchor_status` varchar(20) NOT NULL DEFAULT 'pending',
+			`legacy_reanchor_attempted_at` datetime DEFAULT NULL,
 			PRIMARY KEY (`id`),
 			KEY `site_id` (`site_id`),
 			KEY `status` (`status`),
 			KEY `target_type` (`target_type`),
 			KEY `created_by` (`created_by`),
-			KEY `expires_at` (`expires_at`)
+			KEY `expires_at` (`expires_at`),
+			KEY `violation_identity_v2` (`violation_identity_v2`),
+			KEY `element_identity_v2` (`element_identity_v2`),
+			KEY `legacy_reanchor_status` (`legacy_reanchor_status`)
 		) $charset_collate;";
 
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
@@ -99,6 +107,7 @@ class Ignore_Schema {
 			`site_id` bigint(20) UNSIGNED NOT NULL,
 			`matched_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			`match_confidence` varchar(20) DEFAULT 'high',
+			`match_action` varchar(20) NOT NULL DEFAULT 'suppressed',
 			PRIMARY KEY (`id`),
 			KEY `violation_id` (`violation_id`),
 			KEY `ignore_rule_id` (`ignore_rule_id`),
@@ -108,9 +117,124 @@ class Ignore_Schema {
 
 		dbDelta($query);
 
-		update_option('cleara11y_ignore_db_version', '1.0');
+		update_option('cleara11y_ignore_db_version', '2.0');
 
 		return true;
+	}
+
+	/**
+	 * Add fail-safe v2 suppression matching fields to existing installations.
+	 *
+	 * @return bool True when the additive migration succeeds.
+	 */
+	public static function add_v2_matching_columns(): bool {
+		global $wpdb;
+
+		$rules_table = self::get_table_name('ignore_rules');
+		$matches_table = self::get_table_name('violation_ignore_matches');
+		$columns = [
+			$rules_table => [
+				'violation_identity_v2' => 'varchar(64) DEFAULT NULL',
+				'element_identity_v2' => 'varchar(64) DEFAULT NULL',
+				'identity_signature_version' => 'int(11) DEFAULT NULL',
+				'legacy_reanchor_status' => "varchar(20) NOT NULL DEFAULT 'pending'",
+				'legacy_reanchor_attempted_at' => 'datetime DEFAULT NULL',
+			],
+			$matches_table => [
+				'match_action' => "varchar(20) NOT NULL DEFAULT 'suppressed'",
+			],
+		];
+
+		foreach ($columns as $table => $table_columns) {
+			foreach ($table_columns as $column => $definition) {
+				if (self::column_exists($table, $column)) {
+					continue;
+				}
+
+				if (false === $wpdb->query("ALTER TABLE `{$table}` ADD COLUMN `{$column}` {$definition}")) {
+					error_log(
+						sprintf(
+							'ClearA11y ERROR: Failed adding v2 suppression field. table=%s column=%s database_error=%s',
+							$table,
+							$column,
+							$wpdb->last_error
+						)
+					);
+					return false;
+				}
+			}
+		}
+
+		$indexes = [
+			'violation_identity_v2' => '`violation_identity_v2`',
+			'element_identity_v2' => '`element_identity_v2`',
+			'legacy_reanchor_status' => '`legacy_reanchor_status`',
+		];
+		foreach ($indexes as $index => $definition) {
+			if (
+				! self::index_exists($rules_table, $index)
+				&& false === $wpdb->query("ALTER TABLE `{$rules_table}` ADD INDEX `{$index}` ({$definition})")
+			) {
+				error_log(
+					sprintf(
+						'ClearA11y ERROR: Failed adding v2 suppression index. index=%s database_error=%s',
+						$index,
+						$wpdb->last_error
+					)
+				);
+				return false;
+			}
+		}
+
+		$wpdb->query(
+			"UPDATE `{$rules_table}`
+			SET legacy_reanchor_status = 'not_required'
+			WHERE target_type = 'rule' AND legacy_reanchor_status = 'pending'"
+		);
+
+		update_option('cleara11y_ignore_db_version', '2.0');
+
+		return true;
+	}
+
+	/**
+	 * Check whether a table column exists.
+	 *
+	 * @param string $table Table name.
+	 * @param string $column Column name.
+	 * @return bool
+	 */
+	private static function column_exists(string $table, string $column): bool {
+		global $wpdb;
+
+		return (bool) $wpdb->get_var(
+			$wpdb->prepare(
+				'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+				WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+				$table,
+				$column
+			)
+		);
+	}
+
+	/**
+	 * Check whether a table index exists.
+	 *
+	 * @param string $table Table name.
+	 * @param string $index Index name.
+	 * @return bool
+	 */
+	private static function index_exists(string $table, string $index): bool {
+		global $wpdb;
+
+		return (bool) $wpdb->get_var(
+			$wpdb->prepare(
+				'SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
+				WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND INDEX_NAME = %s',
+				$table,
+				$index
+			)
+		);
 	}
 
 	/**

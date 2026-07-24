@@ -149,6 +149,17 @@ class Schema {
 			`fingerprint_loose` varchar(64) DEFAULT NULL,
 			`signature_version` int(11) DEFAULT 1,
 			`node_evidence` longtext DEFAULT NULL,
+			`source_type` varchar(30) DEFAULT NULL,
+			`source_ref` varchar(500) DEFAULT NULL,
+			`owner_type` varchar(30) DEFAULT NULL,
+			`owner_name` varchar(255) DEFAULT NULL,
+			`source_key` varchar(64) DEFAULT NULL,
+			`page_object_key` varchar(500) DEFAULT NULL,
+			`element_identity_v2` varchar(64) DEFAULT NULL,
+			`element_identity_v2_inputs` longtext DEFAULT NULL,
+			`violation_identity_v2` varchar(64) DEFAULT NULL,
+			`violation_identity_v2_inputs` longtext DEFAULT NULL,
+			`identity_signature_version` int(11) DEFAULT NULL,
 			`created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (`id`),
 			KEY `scan_id` (`scan_id`),
@@ -161,7 +172,39 @@ class Schema {
 			KEY `dismissed_global` (`dismissed_global`),
 			KEY `fingerprint_strict` (`fingerprint_strict`),
 			KEY `fingerprint_loose` (`fingerprint_loose`),
+			KEY `source_key` (`source_key`),
+			KEY `owner_type` (`owner_type`),
+			KEY `page_object_key` (`page_object_key`(191)),
+			KEY `element_identity_v2` (`element_identity_v2`),
+			KEY `violation_identity_v2` (`violation_identity_v2`),
 			KEY `created_at` (`created_at`)
+		) $charset_collate;";
+
+		// 4. Canonical occurrence state keyed by validated v2 identity.
+		$queries[] = "CREATE TABLE IF NOT EXISTS `{$prefix}occurrence_states` (
+			`id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+			`site_id` bigint(20) UNSIGNED NOT NULL,
+			`violation_identity_v2` varchar(64) NOT NULL,
+			`element_identity_v2` varchar(64) NOT NULL,
+			`identity_signature_version` int(11) NOT NULL,
+			`page_object_key` varchar(500) NOT NULL,
+			`post_id` bigint(20) UNSIGNED NOT NULL,
+			`rule_id` varchar(100) NOT NULL,
+			`status` varchar(20) NOT NULL DEFAULT 'active',
+			`first_seen_at` datetime NOT NULL,
+			`last_seen_at` datetime NOT NULL,
+			`resolved_at` datetime DEFAULT NULL,
+			`reappearance_count` int(11) UNSIGNED NOT NULL DEFAULT 0,
+			`latest_issue_id` bigint(20) UNSIGNED NOT NULL,
+			`latest_scan_id` bigint(20) UNSIGNED NOT NULL,
+			`created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			`updated_at` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+			PRIMARY KEY (`id`),
+			UNIQUE KEY `site_violation_signature` (`site_id`, `violation_identity_v2`, `identity_signature_version`),
+			KEY `active_page` (`site_id`, `status`, `page_object_key`(150)),
+			KEY `latest_issue_id` (`latest_issue_id`),
+			KEY `latest_scan_id` (`latest_scan_id`),
+			KEY `element_identity_v2` (`element_identity_v2`)
 		) $charset_collate;";
 
 
@@ -216,6 +259,7 @@ class Schema {
 			"{$prefix}scans",
 			"{$prefix}scan_items",
 			"{$prefix}issues",
+			"{$prefix}occurrence_states",
 			"{$prefix}scan_jobs",
 		];
 
@@ -688,6 +732,221 @@ class Schema {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Add stable source-attribution fields to occurrence storage.
+	 *
+	 * @return bool True when all columns and indexes exist.
+	 */
+	public static function add_source_attribution_columns(): bool {
+		global $wpdb;
+
+		$table = self::get_table_name('issues');
+		$columns = [
+			'source_type' => 'VARCHAR(30) DEFAULT NULL',
+			'source_ref' => 'VARCHAR(500) DEFAULT NULL',
+			'owner_type' => 'VARCHAR(30) DEFAULT NULL',
+			'owner_name' => 'VARCHAR(255) DEFAULT NULL',
+			'source_key' => 'VARCHAR(64) DEFAULT NULL',
+		];
+
+		foreach ($columns as $column => $definition) {
+			if (! self::column_exists($table, $column)) {
+				$result = $wpdb->query("ALTER TABLE `{$table}` ADD COLUMN `{$column}` {$definition}");
+				if (false === $result) {
+					error_log(
+						sprintf(
+							'ClearA11y ERROR: Failed adding source-attribution column. table=%s column=%s database_error=%s',
+							$table,
+							$column,
+							$wpdb->last_error
+						)
+					);
+					return false;
+				}
+			}
+		}
+
+		foreach (['source_key', 'owner_type'] as $index) {
+			if (! self::index_exists($table, $index)) {
+				$result = $wpdb->query("ALTER TABLE `{$table}` ADD INDEX `{$index}` (`{$index}`)");
+				if (false === $result) {
+					error_log(
+						sprintf(
+							'ClearA11y ERROR: Failed adding source-attribution index. table=%s index=%s database_error=%s',
+							$table,
+							$index,
+							$wpdb->last_error
+						)
+					);
+					return false;
+				}
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Add separated v2 element and violation identity fields.
+	 *
+	 * @return bool True when all columns and indexes exist.
+	 */
+	public static function add_v2_identity_columns(): bool {
+		global $wpdb;
+
+		$table = self::get_table_name('issues');
+		$columns = [
+			'page_object_key' => 'VARCHAR(500) DEFAULT NULL',
+			'element_identity_v2' => 'VARCHAR(64) DEFAULT NULL',
+			'element_identity_v2_inputs' => 'LONGTEXT DEFAULT NULL',
+			'violation_identity_v2' => 'VARCHAR(64) DEFAULT NULL',
+			'violation_identity_v2_inputs' => 'LONGTEXT DEFAULT NULL',
+			'identity_signature_version' => 'INT(11) DEFAULT NULL',
+		];
+
+		foreach ($columns as $column => $definition) {
+			if (! self::column_exists($table, $column)) {
+				$result = $wpdb->query("ALTER TABLE `{$table}` ADD COLUMN `{$column}` {$definition}");
+				if (false === $result) {
+					error_log(
+						sprintf(
+							'ClearA11y ERROR: Failed adding v2 identity column. table=%s column=%s database_error=%s',
+							$table,
+							$column,
+							$wpdb->last_error
+						)
+					);
+					return false;
+				}
+			}
+		}
+
+		$indexes = [
+			'page_object_key' => '`page_object_key`(191)',
+			'element_identity_v2' => '`element_identity_v2`',
+			'violation_identity_v2' => '`violation_identity_v2`',
+		];
+		foreach ($indexes as $index => $definition) {
+			if (! self::index_exists($table, $index)) {
+				$result = $wpdb->query("ALTER TABLE `{$table}` ADD INDEX `{$index}` ({$definition})");
+				if (false === $result) {
+					error_log(
+						sprintf(
+							'ClearA11y ERROR: Failed adding v2 identity index. table=%s index=%s database_error=%s',
+							$table,
+							$index,
+							$wpdb->last_error
+						)
+					);
+					return false;
+				}
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Add the canonical v2 occurrence state table.
+	 *
+	 * Existing issue rows remain immutable scan observations; this table is
+	 * populated only by new evidence-backed scans.
+	 *
+	 * @return bool True when the table exists.
+	 */
+	public static function add_occurrence_state_table(): bool {
+		global $wpdb;
+
+		$table = self::get_table_name('occurrence_states');
+		$charset_collate = $wpdb->get_charset_collate();
+		$query = "CREATE TABLE `{$table}` (
+			`id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+			`site_id` bigint(20) UNSIGNED NOT NULL,
+			`violation_identity_v2` varchar(64) NOT NULL,
+			`element_identity_v2` varchar(64) NOT NULL,
+			`identity_signature_version` int(11) NOT NULL,
+			`page_object_key` varchar(500) NOT NULL,
+			`post_id` bigint(20) UNSIGNED NOT NULL,
+			`rule_id` varchar(100) NOT NULL,
+			`status` varchar(20) NOT NULL DEFAULT 'active',
+			`first_seen_at` datetime NOT NULL,
+			`last_seen_at` datetime NOT NULL,
+			`resolved_at` datetime DEFAULT NULL,
+			`reappearance_count` int(11) UNSIGNED NOT NULL DEFAULT 0,
+			`latest_issue_id` bigint(20) UNSIGNED NOT NULL,
+			`latest_scan_id` bigint(20) UNSIGNED NOT NULL,
+			`created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			`updated_at` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+			PRIMARY KEY (`id`),
+			UNIQUE KEY `site_violation_signature` (`site_id`, `violation_identity_v2`, `identity_signature_version`),
+			KEY `active_page` (`site_id`, `status`, `page_object_key`(150)),
+			KEY `latest_issue_id` (`latest_issue_id`),
+			KEY `latest_scan_id` (`latest_scan_id`),
+			KEY `element_identity_v2` (`element_identity_v2`)
+		) {$charset_collate};";
+
+		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+		dbDelta($query);
+
+		$created = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+		if ($created !== $table) {
+			error_log(
+				sprintf(
+					'ClearA11y ERROR: Failed creating occurrence state table. table=%s database_error=%s',
+					$table,
+					$wpdb->last_error
+				)
+			);
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Check whether a table column exists.
+	 *
+	 * @param string $table Table name.
+	 * @param string $column Column name.
+	 * @return bool
+	 */
+	private static function column_exists(string $table, string $column): bool {
+		global $wpdb;
+
+		return (bool) $wpdb->get_var(
+			$wpdb->prepare(
+				'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+				WHERE TABLE_SCHEMA = DATABASE()
+				AND TABLE_NAME = %s
+				AND COLUMN_NAME = %s',
+				$table,
+				$column
+			)
+		);
+	}
+
+	/**
+	 * Check whether a table index exists.
+	 *
+	 * @param string $table Table name.
+	 * @param string $index Index name.
+	 * @return bool
+	 */
+	private static function index_exists(string $table, string $index): bool {
+		global $wpdb;
+
+		return (bool) $wpdb->get_var(
+			$wpdb->prepare(
+				'SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
+				WHERE TABLE_SCHEMA = DATABASE()
+				AND TABLE_NAME = %s
+				AND INDEX_NAME = %s',
+				$table,
+				$index
+			)
+		);
 	}
 
 	/**

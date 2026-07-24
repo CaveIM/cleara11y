@@ -38,6 +38,43 @@ class Scan_Token_Manager {
 	private const TOKEN_EXPIRY = 300; // 5 minutes
 
 	/**
+	 * Generate a token for an existing queued scan item.
+	 *
+	 * @param int    $scan_id Scan ID.
+	 * @param int    $scan_item_id Scan item ID.
+	 * @param int    $post_id Post ID.
+	 * @param string $url Page URL.
+	 * @return array Token and cache-busted scan URL.
+	 */
+	public static function generate_existing_token(int $scan_id, int $scan_item_id, int $post_id, string $url): array {
+		$token = \wp_generate_password(32, false);
+		$expiry_seconds = (int) \get_option('cleara11y_scan_token_expiry', self::TOKEN_EXPIRY);
+		$expires_at = date('Y-m-d H:i:s', time() + $expiry_seconds);
+		$token_data = [
+			'scan_id' => $scan_id,
+			'scan_item_id' => $scan_item_id,
+			'post_id' => $post_id,
+			'created_at' => \current_time('mysql'),
+			'expires_at' => $expires_at,
+		];
+
+		\update_option(self::TOKEN_OPTION_PREFIX . $token, $token_data, false);
+
+		return [
+			'token' => $token,
+			'scan_url' => \add_query_arg(
+				[
+					'cleara11y_scan' => $token,
+					'cleara11y_worker' => '1',
+					'cleara11y_cache_bust' => \wp_generate_password(12, false),
+				],
+				$url
+			),
+			'expires_at' => $expires_at,
+		];
+	}
+
+	/**
 	 * Generate a scan token for a post.
 	 *
 	 * @param int    $post_id  Post ID to scan.
@@ -120,6 +157,7 @@ class Scan_Token_Manager {
 		$scan_url = \add_query_arg(
 			[
 				'cleara11y_scan' => $token,
+				'cleara11y_cache_bust' => \wp_generate_password(12, false),
 			],
 			\get_permalink($post_id)
 		);

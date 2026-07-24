@@ -275,7 +275,8 @@ class PHP_Bulk_Scanner {
 								$issue->id,
 								$ignore_match['rule']->id,
 								get_current_blog_id(),
-								$ignore_match['confidence']
+								$ignore_match['confidence'],
+								$ignore_match['action']
 							);
 						}
 					}

@@ -1785,6 +1785,7 @@ class REST_Controller {
 				FROM `{$matches_table}` vm
 				INNER JOIN `{$rules_table}` ir ON vm.ignore_rule_id = ir.id
 				WHERE ir.status = 'active'
+					AND vm.match_action = 'suppressed'
 					AND (ir.expires_at IS NULL OR ir.expires_at > NOW())
 			) active_ignores ON i.id = active_ignores.violation_id";
 
@@ -1875,6 +1876,7 @@ class REST_Controller {
 				FROM `{$matches_table}` vm
 				INNER JOIN `{$rules_table}` ir ON vm.ignore_rule_id = ir.id
 				WHERE ir.status = 'active'
+					AND vm.match_action = 'suppressed'
 					AND (ir.expires_at IS NULL OR ir.expires_at > NOW())
 			) active_ignores ON i.id = active_ignores.violation_id";
 
@@ -2268,6 +2270,29 @@ class REST_Controller {
 
 		// Lease pending jobs
 		$jobs = Job_Repository::lease_jobs($limit, $site_id, $worker_id, $lease_seconds);
+		foreach ($jobs as &$job) {
+			$scan_item = Scan_Item_Repository::get_by_scan_and_post((int) $job['scan_id'], (int) $job['post_id']);
+			if (! $scan_item) {
+				error_log(
+					sprintf(
+						'ClearA11y ERROR: Cannot create attribution token for leased job. job_id=%d scan_id=%d post_id=%d',
+						(int) $job['id'],
+						(int) $job['scan_id'],
+						(int) $job['post_id']
+					)
+				);
+				continue;
+			}
+
+			$token = Scan_Token_Manager::generate_existing_token(
+				(int) $job['scan_id'],
+				(int) $scan_item->id,
+				(int) $job['post_id'],
+				(string) $job['url']
+			);
+			$job['url'] = $token['scan_url'];
+		}
+		unset($job);
 
 		error_log(sprintf('[ClearA11y] lease_jobs: Leased %d jobs for worker %s',
 			count($jobs), $worker_id));
@@ -2481,6 +2506,13 @@ class REST_Controller {
 		);
 
 		if ($pending_count == 0) {
+			$scan_started_at = $wpdb->get_var(
+				$wpdb->prepare(
+					"SELECT started_at FROM `{$scans_table}` WHERE id = %d",
+					$scan_id
+				)
+			);
+
 			// All jobs are complete - update scan status
 			$updated = $wpdb->update(
 				$scans_table,
@@ -2497,7 +2529,20 @@ class REST_Controller {
 			);
 
 			if ($updated) {
+				$reanchor_report = \ClearA11y\Database\Ignore_Rule_Repository::finalize_legacy_reanchoring(
+					get_current_blog_id(),
+					is_string($scan_started_at) ? $scan_started_at : null,
+					$scan_id
+				);
 				error_log(sprintf('[ClearA11y] Scan %d marked as completed', $scan_id));
+				error_log(
+					sprintf(
+						'[ClearA11y] Legacy exception re-anchor report: scan_id=%d anchored=%d unmatched=%d',
+						$scan_id,
+						$reanchor_report['anchored'],
+						$reanchor_report['unmatched']
+					)
+				);
 			}
 		}
 	}

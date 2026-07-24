@@ -35,6 +35,13 @@ class Scanner {
 	 * Constructor.
 	 */
 	public function __construct() {
+		if (isset($_GET[self::TOKEN_PARAM])) {
+			if (! defined('DONOTCACHEPAGE')) {
+				define('DONOTCACHEPAGE', true);
+			}
+			add_action('send_headers', [$this, 'send_scan_headers'], PHP_INT_MAX);
+		}
+
 		add_action('template_redirect', [$this, 'detect_scan_token']);
 		add_action('wp_enqueue_scripts', [$this, 'enqueue_scanner_scripts']);
 		add_filter('show_admin_bar', [$this, 'hide_admin_bar_during_scan']);
@@ -80,7 +87,19 @@ class Scanner {
 		self::$token_data = $token_data;
 		self::$is_background = $is_background;
 
+		\ClearA11y\Services\Template_Attribution_Service::enable();
 		do_action('cleara11y_scan_token_detected', $token, $token_data);
+	}
+
+	/**
+	 * Send cache-prevention headers for tokenized scan responses.
+	 *
+	 * @return void
+	 */
+	public function send_scan_headers(): void {
+		nocache_headers();
+		header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0', true);
+		header('X-ClearA11y-Attribution: enabled', true);
 	}
 
 	/**
@@ -91,6 +110,13 @@ class Scanner {
 	public function enqueue_scanner_scripts(): void {
 		// Only load if scan token is present
 		if (!isset($_GET[self::TOKEN_PARAM]) || self::$token_data === null) {
+			return;
+		}
+
+		// The wp-admin worker injects the scanner after the tokenized page loads.
+		$is_worker = isset($_GET['cleara11y_worker'])
+			&& '1' === sanitize_text_field(wp_unslash($_GET['cleara11y_worker']));
+		if ($is_worker) {
 			return;
 		}
 

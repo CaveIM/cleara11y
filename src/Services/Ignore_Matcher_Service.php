@@ -36,21 +36,23 @@ class Ignore_Matcher_Service {
 	 *
 	 * @param Issue $issue Issue to check.
 	 * @param int   $site_id Site ID.
+	 * @param bool  $allow_legacy_reanchor Whether a legacy match may persist a v2 anchor.
 	 * @return array Array of matching rules with confidence.
 	 */
-	public static function find_matches(Issue $issue, int $site_id): array {
+	public static function find_matches(Issue $issue, int $site_id, bool $allow_legacy_reanchor = true): array {
 		// Get active rules for site
 		$rules = Ignore_Rule_Repository::get_active($site_id);
 
 		$matches = [];
 
 		foreach ($rules as $rule) {
-			$match = self::matches_rule($issue, $rule);
+			$match = self::matches_rule($issue, $rule, $allow_legacy_reanchor);
 			if ($match) {
 				$matches[] = [
 					'rule' => $rule,
 					'confidence' => $match['confidence'],
 					'matched_by' => $match['matched_by'],
+					'action' => $match['action'] ?? 'suppressed',
 				];
 			}
 		}
@@ -63,22 +65,120 @@ class Ignore_Matcher_Service {
 	 *
 	 * @param Issue      $issue Issue to check.
 	 * @param Ignore_Rule $rule  Ignore rule to match against.
+	 * @param bool        $allow_legacy_reanchor Whether the legacy bridge may write.
 	 * @return array|null Match result or null if no match.
 	 */
-	public static function matches_rule(Issue $issue, Ignore_Rule $rule): ?array {
-		// Check scope first (fastest filter)
-		if (!self::matches_scope($issue, $rule)) {
+	public static function matches_rule(
+		Issue $issue,
+		Ignore_Rule $rule,
+		bool $allow_legacy_reanchor = true
+	): ?array {
+		// Rule-level exceptions are explicit scoped declarations and retain
+		// their existing page/site/content-type/URL-pattern behavior.
+		if ('rule' === $rule->target_type) {
+			if (! self::matches_scope($issue, $rule)) {
+				return null;
+			}
+
+			return self::matches_rule_only($issue, $rule);
+		}
+
+		// Occurrence exceptions may only suppress on an exact v2 violation
+		// identity. Matching only the element is useful context, but must never
+		// hide a finding.
+		if (! empty($rule->violation_identity_v2)) {
+			if (
+				! empty($issue->violation_identity_v2)
+				&& $rule->identity_signature_version === $issue->identity_signature_version
+				&& hash_equals($rule->violation_identity_v2, $issue->violation_identity_v2)
+			) {
+				return [
+					'confidence' => self::CONFIDENCE['EXACT'],
+					'matched_by' => 'violation_identity_v2',
+					'action' => 'suppressed',
+				];
+			}
+
+			if (
+				! empty($rule->element_identity_v2)
+				&& ! empty($issue->element_identity_v2)
+				&& $rule->identity_signature_version === $issue->identity_signature_version
+				&& hash_equals($rule->element_identity_v2, $issue->element_identity_v2)
+			) {
+				return [
+					'confidence' => self::CONFIDENCE['HIGH'],
+					'matched_by' => 'element_identity_v2',
+					'action' => 'resembles',
+				];
+			}
+
 			return null;
 		}
 
-		// Check target match
-		$target_match = self::matches_target($issue, $rule);
-
-		if (!$target_match) {
+		// The pre-v2 semantic matcher is intentionally limited to a one-time
+		// compatibility bridge. It cannot suppress unless it successfully
+		// persists an exact v2 anchor for this issue.
+		if (
+			! $allow_legacy_reanchor
+			|| 'pending' !== $rule->legacy_reanchor_status
+			|| ! self::matches_legacy_reanchor_scope($issue, $rule)
+		) {
 			return null;
 		}
 
-		return $target_match;
+		$legacy_match = self::matches_target($issue, $rule);
+		if (
+			! $legacy_match
+			|| empty($issue->violation_identity_v2)
+			|| empty($issue->element_identity_v2)
+			|| empty($issue->identity_signature_version)
+		) {
+			return null;
+		}
+
+		if (
+			! Ignore_Rule_Repository::reanchor_to_v2(
+				$rule->id,
+				$issue->violation_identity_v2,
+				$issue->element_identity_v2,
+				$issue->identity_signature_version
+			)
+		) {
+			return null;
+		}
+
+		$rule->violation_identity_v2 = $issue->violation_identity_v2;
+		$rule->element_identity_v2 = $issue->element_identity_v2;
+		$rule->identity_signature_version = $issue->identity_signature_version;
+		$rule->legacy_reanchor_status = 'anchored';
+
+		return [
+			'confidence' => self::CONFIDENCE['EXACT'],
+			'matched_by' => 'legacy_reanchored_v2',
+			'action' => 'suppressed',
+		];
+	}
+
+	/**
+	 * Match legacy scope while tolerating a page slug change.
+	 *
+	 * A pre-v2 page exception stored only a mutable URL. Its prior matched
+	 * observation still has the stable WordPress post ID, so use that as the
+	 * one-time bridge when available.
+	 *
+	 * @param Issue       $issue Current issue.
+	 * @param Ignore_Rule $rule Legacy rule.
+	 * @return bool True when the scan covers the intended scope.
+	 */
+	private static function matches_legacy_reanchor_scope(Issue $issue, Ignore_Rule $rule): bool {
+		if ('page' === ($rule->scope['scope_type'] ?? '') && $issue->post_id > 0) {
+			$anchor_post_ids = Ignore_Rule_Repository::get_legacy_anchor_post_ids($rule->id);
+			if (in_array($issue->post_id, $anchor_post_ids, true)) {
+				return true;
+			}
+		}
+
+		return self::matches_scope($issue, $rule);
 	}
 
 	/**
@@ -179,6 +279,7 @@ class Ignore_Matcher_Service {
 		return [
 			'confidence' => self::CONFIDENCE['HIGH'],
 			'matched_by' => 'rule_only',
+			'action' => 'suppressed',
 		];
 	}
 
@@ -325,9 +426,11 @@ class Ignore_Matcher_Service {
 			}
 		}
 
-		// Calculate confidence
+		// Legacy-only confidence heuristic. This threshold predates the v2
+		// identity work and no validation corpus or documented derivation exists.
+		// It may re-anchor one old selector-based exception, but its result is
+		// never used as the durable suppression identity.
 		if ($total_checks > 0 && $matches >= $total_checks * 0.7) {
-			// 70% match threshold
 			$confidence = $matches === $total_checks
 				? self::CONFIDENCE['HIGH']
 				: self::CONFIDENCE['PARTIAL'];

@@ -58,6 +58,18 @@
 	let heartbeatTimers = new Map();
 
 	/**
+	 * Remove scan credentials and cache-busting parameters from logged URLs.
+	 */
+	function displayUrl(url) {
+		try {
+			const parsed = new URL(url, window.location.origin);
+			return parsed.origin + parsed.pathname;
+		} catch (error) {
+			return '[invalid URL]';
+		}
+	}
+
+	/**
 	 * Logger for debugging
 	 */
 	const Logger = {
@@ -138,7 +150,7 @@
 			}
 
 			this.busy = true;
-			this.currentJob = { jobId, url, leaseToken };
+			this.currentJob = { jobId, url: displayUrl(url) };
 
 			try {
 				// Destroy and recreate iframe before each scan to avoid pollution
@@ -576,7 +588,11 @@
 				}
 
 				const data = await response.json();
-				console.log('  📦 Lease response:', JSON.stringify(data, null, 2));
+				console.log('  📦 Lease response:', {
+					workerId: data.workerId,
+					leased: data.leased,
+					jobIds: (data.jobs || []).map(job => job.id)
+				});
 				return data.jobs || [];
 			} catch (error) {
 				console.error('  ❌ Failed to lease jobs:', error);
@@ -739,9 +755,8 @@
 		}
 
 		console.log('📋 [Job ' + job.id + '] Starting job processing...');
-		console.log('   URL:', job.url);
+		console.log('   URL:', displayUrl(job.url));
 		console.log('   Worker:', worker.id);
-		console.log('   Lease token:', job.leaseToken.substring(0, 8) + '...');
 
 		// Start heartbeat
 		startHeartbeat(job.id, job.leaseToken);
@@ -753,7 +768,6 @@
 
 			console.log('✅ [Job ' + job.id + '] Scan completed!');
 			console.log('   Result type:', typeof result);
-			console.log('   Result value:', result);
 
 			// Check if result is valid
 			if (!result) {
@@ -761,7 +775,7 @@
 			}
 
 			if (!result.violations) {
-				console.warn('⚠️ [Job ' + job.id + '] Result missing violations property, result:', result);
+				console.warn('⚠️ [Job ' + job.id + '] Result missing violations property');
 				// Add empty violations array if missing
 				result.violations = [];
 			}
@@ -836,7 +850,7 @@
 					continue;
 				}
 
-				console.log('✅ Leased ' + jobs.length + ' job(s):', jobs.map(j => ({ id: j.id, url: j.url })));
+				console.log('✅ Leased ' + jobs.length + ' job(s):', jobs.map(j => ({ id: j.id, url: displayUrl(j.url) })));
 
 				// Process jobs in parallel
 				await Promise.allSettled(

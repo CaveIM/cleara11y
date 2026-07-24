@@ -254,6 +254,25 @@ class Issue {
 	public ?string $node_evidence = null;
 
 	/**
+	 * Stable source attribution fields.
+	 */
+	public ?string $source_type = null;
+	public ?string $source_ref = null;
+	public ?string $owner_type = null;
+	public ?string $owner_name = null;
+	public ?string $source_key = null;
+
+	/**
+	 * Version 2 identity fields and their raw component inputs.
+	 */
+	public ?string $page_object_key = null;
+	public ?string $element_identity_v2 = null;
+	public ?string $element_identity_v2_inputs = null;
+	public ?string $violation_identity_v2 = null;
+	public ?string $violation_identity_v2_inputs = null;
+	public ?int $identity_signature_version = null;
+
+	/**
 	 * Valid severities.
 	 *
 	 * @var array
@@ -323,6 +342,19 @@ class Issue {
 		$issue->fingerprint_loose = $row->fingerprint_loose ?? null;
 		$issue->signature_version = isset($row->signature_version) ? (int) $row->signature_version : null;
 		$issue->node_evidence = $row->node_evidence ?? null;
+		$issue->source_type = $row->source_type ?? null;
+		$issue->source_ref = $row->source_ref ?? null;
+		$issue->owner_type = $row->owner_type ?? null;
+		$issue->owner_name = $row->owner_name ?? null;
+		$issue->source_key = $row->source_key ?? null;
+		$issue->page_object_key = $row->page_object_key ?? null;
+		$issue->element_identity_v2 = $row->element_identity_v2 ?? null;
+		$issue->element_identity_v2_inputs = $row->element_identity_v2_inputs ?? null;
+		$issue->violation_identity_v2 = $row->violation_identity_v2 ?? null;
+		$issue->violation_identity_v2_inputs = $row->violation_identity_v2_inputs ?? null;
+		$issue->identity_signature_version = isset($row->identity_signature_version)
+			? (int) $row->identity_signature_version
+			: null;
 
 		return $issue;
 	}
@@ -337,7 +369,14 @@ class Issue {
 	 * @param array  $evidence Optional evidence data from evidence extractor.
 	 * @return self
 	 */
-	public static function from_axe_result(array $result, int $scan_id, int $scan_item_id, int $post_id, array $evidence = []): self {
+	public static function from_axe_result(
+		array $result,
+		int $scan_id,
+		int $scan_item_id,
+		int $post_id,
+		array $evidence = [],
+		string $page_url = ''
+	): self {
 		$issue = new self();
 
 		$issue->scan_id = $scan_id;
@@ -386,6 +425,38 @@ class Issue {
 
 			// Store full evidence record as JSON
 			$issue->node_evidence = wp_json_encode($evidence);
+		}
+
+		if (! empty($evidence['source_descriptor']) && is_array($evidence['source_descriptor'])) {
+			$source = $evidence['source_descriptor'];
+			$issue->source_type = sanitize_key((string) ($source['source_type'] ?? ''));
+			$issue->source_ref = sanitize_text_field((string) ($source['source_ref'] ?? ''));
+			$issue->owner_type = sanitize_key((string) ($source['owner_type'] ?? ''));
+			$issue->owner_name = sanitize_text_field((string) ($source['owner_name'] ?? ''));
+			$issue->source_key = preg_match('/^[a-f0-9]{64}$/', (string) ($source['source_key'] ?? ''))
+				? (string) $source['source_key']
+				: null;
+		}
+
+		if (! empty($node_ev) && $issue->source_key) {
+			$issue->page_object_key = \ClearA11y\Services\Fingerprint_Service::resolve_page_object_key(
+				$page_url,
+				$post_id
+			);
+			$element_identity = \ClearA11y\Services\Fingerprint_Service::create_element_identity_v2(
+				$node_ev,
+				$issue->source_key
+			);
+			$violation_identity = \ClearA11y\Services\Fingerprint_Service::create_violation_identity_v2(
+				$issue->rule_id,
+				$issue->page_object_key,
+				$element_identity['hash']
+			);
+			$issue->element_identity_v2 = $element_identity['hash'];
+			$issue->element_identity_v2_inputs = wp_json_encode($element_identity['inputs']);
+			$issue->violation_identity_v2 = $violation_identity['hash'];
+			$issue->violation_identity_v2_inputs = wp_json_encode($violation_identity['inputs']);
+			$issue->identity_signature_version = $element_identity['signature_version'];
 		}
 
 		return $issue;
@@ -517,6 +588,17 @@ class Issue {
 			'fingerprint_loose' => $this->fingerprint_loose,
 			'signature_version' => $this->signature_version,
 			'node_evidence' => $this->node_evidence,
+			'source_type' => $this->source_type,
+			'source_ref' => $this->source_ref,
+			'owner_type' => $this->owner_type,
+			'owner_name' => $this->owner_name,
+			'source_key' => $this->source_key,
+			'page_object_key' => $this->page_object_key,
+			'element_identity_v2' => $this->element_identity_v2,
+			'element_identity_v2_inputs' => $this->element_identity_v2_inputs,
+			'violation_identity_v2' => $this->violation_identity_v2,
+			'violation_identity_v2_inputs' => $this->violation_identity_v2_inputs,
+			'identity_signature_version' => $this->identity_signature_version,
 		];
 	}
 

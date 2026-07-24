@@ -128,6 +128,41 @@ class Ignore_Rule {
 	public int $match_count = 0;
 
 	/**
+	 * Exact v2 violation identity anchored to this occurrence exception.
+	 *
+	 * @var string|null
+	 */
+	public ?string $violation_identity_v2 = null;
+
+	/**
+	 * V2 element identity retained for non-suppressing resemblance signals.
+	 *
+	 * @var string|null
+	 */
+	public ?string $element_identity_v2 = null;
+
+	/**
+	 * Identity signature version used by the anchored hashes.
+	 *
+	 * @var int|null
+	 */
+	public ?int $identity_signature_version = null;
+
+	/**
+	 * One-time legacy selector re-anchoring state.
+	 *
+	 * @var string
+	 */
+	public string $legacy_reanchor_status = 'pending';
+
+	/**
+	 * Timestamp of the one-time legacy re-anchor attempt.
+	 *
+	 * @var string|null
+	 */
+	public ?string $legacy_reanchor_attempted_at = null;
+
+	/**
 	 * Valid target types.
 	 *
 	 * @var array
@@ -186,6 +221,7 @@ class Ignore_Rule {
 		'ignore_expired',
 		'quick_ignore_created',
 		'violation_suppressed',
+		'ignore_reanchored_v2',
 	];
 
 	/**
@@ -213,6 +249,14 @@ class Ignore_Rule {
 		$rule->updated_at = $row->updated_at ?? null;
 		$rule->expires_at = $row->expires_at ?? null;
 		$rule->match_count = (int) ($row->match_count ?? 0);
+		$rule->violation_identity_v2 = $row->violation_identity_v2 ?? null;
+		$rule->element_identity_v2 = $row->element_identity_v2 ?? null;
+		$rule->identity_signature_version = isset($row->identity_signature_version)
+			? (int) $row->identity_signature_version
+			: null;
+		$rule->legacy_reanchor_status = $row->legacy_reanchor_status
+			?? ('rule' === $rule->target_type ? 'not_required' : 'pending');
+		$rule->legacy_reanchor_attempted_at = $row->legacy_reanchor_attempted_at ?? null;
 
 		return $rule;
 	}
@@ -243,6 +287,11 @@ class Ignore_Rule {
 			'updated_at' => $this->updated_at,
 			'expires_at' => $this->expires_at,
 			'match_count' => $this->match_count,
+			'violation_identity_v2' => $this->violation_identity_v2,
+			'element_identity_v2' => $this->element_identity_v2,
+			'identity_signature_version' => $this->identity_signature_version,
+			'legacy_reanchor_status' => $this->legacy_reanchor_status,
+			'legacy_reanchor_attempted_at' => $this->legacy_reanchor_attempted_at,
 			'is_expired' => $this->is_expired(),
 			'is_active' => $this->is_active(),
 		];

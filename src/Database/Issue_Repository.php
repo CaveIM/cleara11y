@@ -70,6 +70,17 @@ class Issue_Repository {
 			'fingerprint_loose' => $issue->fingerprint_loose,
 			'signature_version' => $issue->signature_version,
 			'node_evidence' => $issue->node_evidence,
+			'source_type' => $issue->source_type,
+			'source_ref' => $issue->source_ref,
+			'owner_type' => $issue->owner_type,
+			'owner_name' => $issue->owner_name,
+			'source_key' => $issue->source_key,
+			'page_object_key' => $issue->page_object_key,
+			'element_identity_v2' => $issue->element_identity_v2,
+			'element_identity_v2_inputs' => $issue->element_identity_v2_inputs,
+			'violation_identity_v2' => $issue->violation_identity_v2,
+			'violation_identity_v2_inputs' => $issue->violation_identity_v2_inputs,
+			'identity_signature_version' => $issue->identity_signature_version,
 		];
 
 		$format = [
@@ -86,6 +97,8 @@ class Issue_Repository {
 			'%s', '%s', // bounding_box, computed_style
 			'%s', '%s', // fingerprint_strict, fingerprint_loose
 			'%d', '%s', // signature_version, node_evidence
+			'%s', '%s', '%s', '%s', '%s', // Source attribution
+			'%s', '%s', '%s', '%s', '%s', '%d', // Version 2 identity
 		];
 
 		$result = $wpdb->insert(
@@ -485,6 +498,8 @@ class Issue_Repository {
 		$scans_table = Schema::get_table_name('scans');
 		$matches_table = Ignore_Schema::get_table_name('violation_ignore_matches');
 		$rules_table = Ignore_Schema::get_table_name('ignore_rules');
+		$occurrence_table = Occurrence_Repository::get_table();
+		$has_occurrence_state = Occurrence_Repository::table_exists();
 
 		$active_ignores = "
 			LEFT JOIN (
@@ -492,12 +507,21 @@ class Issue_Repository {
 				FROM `{$matches_table}` vm
 				INNER JOIN `{$rules_table}` ir ON ir.id = vm.ignore_rule_id
 				WHERE ir.status = 'active'
+					AND vm.match_action = 'suppressed'
 					AND (ir.expires_at IS NULL OR ir.expires_at > NOW())
 			) active_ignores ON active_ignores.violation_id = i.id";
 
+		$occurrence_join = $has_occurrence_state
+			? "LEFT JOIN `{$occurrence_table}` os
+				ON os.site_id = " . get_current_blog_id() . "
+				AND os.violation_identity_v2 = i.violation_identity_v2
+				AND os.identity_signature_version = i.identity_signature_version
+				AND os.latest_scan_id = i.scan_id"
+			: '';
 		$from = "FROM `{$issues_table}` i
 			INNER JOIN `{$items_table}` si ON si.id = i.scan_item_id
 			INNER JOIN `{$scans_table}` s ON s.id = i.scan_id
+			{$occurrence_join}
 			{$active_ignores}";
 
 		$where = [];
@@ -510,7 +534,7 @@ class Issue_Repository {
 		} else {
 			$where[] = "si.status = 'completed'";
 			$where[] = "s.status = 'completed'";
-			$where[] = "NOT EXISTS (
+			$latest_observation = "NOT EXISTS (
 				SELECT 1
 				FROM `{$items_table}` newer_si
 				INNER JOIN `{$scans_table}` newer_s ON newer_s.id = newer_si.scan_id
@@ -522,6 +546,14 @@ class Issue_Repository {
 						OR (newer_si.scanned_at = si.scanned_at AND newer_si.id > si.id)
 					)
 			)";
+			if ($has_occurrence_state) {
+				$where[] = "(
+					os.status = 'active'
+					OR (os.id IS NULL AND {$latest_observation})
+				)";
+			} else {
+				$where[] = $latest_observation;
+			}
 
 			$exception_expression = '(i.dismissed = 1 OR i.dismissed_global = 1 OR active_ignores.violation_id IS NOT NULL)';
 			if ('active' === $args['status']) {
@@ -585,10 +617,25 @@ class Issue_Repository {
 		$page = max(1, absint($args['page']));
 		$per_page = min(100, max(1, absint($args['per_page'])));
 		$offset = ($page - 1) * $per_page;
+		$lifecycle_select = $has_occurrence_state
+			? 'os.status AS occurrence_status, os.first_seen_at, os.last_seen_at, os.resolved_at,
+				os.reappearance_count, os.id AS occurrence_state_id'
+			: 'NULL AS occurrence_status, NULL AS first_seen_at, NULL AS last_seen_at, NULL AS resolved_at,
+				0 AS reappearance_count, NULL AS occurrence_state_id';
 		$item_sql = "SELECT i.*, si.post_title, si.post_url, si.scanned_at,
 				s.scan_name, s.status AS scan_status, s.completed_at AS scan_completed_at,
+				{$lifecycle_select},
 				CASE WHEN i.dismissed = 1 OR i.dismissed_global = 1
-					OR active_ignores.violation_id IS NOT NULL THEN 1 ELSE 0 END AS is_ignored
+					OR active_ignores.violation_id IS NOT NULL THEN 1 ELSE 0 END AS is_ignored,
+				EXISTS (
+					SELECT 1 FROM `{$matches_table}` resemblance_vm
+					INNER JOIN `{$rules_table}` resemblance_ir
+						ON resemblance_ir.id = resemblance_vm.ignore_rule_id
+					WHERE resemblance_vm.violation_id = i.id
+						AND resemblance_vm.match_action = 'resembles'
+						AND resemblance_ir.status = 'active'
+						AND (resemblance_ir.expires_at IS NULL OR resemblance_ir.expires_at > NOW())
+				) AS resembles_exception
 			{$from}
 			WHERE {$where_sql}
 			ORDER BY {$order_by}
@@ -625,21 +672,46 @@ class Issue_Repository {
 		$scans_table = Schema::get_table_name('scans');
 		$matches_table = Ignore_Schema::get_table_name('violation_ignore_matches');
 		$rules_table = Ignore_Schema::get_table_name('ignore_rules');
+		$occurrence_table = Occurrence_Repository::get_table();
+		$has_occurrence_state = Occurrence_Repository::table_exists();
+		$lifecycle_join = $has_occurrence_state
+			? "LEFT JOIN `{$occurrence_table}` os
+				ON os.site_id = " . get_current_blog_id() . "
+				AND os.violation_identity_v2 = i.violation_identity_v2
+				AND os.identity_signature_version = i.identity_signature_version"
+			: '';
+		$lifecycle_select = $has_occurrence_state
+			? 'os.status AS occurrence_status, os.first_seen_at, os.last_seen_at, os.resolved_at,
+				os.reappearance_count, os.id AS occurrence_state_id'
+			: 'NULL AS occurrence_status, NULL AS first_seen_at, NULL AS last_seen_at, NULL AS resolved_at,
+				0 AS reappearance_count, NULL AS occurrence_state_id';
 
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT i.*, si.post_title, si.post_url, si.scanned_at,
 					s.scan_name, s.status AS scan_status, s.created_at AS scan_created_at,
 					s.completed_at AS scan_completed_at,
+					{$lifecycle_select},
 					CASE WHEN i.dismissed = 1 OR i.dismissed_global = 1 OR EXISTS (
 						SELECT 1 FROM `{$matches_table}` vm
 						INNER JOIN `{$rules_table}` ir ON ir.id = vm.ignore_rule_id
 						WHERE vm.violation_id = i.id AND ir.status = 'active'
+							AND vm.match_action = 'suppressed'
 							AND (ir.expires_at IS NULL OR ir.expires_at > NOW())
-					) THEN 1 ELSE 0 END AS is_ignored
+					) THEN 1 ELSE 0 END AS is_ignored,
+					EXISTS (
+						SELECT 1 FROM `{$matches_table}` resemblance_vm
+						INNER JOIN `{$rules_table}` resemblance_ir
+							ON resemblance_ir.id = resemblance_vm.ignore_rule_id
+						WHERE resemblance_vm.violation_id = i.id
+							AND resemblance_vm.match_action = 'resembles'
+							AND resemblance_ir.status = 'active'
+							AND (resemblance_ir.expires_at IS NULL OR resemblance_ir.expires_at > NOW())
+					) AS resembles_exception
 				FROM `{$issues_table}` i
 				INNER JOIN `{$items_table}` si ON si.id = i.scan_item_id
 				INNER JOIN `{$scans_table}` s ON s.id = i.scan_id
+				{$lifecycle_join}
 				WHERE i.id = %d",
 				$issue_id
 			),
@@ -742,6 +814,7 @@ class Issue_Repository {
 			'impact' => $row['impact'] ?: null,
 			'finding_type' => ('incomplete' === ($row['result_type'] ?? '') || 'review' === $row['rule_type']) ? 'review' : 'violation',
 			'status' => ! empty($row['is_ignored']) ? 'ignored' : 'active',
+			'resembles_exception' => ! empty($row['resembles_exception']),
 			'message' => (string) ($row['message'] ?? ''),
 			'help_text' => (string) ($row['help_text'] ?? ''),
 			'selector' => $row['selector'] ?: null,
@@ -750,7 +823,23 @@ class Issue_Repository {
 			'accessible_name' => $row['accessible_name'] ?: null,
 			'inner_text_snippet' => $row['inner_text_snippet'] ?: null,
 			'node_evidence' => $row['node_evidence'] ?: null,
+			'source' => ! empty($row['source_key'])
+				? [
+					'type' => $row['source_type'] ?: null,
+					'ref' => $row['source_ref'] ?: null,
+					'owner_type' => $row['owner_type'] ?: null,
+					'owner_name' => $row['owner_name'] ?: null,
+					'key' => $row['source_key'],
+				]
+				: null,
 			'created_at' => $row['created_at'] ?? null,
+			'history' => [
+				'current_occurrence_status' => $row['occurrence_status'] ?? null,
+				'first_seen_at' => $row['first_seen_at'] ?? null,
+				'last_seen_at' => $row['last_seen_at'] ?? null,
+				'resolved_at' => $row['resolved_at'] ?? null,
+				'reappearance_count' => (int) ($row['reappearance_count'] ?? 0),
+			],
 		];
 	}
 

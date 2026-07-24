@@ -16,6 +16,123 @@ namespace ClearA11y\Services;
 class Fingerprint_Service {
 
 	/**
+	 * Signature version for the separated identity model.
+	 */
+	public const IDENTITY_SIGNATURE_VERSION = 2;
+
+	/**
+	 * Create versioned element identity from the exact v2 input contract.
+	 *
+	 * @param array  $node_evidence Browser-derived node evidence.
+	 * @param string $source_key Stable source key from template attribution.
+	 * @return array Hash, raw inputs, and signature version.
+	 */
+	public static function create_element_identity_v2(array $node_evidence, string $source_key): array {
+		$attributes = isset($node_evidence['attributes']) && is_array($node_evidence['attributes'])
+			? $node_evidence['attributes']
+			: [];
+		$ancestor_roles = $node_evidence['ancestor_role_chain'] ?? [];
+
+		if (! is_array($ancestor_roles)) {
+			$ancestor_roles = [];
+		}
+
+		$ancestor_roles = array_values(
+			array_filter(
+				array_map(
+					static fn($role): string => strtolower(trim((string) $role)),
+					array_slice($ancestor_roles, 0, 5)
+				)
+			)
+		);
+
+		$inputs = [
+			'tag_name' => strtolower(trim((string) ($node_evidence['tag_name'] ?? ''))),
+			'computed_role' => strtolower(
+				trim((string) ($node_evidence['computed_role'] ?? $attributes['role'] ?? ''))
+			),
+			'input_type' => strtolower(trim((string) ($node_evidence['input_type'] ?? ''))),
+			'href_path' => self::normalize_href_path(
+				(string) ($node_evidence['href_path'] ?? $attributes['href'] ?? '')
+			),
+			'ancestor_role_chain' => $ancestor_roles,
+			'source_key' => preg_match('/^[a-f0-9]{64}$/', $source_key) ? $source_key : '',
+		];
+
+		return [
+			'hash' => self::hash($inputs),
+			'inputs' => $inputs,
+			'signature_version' => self::IDENTITY_SIGNATURE_VERSION,
+		];
+	}
+
+	/**
+	 * Create versioned violation identity from the exact v2 input contract.
+	 *
+	 * @param string $rule_id Axe rule ID.
+	 * @param string $page_object_key Stable WordPress page object key.
+	 * @param string $element_identity_v2 Element identity digest.
+	 * @return array Hash, raw inputs, and signature version.
+	 */
+	public static function create_violation_identity_v2(
+		string $rule_id,
+		string $page_object_key,
+		string $element_identity_v2
+	): array {
+		$inputs = [
+			'rule_id' => sanitize_key($rule_id),
+			'page_object_key' => $page_object_key,
+			'element_identity_v2' => $element_identity_v2,
+		];
+
+		return [
+			'hash' => self::hash($inputs),
+			'inputs' => $inputs,
+			'signature_version' => self::IDENTITY_SIGNATURE_VERSION,
+		];
+	}
+
+	/**
+	 * Resolve a scanned URL to a stable WordPress object key.
+	 *
+	 * @param string $url Scanned URL.
+	 * @param int    $post_id Known WordPress post ID, when available.
+	 * @return string Stable object key.
+	 */
+	public static function resolve_page_object_key(string $url, int $post_id = 0): string {
+		if ($post_id > 0 && get_post($post_id)) {
+			return 'post:' . $post_id;
+		}
+
+		$resolved_post_id = $url ? url_to_postid($url) : 0;
+		if ($resolved_post_id > 0) {
+			return 'post:' . $resolved_post_id;
+		}
+
+		$normalized_url = self::normalize_url($url);
+		if ($normalized_url === self::normalize_url(home_url('/'))) {
+			return 'front';
+		}
+
+		$query = wp_parse_url($url, PHP_URL_QUERY);
+		if (is_string($query)) {
+			parse_str($query, $query_args);
+			if (isset($query_args['s'])) {
+				return 'search';
+			}
+		}
+
+		foreach (get_post_types(['has_archive' => true], 'names') as $post_type) {
+			$archive_url = get_post_type_archive_link($post_type);
+			if ($archive_url && $normalized_url === self::normalize_url($archive_url)) {
+				return 'archive:' . sanitize_key($post_type);
+			}
+		}
+
+		return 'url:' . $normalized_url;
+	}
+
+	/**
 	 * Generate violation fingerprint.
 	 *
 	 * Purpose: Identify a specific violation occurrence.
@@ -145,6 +262,25 @@ class Fingerprint_Service {
 		}
 
 		return rtrim($url, '/');
+	}
+
+	/**
+	 * Normalize an href target to path only.
+	 *
+	 * @param string $href Link target.
+	 * @return string Normalized path or an empty string.
+	 */
+	private static function normalize_href_path(string $href): string {
+		if ('' === trim($href)) {
+			return '';
+		}
+
+		$path = wp_parse_url($href, PHP_URL_PATH);
+		if (! is_string($path) || '' === $path) {
+			return '/';
+		}
+
+		return '/' === $path ? '/' : untrailingslashit($path);
 	}
 
 	/**

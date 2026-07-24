@@ -413,6 +413,13 @@ class Ignore_REST_Controller {
 		);
 
 		if ($existing) {
+			$existing_match = Ignore_Matcher_Service::matches_rule($violation, $existing);
+			if (! $existing_match || 'suppressed' !== ($existing_match['action'] ?? '')) {
+				$existing = null;
+			}
+		}
+
+		if ($existing) {
 			// Refresh expiration
 			$existing->expires_at = date('Y-m-d H:i:s', time() + DAY_IN_SECONDS);
 			Ignore_Rule_Repository::update($existing);
@@ -439,6 +446,12 @@ class Ignore_REST_Controller {
 			'selector_fingerprint' => $fingerprints['selector'],
 			'element_fingerprint' => $fingerprints['element'],
 		];
+		$rule->violation_identity_v2 = $violation->violation_identity_v2;
+		$rule->element_identity_v2 = $violation->element_identity_v2;
+		$rule->identity_signature_version = $violation->identity_signature_version;
+		$rule->legacy_reanchor_status = ! empty($violation->violation_identity_v2)
+			? 'anchored'
+			: 'pending';
 		$rule->scope = [
 			'scope_type' => 'page',
 			'url' => $url,
@@ -460,7 +473,7 @@ class Ignore_REST_Controller {
 		}
 
 		// Create violation match
-		Ignore_Rule_Repository::create_match($violation_id, $rule_id, $site_id, 'high');
+		Ignore_Rule_Repository::create_match($violation_id, $rule_id, $site_id, 'exact', 'suppressed');
 
 		return rest_ensure_response([
 			'id' => $rule_id,
@@ -685,7 +698,7 @@ class Ignore_REST_Controller {
 			$wpdb->prepare(
 				"SELECT DISTINCT i.*, ir.id as ignore_rule_id, ir.reason_category, ir.note, ir.created_by, ir.created_at as ignored_at
 				FROM `{$issues_table}` i
-				INNER JOIN `{$matches_table}` vm ON i.id = vm.violation_id
+				INNER JOIN `{$matches_table}` vm ON i.id = vm.violation_id AND vm.match_action = 'suppressed'
 				INNER JOIN `{$rules_table}` ir ON vm.ignore_rule_id = ir.id
 				WHERE i.scan_item_id = %d
 				ORDER BY i.severity DESC, i.id ASC",
@@ -732,16 +745,30 @@ class Ignore_REST_Controller {
 			return new \WP_Error('violation_not_found', 'Issue not found.', ['status' => 404]);
 		}
 
-		$matches = Ignore_Matcher_Service::find_matches($violation, $site_id);
+		$matches = Ignore_Matcher_Service::find_matches($violation, $site_id, false);
+		$suppressions = array_values(
+			array_filter(
+				$matches,
+				static fn(array $match): bool => 'suppressed' === $match['action']
+			)
+		);
+		$resemblances = array_values(
+			array_filter(
+				$matches,
+				static fn(array $match): bool => 'resembles' === $match['action']
+			)
+		);
 
 		return rest_ensure_response([
-			'is_ignored' => !empty($matches),
+			'is_ignored' => ! empty($suppressions),
+			'resembles_exception' => ! empty($resemblances),
 			'matching_rules' => array_map(function($match) {
 				return [
 					'rule_id' => $match['rule']->id,
 					'rule_label' => $match['rule']->get_label(),
 					'confidence' => $match['confidence'],
 					'matched_by' => $match['matched_by'],
+					'action' => $match['action'],
 				];
 			}, $matches),
 		]);
@@ -870,7 +897,7 @@ class Ignore_REST_Controller {
 		// @phpstan-ignore-next-line
 		$violations = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT i.id FROM `{$issues_table}` i
+			"SELECT i.* FROM `{$issues_table}` i
 				INNER JOIN `{$scan_items_table}` si ON i.scan_item_id = si.id
 				WHERE {$where_clause}",
 				...$where_params
@@ -878,12 +905,19 @@ class Ignore_REST_Controller {
 		);
 
 		// Create matches
-		foreach ($violations as $violation) {
+		foreach ($violations as $violation_row) {
+			$violation = \ClearA11y\Models\Issue::from_row($violation_row);
+			$match = Ignore_Matcher_Service::matches_rule($violation, $rule);
+			if (! $match) {
+				continue;
+			}
+
 			Ignore_Rule_Repository::create_match(
 				(int) $violation->id,
 				$rule->id,
 				$rule->site_id,
-				'high'
+				$match['confidence'],
+				$match['action'] ?? 'suppressed'
 			);
 		}
 	}

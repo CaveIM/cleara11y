@@ -13,6 +13,7 @@ namespace ClearA11y\Services;
 use ClearA11y\Database\Issue_Repository;
 use ClearA11y\Database\Ignore_Rule_Repository;
 use ClearA11y\Database\Ignore_Schema;
+use ClearA11y\Database\Occurrence_Repository;
 use ClearA11y\Database\Scan_Repository;
 use ClearA11y\Database\Scan_Item_Repository;
 use ClearA11y\Models\Issue;
@@ -78,6 +79,8 @@ class Scan_Results_Processor {
 			'review' => $results['incomplete'] ?? [],
 		];
 		$issues_inserted = 0;
+		$observed_identities = [];
+		$lifecycle_recorded = 0;
 		$evidence_diagnostics = [
 			'expected' => 0,
 			'matched' => 0,
@@ -126,7 +129,8 @@ class Scan_Results_Processor {
 						$scan_item->scan_id,
 						$scan_item_id,
 						$scan_item->post_id,
-						$node_evidence
+						$node_evidence,
+						$scan_item->post_url
 					);
 					$issue->rule_type = $finding_type;
 					$issue->result_type = $result_type;
@@ -151,8 +155,15 @@ class Scan_Results_Processor {
 									$issue->id,
 									$ignore_match['rule']->id,
 									get_current_blog_id(),
-									$ignore_match['confidence']
+									$ignore_match['confidence'],
+									$ignore_match['action']
 								);
+							}
+						}
+						if (! empty($issue->violation_identity_v2)) {
+							$observed_identities[] = $issue->violation_identity_v2;
+							if (Occurrence_Repository::record_observation($issue)) {
+								$lifecycle_recorded++;
 							}
 						}
 						$issues_inserted++;
@@ -187,6 +198,28 @@ class Scan_Results_Processor {
 		$scan_item->rules_incomplete_list = !empty($scoring_data['rules_incomplete']) ? wp_json_encode($scoring_data['rules_incomplete']) : null;
 
 		Scan_Item_Repository::update($scan_item);
+
+		// Only resolve absent occurrences when every inserted observation had a
+		// v2 identity and was recorded. Partial evidence must never look like a
+		// successful remediation.
+		$lifecycle_complete = count($observed_identities) === $issues_inserted
+			&& $lifecycle_recorded === count($observed_identities);
+		if ($lifecycle_complete) {
+			Occurrence_Repository::resolve_absent_for_scan_item(
+				$scan_item_id,
+				$observed_identities
+			);
+		} elseif (Occurrence_Repository::table_exists()) {
+			error_log(
+				sprintf(
+					'ClearA11y WARNING: Occurrence resolution skipped because lifecycle evidence was incomplete. scan_item_id=%d issues=%d identities=%d recorded=%d',
+					$scan_item_id,
+					$issues_inserted,
+					count($observed_identities),
+					$lifecycle_recorded
+				)
+			);
+		}
 
 		// Update parent scan
 		self::update_scan_progress($scan_item->scan_id, $severity_counts);
@@ -240,7 +273,14 @@ class Scan_Results_Processor {
 			&& $expected_bytes === $stored_bytes
 			&& ! empty($stored->xpath)
 			&& ! empty($stored->fingerprint_strict)
-			&& ! empty($stored->fingerprint_loose);
+			&& ! empty($stored->fingerprint_loose)
+			&& ! empty($stored->source_key)
+			&& ! empty($stored->page_object_key)
+			&& ! empty($stored->element_identity_v2)
+			&& ! empty($stored->element_identity_v2_inputs)
+			&& ! empty($stored->violation_identity_v2)
+			&& ! empty($stored->violation_identity_v2_inputs)
+			&& \ClearA11y\Services\Fingerprint_Service::IDENTITY_SIGNATURE_VERSION === $stored->identity_signature_version;
 
 		if (! $valid) {
 			error_log(
@@ -320,6 +360,7 @@ class Scan_Results_Processor {
 		if (!$scan) {
 			return;
 		}
+		$was_completed = 'completed' === $scan->status;
 
 		// Recalculate totals from all scan items (not increment)
 		// This ensures re-scans replace old counts instead of adding to them
@@ -367,6 +408,22 @@ class Scan_Results_Processor {
 		}
 
 		Scan_Repository::update($scan);
+
+		if (! $was_completed && 'completed' === $scan->status) {
+			$report = Ignore_Rule_Repository::finalize_legacy_reanchoring(
+				get_current_blog_id(),
+				$scan->started_at,
+				$scan_id
+			);
+			error_log(
+				sprintf(
+					'[ClearA11y] Legacy exception re-anchor report: scan_id=%d anchored=%d unmatched=%d',
+					$scan_id,
+					$report['anchored'],
+					$report['unmatched']
+				)
+			);
+		}
 	}
 
 	/**

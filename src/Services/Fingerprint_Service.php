@@ -18,16 +18,21 @@ class Fingerprint_Service {
 	/**
 	 * Signature version for the separated identity model.
 	 */
-	public const IDENTITY_SIGNATURE_VERSION = 2;
+	public const IDENTITY_SIGNATURE_VERSION = 3;
 
 	/**
 	 * Create versioned element identity from the exact v2 input contract.
 	 *
 	 * @param array  $node_evidence Browser-derived node evidence.
 	 * @param string $source_key Stable source key from template attribution.
+	 * @param string $page_url Scanned page URL, used to resolve relative links.
 	 * @return array Hash, raw inputs, and signature version.
 	 */
-	public static function create_element_identity_v2(array $node_evidence, string $source_key): array {
+	public static function create_element_identity_v2(
+		array $node_evidence,
+		string $source_key,
+		string $page_url = ''
+	): array {
 		$attributes = isset($node_evidence['attributes']) && is_array($node_evidence['attributes'])
 			? $node_evidence['attributes']
 			: [];
@@ -52,8 +57,10 @@ class Fingerprint_Service {
 				trim((string) ($node_evidence['computed_role'] ?? $attributes['role'] ?? ''))
 			),
 			'input_type' => strtolower(trim((string) ($node_evidence['input_type'] ?? ''))),
-			'href_path' => self::normalize_href_path(
-				(string) ($node_evidence['href_path'] ?? $attributes['href'] ?? '')
+			'href_path' => self::normalize_href_target(
+				(string) ($attributes['href'] ?? ''),
+				(string) ($node_evidence['href_path'] ?? ''),
+				$page_url
 			),
 			'ancestor_role_chain' => $ancestor_roles,
 			'source_key' => preg_match('/^[a-f0-9]{64}$/', $source_key) ? $source_key : '',
@@ -262,6 +269,118 @@ class Fingerprint_Service {
 		}
 
 		return rtrim($url, '/');
+	}
+
+	/**
+	 * Normalize an href target for identity.
+	 *
+	 * Same-site WordPress objects use stable object keys so permalink and slug
+	 * changes do not create new element identities. External and unresolved
+	 * targets retain the path-only behavior from the v2 contract.
+	 *
+	 * @param string $href Raw link target.
+	 * @param string $fallback_path Browser-normalized path.
+	 * @param string $page_url Scanned page URL for resolving relative targets.
+	 * @return string Stable object key, normalized path, or an empty string.
+	 */
+	private static function normalize_href_target(
+		string $href,
+		string $fallback_path,
+		string $page_url
+	): string {
+		$href = trim($href);
+		$fallback_path = self::normalize_href_path($fallback_path ?: $href);
+
+		if ('' === $href || str_starts_with($href, '#')) {
+			return $fallback_path;
+		}
+
+		$scheme = strtolower((string) wp_parse_url($href, PHP_URL_SCHEME));
+		if ($scheme && ! in_array($scheme, ['http', 'https'], true)) {
+			return $fallback_path;
+		}
+
+		$absolute_url = self::make_absolute_url($href, $page_url);
+		if (! $absolute_url || ! self::is_same_site_url($absolute_url)) {
+			return $fallback_path;
+		}
+
+		$object_key = self::resolve_page_object_key($absolute_url);
+		if (! str_starts_with($object_key, 'url:')) {
+			return $object_key;
+		}
+
+		return $fallback_path;
+	}
+
+	/**
+	 * Resolve a possibly relative href against the scanned page.
+	 *
+	 * @param string $href Raw href.
+	 * @param string $page_url Scanned page URL.
+	 * @return string Absolute URL, or an empty string when it cannot be built.
+	 */
+	private static function make_absolute_url(string $href, string $page_url): string {
+		if (preg_match('#^https?://#i', $href)) {
+			return $href;
+		}
+
+		if (str_starts_with($href, '//')) {
+			$scheme = wp_parse_url(home_url('/'), PHP_URL_SCHEME) ?: 'https';
+			return $scheme . ':' . $href;
+		}
+
+		if (str_starts_with($href, '/')) {
+			$home = wp_parse_url(home_url('/'));
+			if (! is_array($home) || empty($home['host'])) {
+				return '';
+			}
+
+			$authority = ($home['scheme'] ?? 'https') . '://' . $home['host'];
+			if (isset($home['port'])) {
+				$authority .= ':' . $home['port'];
+			}
+
+			return $authority . $href;
+		}
+
+		if (! $page_url) {
+			return '';
+		}
+
+		$page_parts = wp_parse_url($page_url);
+		if (! is_array($page_parts) || empty($page_parts['host'])) {
+			return '';
+		}
+
+		$base_path = (string) ($page_parts['path'] ?? '/');
+		$base_path = preg_replace('#/[^/]*$#', '/', $base_path) ?: '/';
+		$origin = ($page_parts['scheme'] ?? 'https') . '://' . $page_parts['host'];
+		if (isset($page_parts['port'])) {
+			$origin .= ':' . $page_parts['port'];
+		}
+
+		return $origin . '/' . ltrim($base_path . $href, '/');
+	}
+
+	/**
+	 * Determine whether a URL belongs to the configured WordPress site.
+	 *
+	 * @param string $url Absolute URL.
+	 * @return bool
+	 */
+	private static function is_same_site_url(string $url): bool {
+		$target_host = strtolower((string) wp_parse_url($url, PHP_URL_HOST));
+		$home_host = strtolower((string) wp_parse_url(home_url('/'), PHP_URL_HOST));
+
+		if (! $target_host || $target_host !== $home_host) {
+			return false;
+		}
+
+		$target_port = (int) (wp_parse_url($url, PHP_URL_PORT) ?: 0);
+		$home_port = (int) (wp_parse_url(home_url('/'), PHP_URL_PORT) ?: 0);
+
+		return $target_port === $home_port;
 	}
 
 	/**

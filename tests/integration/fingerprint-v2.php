@@ -55,6 +55,21 @@ if ('post:1' !== $page_key_before || $page_key_before !== $page_key_after) {
 	throw new RuntimeException('WordPress post identity did not survive a URL change.');
 }
 
+$post_url = get_permalink(1);
+if ($post_url) {
+	$link_to_post = $base;
+	$link_to_post['attributes']['href'] = $post_url;
+	$link_to_post['href_path'] = (string) wp_parse_url($post_url, PHP_URL_PATH);
+	$link_identity = Fingerprint_Service::create_element_identity_v2(
+		$link_to_post,
+		$source_key,
+		home_url('/')
+	);
+	if ('post:1' !== $link_identity['inputs']['href_path']) {
+		throw new RuntimeException('Same-site link identity did not resolve to a stable WordPress object key.');
+	}
+}
+
 $violation = Fingerprint_Service::create_violation_identity_v2('link-name', $page_key_before, $identity['hash']);
 $changed_rule = Fingerprint_Service::create_violation_identity_v2('color-contrast', $page_key_before, $identity['hash']);
 if ($violation['hash'] === $changed_rule['hash']) {

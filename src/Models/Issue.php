@@ -445,7 +445,8 @@ class Issue {
 			);
 			$element_identity = \ClearA11y\Services\Fingerprint_Service::create_element_identity_v2(
 				$node_ev,
-				$issue->source_key
+				$issue->source_key,
+				$page_url
 			);
 			$violation_identity = \ClearA11y\Services\Fingerprint_Service::create_violation_identity_v2(
 				$issue->rule_id,

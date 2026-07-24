@@ -514,13 +514,13 @@ function buildAncestorRoleChain(el, maxDepth) {
  * @return {string|null} Normalized path.
  */
 function normalizeHrefPath(href) {
-  if (!href) return null;
+  if (!href) return "";
 
   try {
     const path = new URL(href, document.baseURI).pathname || "/";
     return path.length > 1 ? path.replace(/\/+$/, "") : path;
   } catch (error) {
-    return null;
+    return "";
   }
 }
 

@@ -6,6 +6,8 @@
  * wp eval-file tests/integration/evidence-persistence.php --path=/var/www/html --allow-root
  */
 
+use ClearA11y\Services\Fingerprint_Service;
+
 global $wpdb;
 
 $wpdb->query('START TRANSACTION');
@@ -115,7 +117,7 @@ try {
 		|| 'content' !== $by_type['violation']->source_type
 		|| $evidence_base['source_descriptor']['source_key'] !== $by_type['violation']->source_key
 		|| 'post:1' !== $by_type['violation']->page_object_key
-		|| 2 !== $by_type['violation']->identity_signature_version
+		|| Fingerprint_Service::IDENTITY_SIGNATURE_VERSION !== $by_type['violation']->identity_signature_version
 		|| $by_type['violation']->element_identity_v2 !== $by_type['incomplete']->element_identity_v2
 		|| $by_type['violation']->violation_identity_v2 !== $by_type['incomplete']->violation_identity_v2
 	) {

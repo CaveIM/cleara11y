@@ -275,6 +275,13 @@
 	white-space: nowrap;
 }
 
+.cleara11y-selector:focus,
+.cleara11y-detail-value code:focus,
+.cleara11y-detail-value pre:focus {
+	outline: 2px solid #2271b1;
+	outline-offset: 2px;
+}
+
 .cleara11y-detail {
 	position: sticky;
 	top: 42px;

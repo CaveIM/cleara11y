@@ -1,5 +1,82 @@
 const {test, expect} = require('@playwright/test');
 const path = require('node:path');
+const {execFileSync} = require('node:child_process');
+
+const WP_PATH = process.env.CLEARA11Y_WP_PATH || '/var/www/html';
+let fixturePostId = 0;
+let fixtureScanId = 0;
+
+function wp(args) {
+	return execFileSync(
+		'wp',
+		[...args, `--path=${WP_PATH}`, '--allow-root'],
+		{encoding: 'utf8'}
+	).trim();
+}
+
+async function createOccurrenceFixture(browser) {
+	fixturePostId = Number(wp([
+		'post',
+		'create',
+		'--post_type=page',
+		'--post_status=publish',
+		'--post_title=ClearA11y Issues Explorer Fixture',
+		'--post_content=<!-- wp:html --><button></button><img src="/missing-explorer-fixture.png"><p style="color:#fff;background:#fff">Invisible fixture</p><!-- /wp:html -->',
+		'--porcelain'
+	]));
+	const tokenData = JSON.parse(wp([
+		'eval',
+		`echo wp_json_encode(
+			\\ClearA11y\\Services\\Scan_Token_Manager::generate_token(${fixturePostId})
+		);`
+	]));
+	fixtureScanId = Number(tokenData.scan_id);
+	const page = await browser.newPage();
+
+	try {
+		const resultRequest = page.waitForResponse(
+			response => response.url().includes('/cleara11y/v1/scan/results')
+				&& response.request().method() === 'POST',
+			{timeout: 60000}
+		);
+		await page.goto(tokenData.scan_url, {
+			waitUntil: 'domcontentloaded',
+			timeout: 60000
+		});
+		const response = await resultRequest;
+		expect(response.status(), 'The Explorer fixture scan did not persist').toBe(200);
+	} finally {
+		await page.close();
+	}
+}
+
+function cleanupOccurrenceFixture() {
+	if (fixtureScanId) {
+		wp([
+			'eval',
+			`
+				$scan_id = ${fixtureScanId};
+				$prefix = $GLOBALS['wpdb']->prefix . 'cleara11y_';
+				$issue_ids = $GLOBALS['wpdb']->get_col(
+					"SELECT id FROM {$prefix}issues WHERE scan_id = {$scan_id}"
+				);
+				if ($issue_ids) {
+					$GLOBALS['wpdb']->query(
+						"DELETE FROM {$prefix}violation_ignore_matches
+						WHERE violation_id IN (" . implode(',', array_map('absint', $issue_ids)) . ")"
+					);
+				}
+				$GLOBALS['wpdb']->delete($prefix . 'occurrence_states', ['latest_scan_id' => $scan_id], ['%d']);
+				$GLOBALS['wpdb']->delete($prefix . 'issues', ['scan_id' => $scan_id], ['%d']);
+				$GLOBALS['wpdb']->delete($prefix . 'scan_items', ['scan_id' => $scan_id], ['%d']);
+				$GLOBALS['wpdb']->delete($prefix . 'scans', ['id' => $scan_id], ['%d']);
+			`
+		]);
+	}
+	if (fixturePostId) {
+		wp(['post', 'delete', String(fixturePostId), '--force']);
+	}
+}
 
 async function login(page) {
 	await page.goto('/wp-login.php');
@@ -16,12 +93,26 @@ async function login(page) {
 	await expect(page).toHaveURL(/wp-admin/);
 }
 
+async function waitForResults(page) {
+	await expect(page.locator('#cleara11y-issues-container'))
+		.not.toHaveAttribute('aria-busy', 'true');
+}
+
 test.beforeEach(async ({page}) => {
 	await login(page);
 });
 
+test.beforeAll(async ({browser}) => {
+	await createOccurrenceFixture(browser);
+});
+
+test.afterAll(() => {
+	cleanupOccurrenceFixture();
+});
+
 test('URL filters, grouping, and occurrence history are keyboard operable', async ({page}) => {
 	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=active&groupBy=page');
+	await waitForResults(page);
 	await expect(page.getByRole('heading', {name: 'Active accessibility issues'})).toBeVisible();
 
 	await page.locator('#cleara11y-filter-severity').selectOption('critical');
@@ -29,8 +120,9 @@ test('URL filters, grouping, and occurrence history are keyboard operable', asyn
 	await expect(page.getByRole('heading', {name: 'Critical accessibility issues'})).toBeVisible();
 
 	await page.locator('#cleara11y-filter-severity').selectOption('');
+	await expect(page.locator('#cleara11y-issues-container')).not.toHaveAttribute('aria-busy', 'true');
 	if (!await page.locator('[data-occurrence-row]').count()) {
-		await expect(page.getByRole('heading', {name: /No active issues/})).toBeVisible();
+		await expect(page.getByRole('heading', {name: /No (active )?issues/})).toBeVisible();
 		return;
 	}
 
@@ -53,8 +145,9 @@ test('URL filters, grouping, and occurrence history are keyboard operable', asyn
 
 test('direct scan and occurrence URLs render snapshot and safe evidence', async ({page}) => {
 	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=active');
+	await waitForResults(page);
 	if (!await page.locator('[data-occurrence-row]').count()) {
-		test.skip(true, 'The disposable WordPress site has no occurrence fixture.');
+		throw new Error('The self-contained occurrence fixture was not returned.');
 	}
 	await page.getByRole('button', {name: 'View details'}).first().click();
 	const occurrenceUrl = page.url();
@@ -73,6 +166,7 @@ test('direct scan and occurrence URLs render snapshot and safe evidence', async 
 
 test('explorer has no automated accessibility violations in list and detail states', async ({page}) => {
 	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=active');
+	await waitForResults(page);
 	await page.addScriptTag({path: path.resolve(__dirname, '../../assets/js/axe.min.js')});
 	let result = await page.evaluate(() => axe.run('#cleara11y-issues-explorer'));
 	expect(result.violations, JSON.stringify(result.violations, null, 2)).toEqual([]);
@@ -87,8 +181,9 @@ test('explorer has no automated accessibility violations in list and detail stat
 test('narrow view presents occurrence detail as the primary content', async ({page}) => {
 	await page.setViewportSize({width: 600, height: 900});
 	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=active');
+	await waitForResults(page);
 	if (!await page.locator('[data-occurrence-row]').count()) {
-		test.skip(true, 'The disposable WordPress site has no occurrence fixture.');
+		throw new Error('The self-contained occurrence fixture was not returned.');
 	}
 	await page.getByRole('button', {name: 'View details'}).first().click();
 	await expect(page.locator('#cleara11y-results-region')).toBeHidden();

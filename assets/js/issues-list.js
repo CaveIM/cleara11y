@@ -222,7 +222,7 @@
 				<p>${escapeHtml(item.message || item.help_text)}</p>
 				<p class="cleara11y-result-row__meta"><strong>${escapeHtml(item.page.title)}</strong>
 					<span>${escapeHtml(pathname(item.page.url))}</span></p>
-				${item.selector ? `<code class="cleara11y-selector">${escapeHtml(item.selector)}</code>` : ''}
+				${item.selector ? `<code class="cleara11y-selector" tabindex="0" aria-label="Affected element selector">${escapeHtml(item.selector)}</code>` : ''}
 			</div>
 			<button type="button" class="button cleara11y-view-occurrence" data-occurrence-id="${item.id}">View details</button>
 		</article>`;
@@ -328,7 +328,10 @@
 	function detailValue(label, value, code, tag) {
 		if (!value) return '';
 		const element = tag || (code ? 'code' : 'p');
-		return `<div class="cleara11y-detail-value"><h4>${escapeHtml(label)}</h4><${element}>${escapeHtml(value)}</${element}></div>`;
+		const scrollable = element === 'code' || element === 'pre'
+			? ` tabindex="0" aria-label="${escapeHtml(label)}"`
+			: '';
+		return `<div class="cleara11y-detail-value"><h4>${escapeHtml(label)}</h4><${element}${scrollable}>${escapeHtml(value)}</${element}></div>`;
 	}
 
 	function explorerUrl(overrides) {

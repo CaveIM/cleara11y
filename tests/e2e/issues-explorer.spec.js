@@ -121,3 +121,72 @@ test('evidence extractor covers violations and incomplete findings', async ({pag
 	expect(extracted.resultTypes).toContain('incomplete');
 	expect(extracted.resolved).toBe(extracted.total);
 });
+
+test('evidence extractor resolves the nearest template source marker', async ({page}) => {
+	await page.setContent(`
+		<!--a11y:s:000001-->
+		<main>
+			<!--a11y:s:000002--><button></button><!--a11y:e:000002-->
+		</main>
+		<!--a11y:e:000001-->
+		<script type="application/json" id="cleara11y-attribution-map">{
+			"sources": {
+				"000001": {
+					"source_type": "template",
+					"source_ref": "themes/example/index.php",
+					"owner_type": "theme",
+					"owner_name": "Example",
+					"source_key": "outer"
+				},
+				"000002": {
+					"source_type": "content",
+					"source_ref": "post:1",
+					"owner_type": "content",
+					"owner_name": "Editor-authored content",
+					"source_key": "inner"
+				}
+			},
+			"documentSourceId": "000001"
+		}</script>
+	`);
+	await page.addScriptTag({path: path.resolve(__dirname, '../../assets/js/axe.min.js')});
+	await page.addScriptTag({path: path.resolve(__dirname, '../../assets/js/evidence-extractor.js')});
+
+	const source = await page.evaluate(async () => {
+		const results = await axe.run(document, {
+			runOnly: {type: 'rule', values: ['button-name']},
+			resultTypes: ['violations']
+		});
+		const evidence = await extractEvidenceFromAxeResults(results);
+		return evidence[0]?.source_descriptor;
+	});
+
+	expect(source).toMatchObject({
+		source_type: 'content',
+		source_ref: 'post:1',
+		owner_type: 'content',
+		source_key: 'inner'
+	});
+});
+
+test('tokenized extraction fails loudly when a cached page has no attribution map', async ({page}) => {
+	await page.setContent('<button></button>');
+	await page.evaluate(() => history.replaceState({}, '', '?cleara11y_scan=fixture'));
+	await page.addScriptTag({path: path.resolve(__dirname, '../../assets/js/axe.min.js')});
+	await page.addScriptTag({path: path.resolve(__dirname, '../../assets/js/evidence-extractor.js')});
+
+	const message = await page.evaluate(async () => {
+		const results = await axe.run(document, {
+			runOnly: {type: 'rule', values: ['button-name']},
+			resultTypes: ['violations']
+		});
+		try {
+			await extractEvidenceFromAxeResults(results);
+			return null;
+		} catch (error) {
+			return error.message;
+		}
+	});
+
+	expect(message).toContain('may have been served from a cache');
+});

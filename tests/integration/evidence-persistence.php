@@ -62,6 +62,13 @@ try {
 			'fingerprint_loose' => 'loose-fixture',
 			'signature_version' => 1,
 		],
+		'source_descriptor' => [
+			'source_type' => 'content',
+			'source_ref' => 'post:1',
+			'owner_type' => 'content',
+			'owner_name' => 'Editor-authored content',
+			'source_key' => hash('sha256', "content\0post:1\0content\0Editor-authored content"),
+		],
 	];
 
 	$violation_evidence = array_merge($evidence_base, ['result_type' => 'violation']);
@@ -105,8 +112,32 @@ try {
 		! isset($by_type['violation'], $by_type['incomplete'])
 		|| '/html/body/button' !== $by_type['violation']->xpath
 		|| '/html/body/button[2]' !== $by_type['incomplete']->xpath
+		|| 'content' !== $by_type['violation']->source_type
+		|| $evidence_base['source_descriptor']['source_key'] !== $by_type['violation']->source_key
+		|| 'post:1' !== $by_type['violation']->page_object_key
+		|| 2 !== $by_type['violation']->identity_signature_version
+		|| $by_type['violation']->element_identity_v2 !== $by_type['incomplete']->element_identity_v2
+		|| $by_type['violation']->violation_identity_v2 !== $by_type['incomplete']->violation_identity_v2
 	) {
 		throw new RuntimeException('Result-type evidence was mismatched.');
+	}
+
+	$element_inputs = json_decode($by_type['violation']->element_identity_v2_inputs, true);
+	$violation_inputs = json_decode($by_type['violation']->violation_identity_v2_inputs, true);
+	if (
+		[
+			'tag_name',
+			'computed_role',
+			'input_type',
+			'href_path',
+			'ancestor_role_chain',
+			'source_key',
+		] !== array_keys($element_inputs)
+		|| ['rule_id', 'page_object_key', 'element_identity_v2'] !== array_keys($violation_inputs)
+		|| array_intersect(['accessible_name', 'selector', 'wcag'], array_keys($element_inputs))
+		|| array_intersect(['accessible_name', 'selector', 'wcag'], array_keys($violation_inputs))
+	) {
+		throw new RuntimeException('Version 2 identity inputs drifted from the signature contract.');
 	}
 
 	echo "Evidence persistence integration test passed.\n";

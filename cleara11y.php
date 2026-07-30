@@ -265,6 +265,18 @@ class ClearA11y_Plugin {
 			}
 			}
 
+		// Store the resolved WordPress template for issue grouping.
+		if (
+			version_compare($current_db_version, '1.7.1', '<')
+			|| ! \ClearA11y\Database\Schema::scan_items_have_template_column()
+		) {
+			if (\ClearA11y\Database\Schema::add_template_column()) {
+				if (version_compare($current_db_version, '1.7.1', '<')) {
+					update_option('cleara11y_db_version', '1.7.1');
+				}
+			}
+		}
+
 		// Add non-destructive indexes used by the global issues explorer.
 		if (version_compare($current_db_version, '1.8.0', '<')) {
 			if (\ClearA11y\Database\Schema::add_issue_explorer_indexes()) {

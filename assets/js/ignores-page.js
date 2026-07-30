@@ -354,6 +354,24 @@
 		let emptyTemplate = $('#cleara11y-empty-state-template').html();
 		let message = '';
 
+		// Fallback if template is not found
+		if (!emptyTemplate) {
+			let fallbackMessage = 'No exceptions found.';
+			switch (state.currentStatus) {
+				case 'active':
+					fallbackMessage = 'No active exceptions found.';
+					break;
+				case 'expired':
+					fallbackMessage = 'No expired exceptions found.';
+					break;
+				case 'disabled':
+					fallbackMessage = 'No disabled exceptions found.';
+					break;
+			}
+			$tbody.html('<tr><td colspan="7" style="text-align: center; padding: 40px; color: #646970;">' + fallbackMessage + '</td></tr>');
+			return;
+		}
+
 		switch (state.currentStatus) {
 			case 'active':
 				message = 'No active exceptions found.';

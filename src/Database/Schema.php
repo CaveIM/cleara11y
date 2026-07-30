@@ -97,6 +97,7 @@ class Schema {
 			`rules_passed_list` longtext DEFAULT NULL,
 			`rules_failed_list` longtext DEFAULT NULL,
 			`rules_incomplete_list` longtext DEFAULT NULL,
+			`template` varchar(255) DEFAULT NULL,
 			`created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (`id`),
 			KEY `scan_id` (`scan_id`),
@@ -967,5 +968,59 @@ class Schema {
 		} else {
 			return 'F';
 		}
+	}
+
+	/**
+	 * Add template column to scan_items table (for existing installations).
+	 *
+	 * @return bool True if successful.
+	 */
+	public static function add_template_column(): bool {
+		global $wpdb;
+
+		$table = self::get_table_name('scan_items');
+
+		if (self::scan_items_have_template_column()) {
+			return true;
+		}
+
+		$result = $wpdb->query("ALTER TABLE `{$table}` ADD COLUMN `template` VARCHAR(255) DEFAULT NULL");
+
+		if (false === $result) {
+			error_log(
+				sprintf(
+					'ClearA11y ERROR: Failed adding template column. table=%s database_error=%s',
+					$table,
+					$wpdb->last_error
+				)
+			);
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Check whether scan items can store the resolved WordPress template.
+	 *
+	 * @return bool True when the template column exists.
+	 */
+	public static function scan_items_have_template_column(): bool {
+		global $wpdb;
+
+		$table = self::get_table_name('scan_items');
+		$column = $wpdb->get_var(
+			$wpdb->prepare(
+				'SELECT COLUMN_NAME
+				FROM INFORMATION_SCHEMA.COLUMNS
+				WHERE TABLE_SCHEMA = DATABASE()
+					AND TABLE_NAME = %s
+					AND COLUMN_NAME = %s',
+				$table,
+				'template'
+			)
+		);
+
+		return 'template' === $column;
 	}
 }

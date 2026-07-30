@@ -5,6 +5,7 @@ const {execFileSync} = require('node:child_process');
 const WP_PATH = process.env.CLEARA11Y_WP_PATH || '/var/www/html';
 let fixturePostId = 0;
 let fixtureScanId = 0;
+const fixtureScanIds = [];
 
 function wp(args) {
 	return execFileSync(
@@ -31,6 +32,7 @@ async function createOccurrenceFixture(browser) {
 		);`
 	]));
 	fixtureScanId = Number(tokenData.scan_id);
+	fixtureScanIds.push(fixtureScanId);
 	const page = await browser.newPage();
 
 	try {
@@ -51,20 +53,37 @@ async function createOccurrenceFixture(browser) {
 }
 
 function cleanupOccurrenceFixture() {
-	if (fixtureScanId) {
+	for (const scanId of fixtureScanIds) {
 		wp([
 			'eval',
 			`
-				$scan_id = ${fixtureScanId};
+				$scan_id = ${scanId};
 				$prefix = $GLOBALS['wpdb']->prefix . 'cleara11y_';
 				$issue_ids = $GLOBALS['wpdb']->get_col(
 					"SELECT id FROM {$prefix}issues WHERE scan_id = {$scan_id}"
 				);
 				if ($issue_ids) {
-					$GLOBALS['wpdb']->query(
-						"DELETE FROM {$prefix}violation_ignore_matches
+					$rule_ids = $GLOBALS['wpdb']->get_col(
+						"SELECT DISTINCT exception_rule_id
+						FROM {$prefix}issue_exception_matches
 						WHERE violation_id IN (" . implode(',', array_map('absint', $issue_ids)) . ")"
 					);
+					$GLOBALS['wpdb']->query(
+						"DELETE FROM {$prefix}issue_exception_matches
+						WHERE violation_id IN (" . implode(',', array_map('absint', $issue_ids)) . ")"
+					);
+					foreach ($rule_ids as $rule_id) {
+						$GLOBALS['wpdb']->delete(
+							$prefix . 'exception_audit_log',
+							['exception_rule_id' => $rule_id],
+							['%s']
+						);
+						$GLOBALS['wpdb']->delete(
+							$prefix . 'exception_rules',
+							['id' => $rule_id],
+							['%s']
+						);
+					}
 				}
 				$GLOBALS['wpdb']->delete($prefix . 'occurrence_states', ['latest_scan_id' => $scan_id], ['%d']);
 				$GLOBALS['wpdb']->delete($prefix . 'issues', ['scan_id' => $scan_id], ['%d']);
@@ -75,6 +94,32 @@ function cleanupOccurrenceFixture() {
 	}
 	if (fixturePostId) {
 		wp(['post', 'delete', String(fixturePostId), '--force']);
+	}
+}
+
+async function rescanOccurrenceFixture(page) {
+	const tokenData = JSON.parse(wp([
+		'eval',
+		`echo wp_json_encode(
+			\\ClearA11y\\Services\\Scan_Token_Manager::generate_token(${fixturePostId})
+		);`
+	]));
+	fixtureScanIds.push(Number(tokenData.scan_id));
+	const scanPage = await page.context().newPage();
+	try {
+		const resultRequest = scanPage.waitForResponse(
+			response => response.url().includes('/cleara11y/v1/scan/results')
+				&& response.request().method() === 'POST',
+			{timeout: 60000}
+		);
+		await scanPage.goto(tokenData.scan_url, {
+			waitUntil: 'domcontentloaded',
+			timeout: 60000
+		});
+		const response = await resultRequest;
+		expect(response.status(), 'The exception workflow rescan did not persist').toBe(200);
+	} finally {
+		await scanPage.close();
 	}
 }
 
@@ -176,6 +221,69 @@ test('explorer has no automated accessibility violations in list and detail stat
 	await expect(page.getByRole('heading', {name: 'Location'})).toBeVisible();
 	result = await page.evaluate(() => axe.run('#cleara11y-issues-explorer'));
 	expect(result.violations, JSON.stringify(result.violations, null, 2)).toEqual([]);
+});
+
+test('reviewed exception wizard preserves occurrence context and updates the explorer', async ({page}) => {
+	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=active&ruleId=button-name&groupBy=none');
+	await waitForResults(page);
+	await page.getByRole('button', {name: 'View details'}).first().click();
+	await page.getByRole('button', {name: 'Snooze until next scan'}).click();
+	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=exception&ruleId=button-name&groupBy=none');
+	await waitForResults(page);
+	await expect(page.locator('[data-occurrence-row]').first()).toBeVisible();
+
+	await rescanOccurrenceFixture(page);
+	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=active&ruleId=button-name&groupBy=none');
+	await waitForResults(page);
+	await expect(page.locator('[data-occurrence-row]').first()).toBeVisible();
+	await page.getByRole('button', {name: 'View details'}).first().click();
+	await page.getByRole('button', {name: 'Create exception…'}).click();
+
+	const dialog = page.getByRole('dialog', {name: 'Create Exception'});
+	await expect(dialog).toBeVisible();
+	await expect(dialog.getByRole('radio', {name: /Rule on Element/i})).toBeChecked();
+	await expect(dialog.locator('#cleara11y-rule-ids')).toHaveValue('button-name');
+	await expect(dialog.locator('#cleara11y-css-selector')).not.toHaveValue('');
+
+	await dialog.getByRole('button', {name: 'Next'}).click();
+	await expect(dialog.getByRole('radio', {name: /Single Page/i})).toBeChecked();
+	await expect(dialog.locator('#cleara11y-scope-url')).not.toHaveValue('');
+	await dialog.getByRole('radio', {name: /Content Types/i}).check();
+	await expect(dialog.locator('input[name="post_types"][value="page"]')).toBeChecked();
+	await dialog.getByRole('radio', {name: /Single Page/i}).check();
+	await dialog.getByRole('button', {name: 'Next'}).click();
+	await expect(dialog.getByRole('radio', {name: /Permanent/i})).toBeChecked();
+	await dialog.getByRole('button', {name: 'Next'}).click();
+	await dialog.locator('#cleara11y-reason-category').selectOption('accepted_risk');
+	await dialog.locator('#cleara11y-note').fill('Reviewed by the exception workflow integration test.');
+	await dialog.getByRole('button', {name: 'Next'}).click();
+	await dialog.getByRole('button', {name: 'Create Exception'}).click();
+	await expect(dialog).toBeHidden();
+
+	await page.goto('/wp-admin/admin.php?page=cleara11y-exceptions');
+	const exceptionRow = page.locator('#cleara11y-exceptions-table-body tr').filter({hasText: 'button-name'}).first();
+	await expect(exceptionRow).toBeVisible();
+	await exceptionRow.getByRole('button', {name: 'View'}).click();
+	const detailsDialog = page.getByRole('dialog', {name: 'Exception Rule Details'});
+	await expect(detailsDialog).toBeVisible();
+	await detailsDialog.getByRole('button', {name: 'Edit Rule'}).click();
+	const editDialog = page.getByRole('dialog', {name: 'Edit reviewed exception'});
+	await expect(editDialog).toBeVisible();
+	await editDialog.getByRole('button', {name: 'Next'}).click();
+	await editDialog.getByRole('button', {name: 'Next'}).click();
+	await editDialog.getByRole('button', {name: 'Next'}).click();
+	await expect(editDialog.locator('#cleara11y-note')).toHaveValue('Reviewed by the exception workflow integration test.');
+	await editDialog.locator('#cleara11y-note').fill('Reviewed and edited by the exception workflow integration test.');
+	await editDialog.getByRole('button', {name: 'Next'}).click();
+	await editDialog.getByRole('button', {name: 'Save Exception'}).click();
+	await expect(editDialog).toBeHidden();
+
+	await rescanOccurrenceFixture(page);
+	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=exception&ruleId=button-name&groupBy=none');
+	await waitForResults(page);
+	await expect(page.locator('[data-occurrence-row]').first()).toBeVisible();
+	await page.getByRole('button', {name: 'View details'}).first().click();
+	await expect(page.getByText('Current exception').first()).toBeVisible();
 });
 
 test('narrow view presents occurrence detail as the primary content', async ({page}) => {

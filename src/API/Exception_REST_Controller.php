@@ -1,8 +1,8 @@
 <?php
 /**
- * Ignore REST API Controller
+ * Exception REST API Controller
  *
- * Handles REST API endpoints for ignore rule operations.
+ * Handles REST API endpoints for exception rule operations.
  *
  * @package ClearA11y
  * @namespace ClearA11y\API
@@ -10,17 +10,17 @@
 
 namespace ClearA11y\API;
 
-use ClearA11y\Database\Ignore_Rule_Repository;
-use ClearA11y\Database\Ignore_Schema;
+use ClearA11y\Database\Exception_Rule_Repository;
+use ClearA11y\Database\Exception_Schema;
 use ClearA11y\Database\Issue_Repository;
-use ClearA11y\Models\Ignore_Rule;
-use ClearA11y\Services\Ignore_Matcher_Service;
+use ClearA11y\Models\Exception_Rule;
+use ClearA11y\Services\Exception_Matcher_Service;
 use ClearA11y\Services\Fingerprint_Service;
 
 /**
- * Ignore REST Controller Class
+ * Exception REST Controller Class
  */
-class Ignore_REST_Controller {
+class Exception_REST_Controller {
 
 	/**
 	 * API namespace.
@@ -69,24 +69,24 @@ class Ignore_REST_Controller {
 	public function register_routes(): void {
 		// Ensure tables exist
 		add_action('rest_api_init', function() {
-			if (!Ignore_Schema::tables_exist()) {
-				Ignore_Schema::create_tables();
+			if (!Exception_Schema::tables_exist()) {
+				Exception_Schema::create_tables();
 			}
 		}, 5);
 
-		// Get ignore rules list
+		// Get exception rules list
 		register_rest_route(
 			self::NAMESPACE,
-			'/ignores',
+			'/exceptions',
 			[
 				[
 					'methods' => 'GET',
-					'callback' => [$this, 'get_ignore_rules'],
-					'permission_callback' => [$this, 'can_manage_ignores'],
+					'callback' => [$this, 'get_exception_rules'],
+					'permission_callback' => [$this, 'can_manage_exceptions'],
 					'args' => [
 						'status' => [
 							'type' => 'string',
-							'enum' => ['active', 'disabled', 'expired', 'all'],
+							'enum' => ['active', 'disabled', 'expired', 'revoked', 'all'],
 							'default' => 'active',
 							'description' => 'Filter by status.',
 						],
@@ -109,43 +109,43 @@ class Ignore_REST_Controller {
 				],
 				[
 					'methods' => 'POST',
-					'callback' => [$this, 'create_ignore_rule'],
-					'permission_callback' => [$this, 'can_manage_ignores'],
+					'callback' => [$this, 'create_exception_rule'],
+					'permission_callback' => [$this, 'can_manage_exceptions'],
 				],
 			]
 		);
 
-		// Get single ignore rule
+		// Get single exception rule
 		register_rest_route(
 			self::NAMESPACE,
-			'/ignores/(?P<id>[a-zA-Z0-9-]+)',
+			'/exceptions/(?P<id>[a-zA-Z0-9-]+)',
 			[
 				[
 					'methods' => 'GET',
-					'callback' => [$this, 'get_ignore_rule'],
-					'permission_callback' => [$this, 'can_manage_ignores'],
+					'callback' => [$this, 'get_exception_rule'],
+					'permission_callback' => [$this, 'can_manage_exceptions'],
 				],
 				[
 					'methods' => 'PUT',
-					'callback' => [$this, 'update_ignore_rule'],
-					'permission_callback' => [$this, 'can_manage_ignores'],
+					'callback' => [$this, 'update_exception_rule'],
+					'permission_callback' => [$this, 'can_manage_exceptions'],
 				],
 				[
 					'methods' => 'DELETE',
-					'callback' => [$this, 'delete_ignore_rule'],
-					'permission_callback' => [$this, 'can_manage_ignores'],
+					'callback' => [$this, 'revoke_exception_rule'],
+					'permission_callback' => [$this, 'can_manage_exceptions'],
 				],
 			]
 		);
 
-		// Quick ignore endpoint
+		// One-scan snooze endpoint.
 		register_rest_route(
 			self::NAMESPACE,
-			'/ignores/quick',
+			'/exceptions/snooze',
 			[
 				'methods' => 'POST',
-				'callback' => [$this, 'quick_ignore'],
-				'permission_callback' => [$this, 'can_manage_ignores'],
+				'callback' => [$this, 'snooze_occurrence'],
+				'permission_callback' => [$this, 'can_manage_exceptions'],
 				'args' => [
 					'violation_id' => [
 						'required' => true,
@@ -156,91 +156,91 @@ class Ignore_REST_Controller {
 			]
 		);
 
-		// Undo quick ignore
+		// Undo a one-scan snooze.
 		register_rest_route(
 			self::NAMESPACE,
-			'/ignores/(?P<id>[a-zA-Z0-9-]+)/undo',
+			'/exceptions/(?P<id>[a-zA-Z0-9-]+)/undo',
 			[
 				'methods' => 'POST',
-				'callback' => [$this, 'undo_quick_ignore'],
-				'permission_callback' => [$this, 'can_manage_ignores'],
+				'callback' => [$this, 'undo_snooze'],
+				'permission_callback' => [$this, 'can_manage_exceptions'],
 			]
 		);
 
-		// Enable/disable ignore rule
+		// Enable/disable exception rule
 		register_rest_route(
 			self::NAMESPACE,
-			'/ignores/(?P<id>[a-zA-Z0-9-]+)/(?P<action>enable|disable)',
+			'/exceptions/(?P<id>[a-zA-Z0-9-]+)/(?P<action>enable|disable)',
 			[
 				'methods' => 'POST',
-				'callback' => [$this, 'toggle_ignore_rule'],
-				'permission_callback' => [$this, 'can_manage_ignores'],
+				'callback' => [$this, 'toggle_exception_rule'],
+				'permission_callback' => [$this, 'can_manage_exceptions'],
 			]
 		);
 
 		// Get audit log
 		register_rest_route(
 			self::NAMESPACE,
-			'/ignores/(?P<id>[a-zA-Z0-9-]+)/audit',
+			'/exceptions/(?P<id>[a-zA-Z0-9-]+)/audit',
 			[
 				'methods' => 'GET',
 				'callback' => [$this, 'get_audit_log'],
-				'permission_callback' => [$this, 'can_manage_ignores'],
+				'permission_callback' => [$this, 'can_manage_exceptions'],
 			]
 		);
 
 		// Get site-wide audit log
 		register_rest_route(
 			self::NAMESPACE,
-			'/ignores/audit/all',
+			'/exceptions/audit/all',
 			[
 				'methods' => 'GET',
 				'callback' => [$this, 'get_all_audit_log'],
-				'permission_callback' => [$this, 'can_manage_ignores'],
+				'permission_callback' => [$this, 'can_manage_exceptions'],
 			]
 		);
 
 		// Calculate impact preview
 		register_rest_route(
 			self::NAMESPACE,
-			'/ignores/preview',
+			'/exceptions/preview',
 			[
 				'methods' => 'POST',
 				'callback' => [$this, 'preview_impact'],
-				'permission_callback' => [$this, 'can_manage_ignores'],
+				'permission_callback' => [$this, 'can_manage_exceptions'],
 			]
 		);
 
-		// Get ignored violations for a scan item
+		// Get excepted findings for a scan item
 		register_rest_route(
 			self::NAMESPACE,
-			'/scan-items/(?P<id>\d+)/ignored',
+			'/scan-items/(?P<id>\d+)/exceptions',
 			[
 				'methods' => 'GET',
-				'callback' => [$this, 'get_ignored_violations'],
-				'permission_callback' => [$this, 'can_manage_ignores'],
+				'callback' => [$this, 'get_exception_findings'],
+				'permission_callback' => [$this, 'can_manage_exceptions'],
 			]
 		);
 
-		// Check if violation is ignored
+		// Check if issue has an exception
 		register_rest_route(
 			self::NAMESPACE,
-			'/violations/(?P<id>\d+)/ignore-status',
+			'/violations/(?P<id>\d+)/exception-status',
 			[
 				'methods' => 'GET',
-				'callback' => [$this, 'get_violation_ignore_status'],
-				'permission_callback' => [$this, 'can_manage_ignores'],
+				'callback' => [$this, 'get_violation_exception_status'],
+				'permission_callback' => [$this, 'can_manage_exceptions'],
 			]
 		);
 	}
 
 	/**
-	 * Get ignore rules list.
+	 * Get exception rules list.
 	 *
 	 * @param \WP_REST_Request $request REST request object.
 	 * @return \WP_REST_Response
 	 */
-	public function get_ignore_rules(\WP_REST_Request $request): \WP_REST_Response {
+	public function get_exception_rules(\WP_REST_Request $request): \WP_REST_Response {
 		$site_id = get_current_blog_id();
 		$status = $request->get_param('status');
 		$system_generated = $request->get_param('system_generated');
@@ -249,7 +249,7 @@ class Ignore_REST_Controller {
 		$offset = ($page - 1) * $per_page;
 
 		// Mark expired rules
-		Ignore_Rule_Repository::mark_expired($site_id);
+		Exception_Rule_Repository::mark_expired($site_id);
 
 		$args = [
 			'limit' => $per_page,
@@ -264,63 +264,63 @@ class Ignore_REST_Controller {
 			$args['system_generated'] = $system_generated;
 		}
 
-		$rules = Ignore_Rule_Repository::get_by_site_id($site_id, $args);
+		$rules = Exception_Rule_Repository::get_by_site_id($site_id, $args);
 
 		// Get counts for tabs
 		$counts = [
-			'active' => Ignore_Rule_Repository::get_count_by_status($site_id, 'active'),
-			'disabled' => Ignore_Rule_Repository::get_count_by_status($site_id, 'disabled'),
-			'expired' => Ignore_Rule_Repository::get_count_by_status($site_id, 'expired'),
-			'all' => Ignore_Rule_Repository::get_count_by_status($site_id, 'active')
-				+ Ignore_Rule_Repository::get_count_by_status($site_id, 'disabled')
-				+ Ignore_Rule_Repository::get_count_by_status($site_id, 'expired'),
+			'active' => Exception_Rule_Repository::get_count_by_status($site_id, 'active'),
+			'disabled' => Exception_Rule_Repository::get_count_by_status($site_id, 'disabled'),
+			'expired' => Exception_Rule_Repository::get_count_by_status($site_id, 'expired'),
+			'revoked' => Exception_Rule_Repository::get_count_by_status($site_id, 'revoked'),
+			'all' => Exception_Rule_Repository::get_count_by_status($site_id, 'active')
+				+ Exception_Rule_Repository::get_count_by_status($site_id, 'disabled')
+				+ Exception_Rule_Repository::get_count_by_status($site_id, 'expired')
+				+ Exception_Rule_Repository::get_count_by_status($site_id, 'revoked'),
 		];
+		$total = 'all' === $status ? $counts['all'] : ($counts[$status] ?? 0);
 
 		return rest_ensure_response([
 			'data' => array_map(fn($rule) => $rule->to_array(), $rules),
 			'counts' => $counts,
-			'total' => $counts['all'],
+			'total' => $total,
 			'page' => $page,
 			'per_page' => $per_page,
-			'total_pages' => ceil($counts['all'] / $per_page),
+			'total_pages' => max(1, (int) ceil($total / $per_page)),
 		]);
 	}
 
 	/**
-	 * Get single ignore rule.
+	 * Get single exception rule.
 	 *
 	 * @param \WP_REST_Request $request REST request object.
 	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function get_ignore_rule(\WP_REST_Request $request) {
+	public function get_exception_rule(\WP_REST_Request $request) {
 		$rule_id = $request->get_param('id');
-		$rule = Ignore_Rule_Repository::get_by_id($rule_id);
+		$rule = Exception_Rule_Repository::get_by_id($rule_id);
 
 		if (!$rule) {
 			return new \WP_Error('rule_not_found', 'Reviewed exception not found.', ['status' => 404]);
 		}
-
 		$rule_array = $rule->to_array();
 		$rule_array['audit_log'] = array_map(
 			fn($log) => $log->to_array(),
-			Ignore_Rule_Repository::get_audit_log($rule_id)
+			Exception_Rule_Repository::get_audit_log($rule_id)
 		);
 
 		return rest_ensure_response($rule_array);
 	}
 
 	/**
-	 * Create ignore rule.
+	 * Create exception rule.
 	 *
 	 * @param \WP_REST_Request $request REST request object.
 	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function create_ignore_rule(\WP_REST_Request $request) {
-		$params = $request->get_json_params();
-
-		// Validate required fields
-		if (empty($params['target_type']) || empty($params['scope']) || empty($params['duration'])) {
-			return new \WP_Error('missing_params', 'Missing required parameters.', ['status' => 400]);
+	public function create_exception_rule(\WP_REST_Request $request) {
+		$params = $this->validate_exception_params((array) $request->get_json_params());
+		if (is_wp_error($params)) {
+			return $params;
 		}
 
 		// Check for guardrails
@@ -332,7 +332,7 @@ class Ignore_REST_Controller {
 		// Generate UUID
 		$rule_id = self::generate_uuid_v4();
 
-		$rule = new Ignore_Rule();
+		$rule = new Exception_Rule();
 		$rule->id = $rule_id;
 		$rule->site_id = get_current_blog_id();
 		$rule->status = 'active';
@@ -347,19 +347,24 @@ class Ignore_REST_Controller {
 		$rule->created_by = get_current_user_id();
 		$rule->created_at = current_time('mysql');
 
+		$anchor_result = $this->anchor_occurrence_rule($rule, (int) ($params['violation_id'] ?? 0));
+		if (is_wp_error($anchor_result)) {
+			return $anchor_result;
+		}
+
 		// Set expiration if needed
 		if (isset($params['duration']['duration_type'])) {
 			$rule->expires_at = $this->calculate_expiration($params['duration']);
 		}
 
-		$insert_id = Ignore_Rule_Repository::insert($rule);
+		$insert_id = Exception_Rule_Repository::insert($rule);
 
 		if (!$insert_id) {
 			return new \WP_Error('insert_failed', 'Failed to create exception.', ['status' => 500]);
 		}
 
 		// Apply to existing violations
-		$this->apply_rule_to_existing($rule);
+		$this->apply_exception_to_existing($rule);
 
 		return rest_ensure_response([
 			'id' => $rule_id,
@@ -370,12 +375,12 @@ class Ignore_REST_Controller {
 	}
 
 	/**
-	 * Quick ignore - create temporary ignore for a violation.
+	 * Snooze an occurrence until its page is scanned again.
 	 *
 	 * @param \WP_REST_Request $request REST request object.
 	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function quick_ignore(\WP_REST_Request $request) {
+	public function snooze_occurrence(\WP_REST_Request $request) {
 		$violation_id = (int) $request->get_param('violation_id');
 		$user_id = get_current_user_id();
 
@@ -384,6 +389,11 @@ class Ignore_REST_Controller {
 
 		if (!$violation) {
 			return new \WP_Error('violation_not_found', 'Issue not found.', ['status' => 404]);
+		}
+
+		$identity_error = $this->validate_occurrence_identity($violation);
+		if (is_wp_error($identity_error)) {
+			return $identity_error;
 		}
 
 		// Get scan item for URL
@@ -404,8 +414,8 @@ class Ignore_REST_Controller {
 		$url = $scan_item->post_url ?? '';
 		$selector = $violation->selector ?? '';
 
-		// Check for existing quick ignore
-		$existing = Ignore_Rule_Repository::find_existing_quick_ignore(
+		// Refresh an existing snooze for the same occurrence.
+		$existing = Exception_Rule_Repository::find_existing_snooze(
 			$site_id,
 			$violation->rule_id,
 			$url,
@@ -413,7 +423,7 @@ class Ignore_REST_Controller {
 		);
 
 		if ($existing) {
-			$existing_match = Ignore_Matcher_Service::matches_rule($violation, $existing);
+			$existing_match = Exception_Matcher_Service::matches_rule($violation, $existing);
 			if (! $existing_match || 'suppressed' !== ($existing_match['action'] ?? '')) {
 				$existing = null;
 			}
@@ -421,8 +431,8 @@ class Ignore_REST_Controller {
 
 		if ($existing) {
 			// Refresh expiration
-			$existing->expires_at = date('Y-m-d H:i:s', time() + DAY_IN_SECONDS);
-			Ignore_Rule_Repository::update($existing);
+			$existing->expires_at = null;
+			Exception_Rule_Repository::update($existing);
 
 			return rest_ensure_response([
 				'message' => 'Temporary exception refreshed.',
@@ -435,7 +445,7 @@ class Ignore_REST_Controller {
 
 		$rule_id = self::generate_uuid_v4();
 
-		$rule = new Ignore_Rule();
+		$rule = new Exception_Rule();
 		$rule->id = $rule_id;
 		$rule->site_id = $site_id;
 		$rule->status = 'active';
@@ -459,82 +469,99 @@ class Ignore_REST_Controller {
 		$rule->duration = [
 			'duration_type' => 'until_next_scan',
 		];
-		$rule->reason_category = null; // Quick ignores don't require reasons
+		$rule->reason_category = null; // A one-scan snooze is not a reviewed exception.
 		$rule->note = null;
 		$rule->system_generated = true;
 		$rule->created_by = $user_id;
 		$rule->created_at = current_time('mysql');
-		$rule->expires_at = date('Y-m-d H:i:s', time() + DAY_IN_SECONDS);
+		$rule->expires_at = null;
 
-		$insert_id = Ignore_Rule_Repository::insert($rule);
+		$insert_id = Exception_Rule_Repository::insert($rule);
 
 		if (!$insert_id) {
-			return new \WP_Error('insert_failed', 'Failed to create temporary exception.', ['status' => 500]);
+			return new \WP_Error('insert_failed', 'Failed to snooze the issue.', ['status' => 500]);
 		}
 
 		// Create violation match
-		Ignore_Rule_Repository::create_match($violation_id, $rule_id, $site_id, 'exact', 'suppressed');
+		Exception_Rule_Repository::create_match($violation_id, $rule_id, $site_id, 'exact', 'suppressed');
 
 		return rest_ensure_response([
 			'id' => $rule_id,
-			'message' => 'Issue marked as a temporary exception until next scan.',
+			'message' => 'Issue snoozed until the next scan.',
 			'rule' => $rule->to_array(),
 		]);
 	}
 
 	/**
-	 * Undo quick ignore.
+	 * Undo a one-scan snooze.
 	 *
 	 * @param \WP_REST_Request $request REST request object.
 	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function undo_quick_ignore(\WP_REST_Request $request) {
+	public function undo_snooze(\WP_REST_Request $request) {
 		$rule_id = $request->get_param('id');
 
-		$rule = Ignore_Rule_Repository::get_by_id($rule_id);
+		$rule = Exception_Rule_Repository::get_by_id($rule_id);
 
 		if (!$rule) {
 			return new \WP_Error('rule_not_found', 'Reviewed exception not found.', ['status' => 404]);
+		}
+		if ('revoked' === $rule->status) {
+			return new \WP_Error('exception_already_revoked', 'This exception is already revoked.', ['status' => 409]);
 		}
 
 		// Only allow undoing system-generated rules
 		if (!$rule->system_generated) {
-			return new \WP_Error('not_quick_ignore', 'This is not a temporary exception.', ['status' => 400]);
+			return new \WP_Error('not_snooze', 'This exception is not a one-scan snooze.', ['status' => 400]);
 		}
 
 		// Delete the rule
-		$result = Ignore_Rule_Repository::delete($rule_id);
+		$result = Exception_Rule_Repository::revoke($rule_id);
 
 		if ($result) {
 			return rest_ensure_response([
-				'message' => 'Temporary exception removed.',
+				'message' => 'Snooze removed.',
 			]);
 		}
 
-		return new \WP_Error('delete_failed', 'Failed to remove temporary exception.', ['status' => 500]);
+		return new \WP_Error('revoke_failed', 'Failed to remove the snooze.', ['status' => 500]);
 	}
 
 	/**
-	 * Update ignore rule.
+	 * Update exception rule.
 	 *
 	 * @param \WP_REST_Request $request REST request object.
 	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function update_ignore_rule(\WP_REST_Request $request) {
+	public function update_exception_rule(\WP_REST_Request $request) {
 		$rule_id = $request->get_param('id');
-		$params = $request->get_json_params();
+		$params = (array) $request->get_json_params();
 
-		$rule = Ignore_Rule_Repository::get_by_id($rule_id);
+		$rule = Exception_Rule_Repository::get_by_id($rule_id);
 
 		if (!$rule) {
 			return new \WP_Error('rule_not_found', 'Reviewed exception not found.', ['status' => 404]);
+		}
+		if ('revoked' === $rule->status) {
+			return new \WP_Error('exception_revoked', 'A revoked exception cannot be edited.', ['status' => 409]);
+		}
+
+		$params = $this->validate_exception_params(
+			array_merge(
+				$rule->to_array(),
+				$params,
+				['target_type' => $rule->target_type]
+			)
+		);
+		if (is_wp_error($params)) {
+			return $params;
 		}
 
 		// Update fields
 		if (isset($params['rule_ids'])) {
 			$rule->rule_ids = $params['rule_ids'];
 		}
-		if (isset($params['element_match'])) {
+		if ('rule' === $rule->target_type && isset($params['element_match'])) {
 			$rule->element_match = $params['element_match'];
 		}
 		if (isset($params['scope'])) {
@@ -551,7 +578,7 @@ class Ignore_REST_Controller {
 			$rule->note = $params['note'];
 		}
 
-		$result = Ignore_Rule_Repository::update($rule);
+		$result = Exception_Rule_Repository::update($rule);
 
 		if ($result) {
 			return rest_ensure_response([
@@ -564,52 +591,61 @@ class Ignore_REST_Controller {
 	}
 
 	/**
-	 * Delete ignore rule.
+	 * Delete exception rule.
 	 *
 	 * @param \WP_REST_Request $request REST request object.
 	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function delete_ignore_rule(\WP_REST_Request $request) {
+	public function revoke_exception_rule(\WP_REST_Request $request) {
 		$rule_id = $request->get_param('id');
 
-		$rule = Ignore_Rule_Repository::get_by_id($rule_id);
+		$rule = Exception_Rule_Repository::get_by_id($rule_id);
 
 		if (!$rule) {
 			return new \WP_Error('rule_not_found', 'Reviewed exception not found.', ['status' => 404]);
 		}
+		if ('revoked' === $rule->status) {
+			return new \WP_Error('exception_already_revoked', 'This exception is already revoked.', ['status' => 409]);
+		}
 
-		$result = Ignore_Rule_Repository::delete($rule_id);
+		$result = Exception_Rule_Repository::revoke($rule_id);
 
 		if ($result) {
 			return rest_ensure_response([
-				'message' => 'Reviewed exception deleted successfully.',
+				'message' => 'Reviewed exception revoked successfully.',
 			]);
 		}
 
-		return new \WP_Error('delete_failed', 'Failed to delete exception.', ['status' => 500]);
+		return new \WP_Error('revoke_failed', 'Failed to revoke exception.', ['status' => 500]);
 	}
 
 	/**
-	 * Toggle ignore rule (enable/disable).
+	 * Toggle exception rule (enable/disable).
 	 *
 	 * @param \WP_REST_Request $request REST request object.
 	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function toggle_ignore_rule(\WP_REST_Request $request) {
+	public function toggle_exception_rule(\WP_REST_Request $request) {
 		$rule_id = $request->get_param('id');
 		$action = $request->get_param('action');
 
-		$rule = Ignore_Rule_Repository::get_by_id($rule_id);
+		$rule = Exception_Rule_Repository::get_by_id($rule_id);
 
 		if (!$rule) {
 			return new \WP_Error('rule_not_found', 'Reviewed exception not found.', ['status' => 404]);
 		}
 
 		if ($action === 'enable') {
-			$result = Ignore_Rule_Repository::enable($rule_id);
+			if ('disabled' !== $rule->status) {
+				return new \WP_Error('invalid_exception_transition', 'Only disabled exceptions can be enabled.', ['status' => 409]);
+			}
+			$result = Exception_Rule_Repository::enable($rule_id);
 			$message = 'Reviewed exception enabled.';
 		} else {
-			$result = Ignore_Rule_Repository::disable($rule_id);
+			if ('active' !== $rule->status) {
+				return new \WP_Error('invalid_exception_transition', 'Only active exceptions can be disabled.', ['status' => 409]);
+			}
+			$result = Exception_Rule_Repository::disable($rule_id);
 			$message = 'Reviewed exception disabled.';
 		}
 
@@ -631,7 +667,7 @@ class Ignore_REST_Controller {
 	public function get_audit_log(\WP_REST_Request $request): \WP_REST_Response {
 		$rule_id = $request->get_param('id');
 
-		$audit_log = Ignore_Rule_Repository::get_audit_log($rule_id);
+		$audit_log = Exception_Rule_Repository::get_audit_log($rule_id);
 
 		return rest_ensure_response([
 			'data' => array_map(fn($log) => $log->to_array(), $audit_log),
@@ -647,7 +683,7 @@ class Ignore_REST_Controller {
 	public function get_all_audit_log(\WP_REST_Request $request): \WP_REST_Response {
 		$site_id = get_current_blog_id();
 
-		$audit_log = Ignore_Rule_Repository::get_all_audit_log($site_id);
+		$audit_log = Exception_Rule_Repository::get_all_audit_log($site_id);
 
 		return rest_ensure_response([
 			'data' => array_map(fn($log) => $log->to_array(), $audit_log),
@@ -655,51 +691,58 @@ class Ignore_REST_Controller {
 	}
 
 	/**
-	 * Calculate impact preview for an ignore rule.
+	 * Calculate impact preview for an exception rule.
 	 *
 	 * @param \WP_REST_Request $request REST request object.
-	 * @return \WP_REST_Response
+	 * @return \WP_REST_Response|\WP_Error
 	 */
-	public function preview_impact(\WP_REST_Request $request): \WP_REST_Response {
-		$params = $request->get_json_params();
+	public function preview_impact(\WP_REST_Request $request) {
+		$params = $this->validate_exception_params((array) $request->get_json_params());
+		if (is_wp_error($params)) {
+			return $params;
+		}
 
 		// Create temporary rule for preview
-		$rule = new Ignore_Rule();
-		$rule->target_type = $params['target_type'] ?? '';
-		$rule->rule_ids = $params['rule_ids'] ?? [];
-		$rule->element_match = $params['element_match'] ?? [];
-		$rule->scope = $params['scope'] ?? [];
+		$rule = new Exception_Rule();
+		$rule->target_type = $params['target_type'];
+		$rule->rule_ids = $params['rule_ids'];
+		$rule->element_match = $params['element_match'];
+		$rule->scope = $params['scope'];
+		$anchor_result = $this->anchor_occurrence_rule($rule, (int) ($params['violation_id'] ?? 0));
+		if (is_wp_error($anchor_result)) {
+			return $anchor_result;
+		}
 
 		$site_id = get_current_blog_id();
 
-		$impact = Ignore_Matcher_Service::calculate_impact($rule, $site_id);
+		$impact = Exception_Matcher_Service::calculate_impact($rule, $site_id);
 
 		return rest_ensure_response($impact);
 	}
 
 	/**
-	 * Get ignored violations for a scan item.
+	 * Get excepted findings for a scan item.
 	 *
 	 * @param \WP_REST_Request $request REST request object.
 	 * @return \WP_REST_Response
 	 */
-	public function get_ignored_violations(\WP_REST_Request $request): \WP_REST_Response {
+	public function get_exception_findings(\WP_REST_Request $request): \WP_REST_Response {
 		$scan_item_id = (int) $request->get_param('id');
 		$site_id = get_current_blog_id();
 
 		global $wpdb;
 		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
-		$matches_table = Ignore_Schema::get_table_name('violation_ignore_matches');
-		$rules_table = Ignore_Schema::get_table_name('ignore_rules');
+		$matches_table = Exception_Schema::get_table_name('issue_exception_matches');
+		$rules_table = Exception_Schema::get_table_name('exception_rules');
 		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
 
-		// Get violations that have ignore matches
+		// Get violations that have exception matches
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT DISTINCT i.*, ir.id as ignore_rule_id, ir.reason_category, ir.note, ir.created_by, ir.created_at as ignored_at
+				"SELECT DISTINCT i.*, ir.id as exception_rule_id, ir.reason_category, ir.note, ir.created_by, ir.created_at as exception_applied_at
 				FROM `{$issues_table}` i
 				INNER JOIN `{$matches_table}` vm ON i.id = vm.violation_id AND vm.match_action = 'suppressed'
-				INNER JOIN `{$rules_table}` ir ON vm.ignore_rule_id = ir.id
+				INNER JOIN `{$rules_table}` ir ON vm.exception_rule_id = ir.id
 				WHERE i.scan_item_id = %d
 				ORDER BY i.severity DESC, i.id ASC",
 				$scan_item_id
@@ -712,13 +755,13 @@ class Ignore_REST_Controller {
 
 			$violations[] = [
 				'issue' => $issue->to_array(),
-				'matching_ignore' => [
-					'rule_id' => $row->ignore_rule_id,
+				'matching_exception' => [
+					'rule_id' => $row->exception_rule_id,
 					'reason_category' => $row->reason_category,
 					'note' => $row->note,
 					'created_by' => $row->created_by,
 					'created_by_name' => $row->created_by ? get_userdata($row->created_by)->display_name : null,
-					'ignored_at' => $row->ignored_at,
+					'exception_applied_at' => $row->exception_applied_at,
 				],
 			];
 		}
@@ -730,12 +773,12 @@ class Ignore_REST_Controller {
 	}
 
 	/**
-	 * Check if a violation is ignored and return matching rules.
+	 * Check if a issue has an exception and return matching rules.
 	 *
 	 * @param \WP_REST_Request $request REST request object.
 	 * @return \WP_REST_Response
 	 */
-	public function get_violation_ignore_status(\WP_REST_Request $request): \WP_REST_Response {
+	public function get_violation_exception_status(\WP_REST_Request $request): \WP_REST_Response {
 		$violation_id = (int) $request->get_param('id');
 		$site_id = get_current_blog_id();
 
@@ -745,7 +788,7 @@ class Ignore_REST_Controller {
 			return new \WP_Error('violation_not_found', 'Issue not found.', ['status' => 404]);
 		}
 
-		$matches = Ignore_Matcher_Service::find_matches($violation, $site_id, false);
+		$matches = Exception_Matcher_Service::find_matches($violation, $site_id, false);
 		$suppressions = array_values(
 			array_filter(
 				$matches,
@@ -760,7 +803,7 @@ class Ignore_REST_Controller {
 		);
 
 		return rest_ensure_response([
-			'is_ignored' => ! empty($suppressions),
+			'is_exception' => ! empty($suppressions),
 			'resembles_exception' => ! empty($resemblances),
 			'matching_rules' => array_map(function($match) {
 				return [
@@ -779,19 +822,207 @@ class Ignore_REST_Controller {
 	 *
 	 * @return bool True if user can manage ignores.
 	 */
-	public function can_manage_ignores(): bool {
+	public function can_manage_exceptions(): bool {
 		/**
-		 * Filter whether the current user can manage ignore rules.
+		 * Filter whether the current user can manage exception rules.
 		 *
 		 * @since 1.6.0
 		 *
 		 * @param bool $can_manage True if user can manage ignores.
 		 */
-		return apply_filters('cleara11y_manage_ignores_permission', current_user_can('manage_options'));
+		return apply_filters('cleara11y_manage_exceptions_permission', current_user_can('manage_options'));
 	}
 
 	/**
-	 * Check guardrails for ignore rule creation.
+	 * Validate and normalize a reviewed exception payload.
+	 *
+	 * @param array $params Request parameters.
+	 * @return array|\WP_Error Normalized parameters or validation error.
+	 */
+	private function validate_exception_params(array $params) {
+		$target_type = sanitize_key((string) ($params['target_type'] ?? ''));
+		$scope = is_array($params['scope'] ?? null) ? $params['scope'] : [];
+		$duration = is_array($params['duration'] ?? null) ? $params['duration'] : [];
+		$scope_type = sanitize_key((string) ($scope['scope_type'] ?? ''));
+		$duration_type = sanitize_key((string) ($duration['duration_type'] ?? ''));
+		$reason = sanitize_key((string) ($params['reason_category'] ?? ''));
+		$note = sanitize_textarea_field((string) ($params['note'] ?? ''));
+
+		if (
+			! in_array($target_type, Exception_Rule::TARGET_TYPES, true)
+			|| ! in_array($scope_type, Exception_Rule::SCOPE_TYPES, true)
+			|| ! in_array($duration_type, Exception_Rule::DURATION_TYPES, true)
+		) {
+			return new \WP_Error(
+				'invalid_exception',
+				'Choose a valid exception target, scope, and duration.',
+				['status' => 400]
+			);
+		}
+
+		if (! in_array($reason, Exception_Rule::REASON_CATEGORIES, true) || '' === $note) {
+			return new \WP_Error(
+				'exception_reason_required',
+				'Reviewed exceptions require both a reason and a note.',
+				['status' => 400]
+			);
+		}
+
+		$rule_ids = array_values(
+			array_unique(
+				array_filter(
+					array_map('sanitize_key', (array) ($params['rule_ids'] ?? []))
+				)
+			)
+		);
+		if ('rule' === $target_type && empty($rule_ids)) {
+			return new \WP_Error('exception_rule_required', 'Select at least one accessibility rule.', ['status' => 400]);
+		}
+
+		$normalized_scope = ['scope_type' => $scope_type];
+		if ('page' === $scope_type) {
+			$normalized_scope['url'] = esc_url_raw((string) ($scope['url'] ?? ''));
+			if ('' === $normalized_scope['url'] && empty($params['violation_id'])) {
+				return new \WP_Error('exception_page_required', 'Choose a page for this exception.', ['status' => 400]);
+			}
+		} elseif ('content_type' === $scope_type) {
+			$normalized_scope['post_types'] = array_values(
+				array_filter(array_map('sanitize_key', (array) ($scope['post_types'] ?? [])))
+			);
+			if (empty($normalized_scope['post_types'])) {
+				return new \WP_Error('exception_content_type_required', 'Choose at least one content type.', ['status' => 400]);
+			}
+		} elseif ('url_pattern' === $scope_type) {
+			$normalized_scope['patterns'] = array_slice(
+				array_values(
+					array_filter(
+						array_map('sanitize_text_field', (array) ($scope['patterns'] ?? []))
+					)
+				),
+				0,
+				20
+			);
+			if (empty($normalized_scope['patterns'])) {
+				return new \WP_Error('exception_pattern_required', 'Enter at least one URL pattern.', ['status' => 400]);
+			}
+		}
+
+		$normalized_duration = ['duration_type' => $duration_type];
+		if ('until_date' === $duration_type) {
+			$timestamp = strtotime((string) ($duration['expires_at'] ?? ''));
+			if (false === $timestamp || $timestamp <= time()) {
+				return new \WP_Error('exception_date_invalid', 'Choose a future expiration date.', ['status' => 400]);
+			}
+			$normalized_duration['expires_at'] = gmdate('Y-m-d H:i:s', $timestamp);
+		}
+
+		$element_match = is_array($params['element_match'] ?? null) ? $params['element_match'] : [];
+		$params['target_type'] = $target_type;
+		$params['rule_ids'] = $rule_ids;
+		$params['element_match'] = [
+			'css_selector' => sanitize_text_field((string) ($element_match['css_selector'] ?? '')),
+			'tag_name' => sanitize_key((string) ($element_match['tag_name'] ?? '')),
+		];
+		$params['scope'] = $normalized_scope;
+		$params['duration'] = $normalized_duration;
+		$params['reason_category'] = $reason;
+		$params['note'] = $note;
+		$params['system_generated'] = false;
+		$params['violation_id'] = absint($params['violation_id'] ?? 0);
+
+		return $params;
+	}
+
+	/**
+	 * Bind an occurrence-specific exception to server-owned identity data.
+	 *
+	 * @param Exception_Rule $rule Rule being created.
+	 * @param int            $violation_id Issue ID.
+	 * @return true|\WP_Error
+	 */
+	private function anchor_occurrence_rule(Exception_Rule $rule, int $violation_id) {
+		if ('rule' === $rule->target_type) {
+			$rule->legacy_reanchor_status = 'not_required';
+			return true;
+		}
+
+		$violation = Issue_Repository::get_by_id($violation_id);
+		if (! $violation) {
+			return new \WP_Error(
+				'exception_occurrence_required',
+				'Choose a current issue occurrence for this exception.',
+				['status' => 400]
+			);
+		}
+
+		$identity_error = $this->validate_occurrence_identity($violation);
+		if (is_wp_error($identity_error)) {
+			return $identity_error;
+		}
+
+		global $wpdb;
+		$scan_item = $wpdb->get_row(
+			$wpdb->prepare(
+				'SELECT post_url FROM `' . \ClearA11y\Database\Schema::get_table_name('scan_items') . '` WHERE id = %d',
+				$violation->scan_item_id
+			)
+		);
+		if (! $scan_item) {
+			return new \WP_Error('scan_item_not_found', 'Scan item not found.', ['status' => 404]);
+		}
+
+		$rule->rule_ids = 'rule_on_element' === $rule->target_type ? [$violation->rule_id] : [];
+		$rule->element_match = [
+			'css_selector' => (string) $violation->selector,
+		];
+		$rule->violation_identity_v2 = $violation->violation_identity_v2;
+		$rule->element_identity_v2 = $violation->element_identity_v2;
+		$rule->identity_signature_version = $violation->identity_signature_version;
+		$rule->legacy_reanchor_status = 'anchored';
+		if ('page' === ($rule->scope['scope_type'] ?? '')) {
+			$rule->scope['url'] = (string) $scan_item->post_url;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Ensure an issue can safely anchor an occurrence-level exception.
+	 *
+	 * @param \ClearA11y\Models\Issue $violation Issue to validate.
+	 * @return true|\WP_Error
+	 */
+	private function validate_occurrence_identity(\ClearA11y\Models\Issue $violation) {
+		if (
+			empty($violation->violation_identity_v2)
+			|| empty($violation->element_identity_v2)
+			|| empty($violation->identity_signature_version)
+		) {
+			return new \WP_Error(
+				'exception_identity_unavailable',
+				'This finding does not have a stable occurrence identity yet. Rescan it before creating an occurrence exception.',
+				['status' => 409]
+			);
+		}
+
+		$count = Exception_Rule_Repository::count_identity_observations(
+			$violation->scan_item_id,
+			$violation->violation_identity_v2,
+			$violation->identity_signature_version
+		);
+		if (1 !== $count) {
+			return new \WP_Error(
+				'exception_identity_ambiguous',
+				'This identity matches more than one element in the scan. Use an explicit page or rule exception instead.',
+				['status' => 409, 'matching_occurrences' => $count]
+			);
+		}
+
+		return true;
+	}
+
+	/**
+	 * Check guardrails for exception rule creation.
 	 *
 	 * @param array $params Rule parameters.
 	 * @return string|null Warning message or null.
@@ -841,7 +1072,7 @@ class Ignore_REST_Controller {
 
 		switch ($duration_type) {
 			case 'until_next_scan':
-				return date('Y-m-d H:i:s', time() + DAY_IN_SECONDS);
+				return null;
 
 			case 'until_date':
 				return isset($duration['expires_at']) ? $duration['expires_at'] : null;
@@ -859,12 +1090,12 @@ class Ignore_REST_Controller {
 	}
 
 	/**
-	 * Apply ignore rule to existing violations.
+	 * Apply exception rule to existing violations.
 	 *
-	 * @param Ignore_Rule $rule Ignore rule to apply.
+	 * @param Exception_Rule $rule Exception rule to apply.
 	 * @return void
 	 */
-	private function apply_rule_to_existing(Ignore_Rule $rule): void {
+	private function apply_exception_to_existing(Exception_Rule $rule): void {
 		// Get all active violations for the site
 		global $wpdb;
 		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
@@ -907,12 +1138,12 @@ class Ignore_REST_Controller {
 		// Create matches
 		foreach ($violations as $violation_row) {
 			$violation = \ClearA11y\Models\Issue::from_row($violation_row);
-			$match = Ignore_Matcher_Service::matches_rule($violation, $rule);
+			$match = Exception_Matcher_Service::matches_rule($violation, $rule);
 			if (! $match) {
 				continue;
 			}
 
-			Ignore_Rule_Repository::create_match(
+			Exception_Rule_Repository::create_match(
 				(int) $violation->id,
 				$rule->id,
 				$rule->site_id,

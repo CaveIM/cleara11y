@@ -58,7 +58,7 @@ class Issues_List_Page {
 						<span><?php esc_html_e('Status', 'cleara11y'); ?></span>
 						<select id="cleara11y-filter-status">
 							<option value="active"><?php esc_html_e('Active', 'cleara11y'); ?></option>
-							<option value="ignored"><?php esc_html_e('Exceptions', 'cleara11y'); ?></option>
+							<option value="exception"><?php esc_html_e('Exceptions', 'cleara11y'); ?></option>
 							<option value="all"><?php esc_html_e('All workflow states', 'cleara11y'); ?></option>
 						</select>
 					</label>

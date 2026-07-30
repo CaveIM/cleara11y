@@ -496,20 +496,20 @@ class Issue_Repository {
 		$issues_table = self::get_table();
 		$items_table = Schema::get_table_name('scan_items');
 		$scans_table = Schema::get_table_name('scans');
-		$matches_table = Ignore_Schema::get_table_name('violation_ignore_matches');
-		$rules_table = Ignore_Schema::get_table_name('ignore_rules');
+		$matches_table = Exception_Schema::get_table_name('issue_exception_matches');
+		$rules_table = Exception_Schema::get_table_name('exception_rules');
 		$occurrence_table = Occurrence_Repository::get_table();
 		$has_occurrence_state = Occurrence_Repository::table_exists();
 
-		$active_ignores = "
+		$active_exceptions = "
 			LEFT JOIN (
 				SELECT DISTINCT vm.violation_id
 				FROM `{$matches_table}` vm
-				INNER JOIN `{$rules_table}` ir ON ir.id = vm.ignore_rule_id
+				INNER JOIN `{$rules_table}` ir ON ir.id = vm.exception_rule_id
 				WHERE ir.status = 'active'
 					AND vm.match_action = 'suppressed'
 					AND (ir.expires_at IS NULL OR ir.expires_at > NOW())
-			) active_ignores ON active_ignores.violation_id = i.id";
+			) active_exceptions ON active_exceptions.violation_id = i.id";
 
 		$occurrence_join = $has_occurrence_state
 			? "LEFT JOIN `{$occurrence_table}` os
@@ -522,7 +522,7 @@ class Issue_Repository {
 			INNER JOIN `{$items_table}` si ON si.id = i.scan_item_id
 			INNER JOIN `{$scans_table}` s ON s.id = i.scan_id
 			{$occurrence_join}
-			{$active_ignores}";
+			{$active_exceptions}";
 
 		$where = [];
 		$params = [];
@@ -555,10 +555,10 @@ class Issue_Repository {
 				$where[] = $latest_observation;
 			}
 
-			$exception_expression = '(i.dismissed = 1 OR i.dismissed_global = 1 OR active_ignores.violation_id IS NOT NULL)';
+			$exception_expression = '(i.dismissed = 1 OR i.dismissed_global = 1 OR active_exceptions.violation_id IS NOT NULL)';
 			if ('active' === $args['status']) {
 				$where[] = "NOT {$exception_expression}";
-			} elseif ('ignored' === $args['status']) {
+			} elseif ('exception' === $args['status']) {
 				$where[] = $exception_expression;
 			}
 		}
@@ -622,15 +622,15 @@ class Issue_Repository {
 				os.reappearance_count, os.id AS occurrence_state_id'
 			: 'NULL AS occurrence_status, NULL AS first_seen_at, NULL AS last_seen_at, NULL AS resolved_at,
 				0 AS reappearance_count, NULL AS occurrence_state_id';
-		$item_sql = "SELECT i.*, si.post_title, si.post_url, si.scanned_at,
+		$item_sql = "SELECT i.*, si.post_title, si.post_url, si.post_type, si.scanned_at,
 				s.scan_name, s.status AS scan_status, s.completed_at AS scan_completed_at,
 				{$lifecycle_select},
 				CASE WHEN i.dismissed = 1 OR i.dismissed_global = 1
-					OR active_ignores.violation_id IS NOT NULL THEN 1 ELSE 0 END AS is_ignored,
+					OR active_exceptions.violation_id IS NOT NULL THEN 1 ELSE 0 END AS is_exception,
 				EXISTS (
 					SELECT 1 FROM `{$matches_table}` resemblance_vm
 					INNER JOIN `{$rules_table}` resemblance_ir
-						ON resemblance_ir.id = resemblance_vm.ignore_rule_id
+						ON resemblance_ir.id = resemblance_vm.exception_rule_id
 					WHERE resemblance_vm.violation_id = i.id
 						AND resemblance_vm.match_action = 'resembles'
 						AND resemblance_ir.status = 'active'
@@ -670,8 +670,8 @@ class Issue_Repository {
 		$issues_table = self::get_table();
 		$items_table = Schema::get_table_name('scan_items');
 		$scans_table = Schema::get_table_name('scans');
-		$matches_table = Ignore_Schema::get_table_name('violation_ignore_matches');
-		$rules_table = Ignore_Schema::get_table_name('ignore_rules');
+		$matches_table = Exception_Schema::get_table_name('issue_exception_matches');
+		$rules_table = Exception_Schema::get_table_name('exception_rules');
 		$occurrence_table = Occurrence_Repository::get_table();
 		$has_occurrence_state = Occurrence_Repository::table_exists();
 		$lifecycle_join = $has_occurrence_state
@@ -688,21 +688,21 @@ class Issue_Repository {
 
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
-				"SELECT i.*, si.post_title, si.post_url, si.scanned_at,
+				"SELECT i.*, si.post_title, si.post_url, si.post_type, si.scanned_at,
 					s.scan_name, s.status AS scan_status, s.created_at AS scan_created_at,
 					s.completed_at AS scan_completed_at,
 					{$lifecycle_select},
 					CASE WHEN i.dismissed = 1 OR i.dismissed_global = 1 OR EXISTS (
 						SELECT 1 FROM `{$matches_table}` vm
-						INNER JOIN `{$rules_table}` ir ON ir.id = vm.ignore_rule_id
+						INNER JOIN `{$rules_table}` ir ON ir.id = vm.exception_rule_id
 						WHERE vm.violation_id = i.id AND ir.status = 'active'
 							AND vm.match_action = 'suppressed'
 							AND (ir.expires_at IS NULL OR ir.expires_at > NOW())
-					) THEN 1 ELSE 0 END AS is_ignored,
+					) THEN 1 ELSE 0 END AS is_exception,
 					EXISTS (
 						SELECT 1 FROM `{$matches_table}` resemblance_vm
 						INNER JOIN `{$rules_table}` resemblance_ir
-							ON resemblance_ir.id = resemblance_vm.ignore_rule_id
+							ON resemblance_ir.id = resemblance_vm.exception_rule_id
 						WHERE resemblance_vm.violation_id = i.id
 							AND resemblance_vm.match_action = 'resembles'
 							AND resemblance_ir.status = 'active'
@@ -802,6 +802,7 @@ class Issue_Repository {
 				'id' => (int) $row['post_id'],
 				'title' => (string) ($row['post_title'] ?: __('Untitled', 'cleara11y')),
 				'url' => (string) $row['post_url'],
+				'post_type' => (string) ($row['post_type'] ?? ''),
 			],
 			'scan' => [
 				'id' => (int) $row['scan_id'],
@@ -813,7 +814,7 @@ class Issue_Repository {
 			'severity' => (string) $row['severity'],
 			'impact' => $row['impact'] ?: null,
 			'finding_type' => ('incomplete' === ($row['result_type'] ?? '') || 'review' === $row['rule_type']) ? 'review' : 'violation',
-			'status' => ! empty($row['is_ignored']) ? 'ignored' : 'active',
+			'status' => ! empty($row['is_exception']) ? 'exception' : 'active',
 			'resembles_exception' => ! empty($row['resembles_exception']),
 			'message' => (string) ($row['message'] ?? ''),
 			'help_text' => (string) ($row['help_text'] ?? ''),

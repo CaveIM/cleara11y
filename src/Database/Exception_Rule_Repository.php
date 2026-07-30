@@ -1,8 +1,8 @@
 <?php
 /**
- * Ignore Rule Repository
+ * Exception Rule Repository
  *
- * Handles database operations for Ignore Rule records.
+ * Handles database operations for reviewed exception records.
  *
  * @package ClearA11y
  * @namespace ClearA11y\Database
@@ -10,13 +10,13 @@
 
 namespace ClearA11y\Database;
 
-use ClearA11y\Models\Ignore_Rule;
-use ClearA11y\Models\Ignore_Audit_Log;
+use ClearA11y\Models\Exception_Rule;
+use ClearA11y\Models\Exception_Audit_Log;
 
 /**
- * Ignore Rule Repository Class
+ * Exception Rule Repository Class
  */
-class Ignore_Rule_Repository {
+class Exception_Rule_Repository {
 
 	/**
 	 * Get table name.
@@ -24,7 +24,7 @@ class Ignore_Rule_Repository {
 	 * @return string
 	 */
 	private static function get_table(): string {
-		return Ignore_Schema::get_table_name('ignore_rules');
+		return Exception_Schema::get_table_name('exception_rules');
 	}
 
 	/**
@@ -33,7 +33,7 @@ class Ignore_Rule_Repository {
 	 * @return string
 	 */
 	private static function get_audit_table(): string {
-		return Ignore_Schema::get_table_name('ignore_audit_log');
+		return Exception_Schema::get_table_name('exception_audit_log');
 	}
 
 	/**
@@ -42,16 +42,16 @@ class Ignore_Rule_Repository {
 	 * @return string
 	 */
 	private static function get_matches_table(): string {
-		return Ignore_Schema::get_table_name('violation_ignore_matches');
+		return Exception_Schema::get_table_name('issue_exception_matches');
 	}
 
 	/**
-	 * Insert a new ignore rule.
+	 * Insert a new exception rule.
 	 *
-	 * @param Ignore_Rule $rule Rule object.
+	 * @param Exception_Rule $rule Rule object.
 	 * @return string|false Rule ID or false on failure.
 	 */
-	public static function insert(Ignore_Rule $rule) {
+	public static function insert(Exception_Rule $rule) {
 		global $wpdb;
 
 		$data = [
@@ -91,7 +91,7 @@ class Ignore_Rule_Repository {
 
 		if ($result !== false) {
 			// Create audit log entry
-			self::insert_audit_log('ignore_created', $rule->id, $rule->created_by, [
+			self::insert_audit_log($rule->system_generated ? 'occurrence_snoozed' : 'exception_created', $rule->id, $rule->created_by, [
 				'rule_label' => $rule->get_label(),
 			]);
 
@@ -102,12 +102,12 @@ class Ignore_Rule_Repository {
 	}
 
 	/**
-	 * Update an existing ignore rule.
+	 * Update an existing exception rule.
 	 *
-	 * @param Ignore_Rule $rule Rule object.
+	 * @param Exception_Rule $rule Rule object.
 	 * @return bool True on success, false on failure.
 	 */
-	public static function update(Ignore_Rule $rule): bool {
+	public static function update(Exception_Rule $rule): bool {
 		global $wpdb;
 
 		$data = [
@@ -136,7 +136,7 @@ class Ignore_Rule_Repository {
 
 		if ($result !== false) {
 			// Create audit log entry
-			self::insert_audit_log('ignore_edited', $rule->id, get_current_user_id(), [
+			self::insert_audit_log('exception_edited', $rule->id, get_current_user_id(), [
 				'changes' => array_keys($data),
 			]);
 
@@ -150,9 +150,9 @@ class Ignore_Rule_Repository {
 	 * Get rule by ID.
 	 *
 	 * @param string $rule_id Rule ID.
-	 * @return Ignore_Rule|null
+	 * @return Exception_Rule|null
 	 */
-	public static function get_by_id(string $rule_id): ?Ignore_Rule {
+	public static function get_by_id(string $rule_id): ?Exception_Rule {
 		global $wpdb;
 
 		$table = self::get_table();
@@ -163,7 +163,7 @@ class Ignore_Rule_Repository {
 			)
 		);
 
-		return $row ? Ignore_Rule::from_row($row) : null;
+		return $row ? Exception_Rule::from_row($row) : null;
 	}
 
 	/**
@@ -171,7 +171,7 @@ class Ignore_Rule_Repository {
 	 *
 	 * @param int   $site_id Site ID.
 	 * @param array $args    Optional query arguments.
-	 * @return Ignore_Rule[]
+	 * @return Exception_Rule[]
 	 */
 	public static function get_by_site_id(int $site_id, array $args = []): array {
 		global $wpdb;
@@ -216,14 +216,14 @@ class Ignore_Rule_Repository {
 
 		$rows = $wpdb->get_results($query);
 
-		return array_map(fn($row) => Ignore_Rule::from_row($row), $rows ?: []);
+		return array_map(fn($row) => Exception_Rule::from_row($row), $rows ?: []);
 	}
 
 	/**
 	 * Get active rules for a site.
 	 *
 	 * @param int $site_id Site ID.
-	 * @return Ignore_Rule[]
+	 * @return Exception_Rule[]
 	 */
 	public static function get_active(int $site_id): array {
 		// Get all rules marked as active
@@ -236,39 +236,44 @@ class Ignore_Rule_Repository {
 	}
 
 	/**
-	 * Delete rule by ID.
+	 * Revoke a rule without deleting its audit trail or historical matches.
 	 *
 	 * @param string $rule_id Rule ID.
 	 * @return bool True on success, false on failure.
 	 */
-	public static function delete(string $rule_id): bool {
+	public static function revoke(string $rule_id): bool {
 		global $wpdb;
 
-		// Get rule for audit log
 		$rule = self::get_by_id($rule_id);
+		if (! $rule) {
+			return false;
+		}
 
-		// Delete violation matches
-		$wpdb->delete(
-			self::get_matches_table(),
-			['ignore_rule_id' => $rule_id],
-			['%s']
-		);
-
-		// Delete rule
-		$result = $wpdb->delete(
+		$result = $wpdb->update(
 			self::get_table(),
+			['status' => 'revoked'],
 			['id' => $rule_id],
+			['%s'],
 			['%s']
 		);
 
-		if ($result !== false && $rule) {
-			// Create audit log entry
-			self::insert_audit_log('ignore_deleted', $rule_id, get_current_user_id(), [
+		if (false !== $result) {
+			self::insert_audit_log('exception_revoked', $rule_id, get_current_user_id(), [
 				'rule_label' => $rule->get_label(),
 			]);
 		}
 
-		return $result !== false;
+		return false !== $result;
+	}
+
+	/**
+	 * Backward-compatible alias for callers not yet updated.
+	 *
+	 * @param string $rule_id Rule ID.
+	 * @return bool True on success.
+	 */
+	public static function delete(string $rule_id): bool {
+		return self::revoke($rule_id);
 	}
 
 	/**
@@ -289,7 +294,7 @@ class Ignore_Rule_Repository {
 		);
 
 		if ($result !== false) {
-			self::insert_audit_log('ignore_disabled', $rule_id, get_current_user_id());
+			self::insert_audit_log('exception_disabled', $rule_id, get_current_user_id());
 		}
 
 		return $result !== false;
@@ -313,7 +318,7 @@ class Ignore_Rule_Repository {
 		);
 
 		if ($result !== false) {
-			self::insert_audit_log('ignore_enabled', $rule_id, get_current_user_id());
+			self::insert_audit_log('exception_enabled', $rule_id, get_current_user_id());
 		}
 
 		return $result !== false;
@@ -374,7 +379,7 @@ class Ignore_Rule_Repository {
 				"SELECT DISTINCT i.post_id
 				FROM `" . self::get_matches_table() . "` vm
 				INNER JOIN `{$issues_table}` i ON i.id = vm.violation_id
-				WHERE vm.ignore_rule_id = %s AND i.post_id > 0",
+				WHERE vm.exception_rule_id = %s AND i.post_id > 0",
 				$rule_id
 			)
 		);
@@ -429,7 +434,7 @@ class Ignore_Rule_Repository {
 
 		if (1 === $result) {
 			self::insert_audit_log(
-				'ignore_reanchored_v2',
+				'exception_reanchored_v2',
 				$rule_id,
 				null,
 				['identity_signature_version' => $signature_version]
@@ -456,7 +461,7 @@ class Ignore_Rule_Repository {
 
 		$pending_rules = array_filter(
 			self::get_active($site_id),
-			static fn(Ignore_Rule $rule): bool => in_array(
+			static fn(Exception_Rule $rule): bool => in_array(
 				$rule->target_type,
 				['element', 'rule_on_element'],
 				true
@@ -520,11 +525,11 @@ class Ignore_Rule_Repository {
 	/**
 	 * Check whether a completed scan covered a legacy rule's declared scope.
 	 *
-	 * @param Ignore_Rule $rule Rule awaiting a one-time re-anchor.
+	 * @param Exception_Rule $rule Rule awaiting a one-time re-anchor.
 	 * @param int|null    $scan_id Completed scan ID, or null for test/admin use.
 	 * @return bool True when absence from this scan is meaningful.
 	 */
-	private static function legacy_rule_scope_was_scanned(Ignore_Rule $rule, ?int $scan_id): bool {
+	private static function legacy_rule_scope_was_scanned(Exception_Rule $rule, ?int $scan_id): bool {
 		if (null === $scan_id) {
 			return true;
 		}
@@ -576,20 +581,20 @@ class Ignore_Rule_Repository {
 	}
 
 	/**
-	 * Check if a matching quick ignore already exists.
+	 * Check if a matching one-scan snooze already exists.
 	 *
 	 * @param int    $site_id    Site ID.
 	 * @param string $rule_id    Rule ID.
 	 * @param string $url        Page URL.
 	 * @param string $selector   Element selector.
-	 * @return Ignore_Rule|null Existing rule or null.
+	 * @return Exception_Rule|null Existing rule or null.
 	 */
-	public static function find_existing_quick_ignore(int $site_id, string $rule_id, string $url, string $selector): ?Ignore_Rule {
+	public static function find_existing_snooze(int $site_id, string $rule_id, string $url, string $selector): ?Exception_Rule {
 		global $wpdb;
 
 		$table = self::get_table();
 
-		// Find system-generated rule_on_element ignores for this rule on this page
+		// Find system-generated one-scan snoozes for this rule on this page.
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT * FROM `{$table}`
@@ -607,7 +612,7 @@ class Ignore_Rule_Repository {
 			)
 		);
 
-		return $row ? Ignore_Rule::from_row($row) : null;
+		return $row ? Exception_Rule::from_row($row) : null;
 	}
 
 	/**
@@ -672,10 +677,50 @@ class Ignore_Rule_Repository {
 
 		// Create audit log entries
 		foreach ($expired as $rule_id) {
-			self::insert_audit_log('ignore_expired', $rule_id, null);
+			self::insert_audit_log('exception_expired', $rule_id, null);
 		}
 
 		return count($expired);
+	}
+
+	/**
+	 * Expire one-scan snoozes after the matching page has been scanned.
+	 *
+	 * @param int    $site_id Site ID.
+	 * @param string $page_url Scanned page URL.
+	 * @return int Number of snoozes expired.
+	 */
+	public static function expire_snoozes_for_url(int $site_id, string $page_url): int {
+		$normalized_url = \ClearA11y\Services\Fingerprint_Service::normalize_url($page_url);
+		$expired = 0;
+
+		foreach (self::get_active($site_id) as $rule) {
+			if (
+				! $rule->system_generated
+				|| 'until_next_scan' !== ($rule->duration['duration_type'] ?? '')
+				|| 'page' !== ($rule->scope['scope_type'] ?? '')
+				|| $normalized_url !== \ClearA11y\Services\Fingerprint_Service::normalize_url(
+					(string) ($rule->scope['url'] ?? '')
+				)
+			) {
+				continue;
+			}
+
+			global $wpdb;
+			$result = $wpdb->update(
+				self::get_table(),
+				['status' => 'expired'],
+				['id' => $rule->id, 'status' => 'active'],
+				['%s'],
+				['%s', '%s']
+			);
+			if (1 === $result) {
+				self::insert_audit_log('exception_expired', $rule->id, null, ['trigger' => 'next_scan']);
+				$expired++;
+			}
+		}
+
+		return $expired;
 	}
 
 	/**
@@ -691,7 +736,7 @@ class Ignore_Rule_Repository {
 		global $wpdb;
 
 		$data = [
-			'ignore_rule_id' => $rule_id,
+			'exception_rule_id' => $rule_id,
 			'event_type' => $event_type,
 			'actor_user_id' => $user_id,
 			'timestamp' => current_time('mysql'),
@@ -708,7 +753,7 @@ class Ignore_Rule_Repository {
 	 *
 	 * @param string $rule_id Rule ID.
 	 * @param int    $limit   Number of entries to return.
-	 * @return Ignore_Audit_Log[]
+	 * @return Exception_Audit_Log[]
 	 */
 	public static function get_audit_log(string $rule_id, int $limit = 50): array {
 		global $wpdb;
@@ -716,13 +761,13 @@ class Ignore_Rule_Repository {
 		$table = self::get_audit_table();
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT * FROM `{$table}` WHERE ignore_rule_id = %s ORDER BY timestamp DESC LIMIT %d",
+				"SELECT * FROM `{$table}` WHERE exception_rule_id = %s ORDER BY timestamp DESC LIMIT %d",
 				$rule_id,
 				$limit
 			)
 		);
 
-		return array_map(fn($row) => Ignore_Audit_Log::from_row($row), $rows ?: []);
+		return array_map(fn($row) => Exception_Audit_Log::from_row($row), $rows ?: []);
 	}
 
 	/**
@@ -730,7 +775,7 @@ class Ignore_Rule_Repository {
 	 *
 	 * @param int $site_id Site ID.
 	 * @param int $limit   Number of entries to return.
-	 * @return Ignore_Audit_Log[]
+	 * @return Exception_Audit_Log[]
 	 */
 	public static function get_all_audit_log(int $site_id, int $limit = 100): array {
 		global $wpdb;
@@ -741,7 +786,7 @@ class Ignore_Rule_Repository {
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT al.* FROM `{$table}` al
-				INNER JOIN `{$rules_table}` ir ON al.ignore_rule_id = ir.id
+				INNER JOIN `{$rules_table}` ir ON al.exception_rule_id = ir.id
 				WHERE ir.site_id = %d
 				ORDER BY al.timestamp DESC
 				LIMIT %d",
@@ -750,14 +795,14 @@ class Ignore_Rule_Repository {
 			)
 		);
 
-		return array_map(fn($row) => Ignore_Audit_Log::from_row($row), $rows ?: []);
+		return array_map(fn($row) => Exception_Audit_Log::from_row($row), $rows ?: []);
 	}
 
 	/**
 	 * Create violation-ignore match record.
 	 *
 	 * @param int    $violation_id Violation ID.
-	 * @param string $ignore_rule_id Ignore rule ID.
+	 * @param string $exception_rule_id Exception rule ID.
 	 * @param int    $site_id      Site ID.
 	 * @param string $confidence   Match confidence level.
 	 * @param string $action       Match action: suppressed or resembles.
@@ -765,7 +810,7 @@ class Ignore_Rule_Repository {
 	 */
 	public static function create_match(
 		int $violation_id,
-		string $ignore_rule_id,
+		string $exception_rule_id,
 		int $site_id,
 		string $confidence = 'high',
 		string $action = 'suppressed'
@@ -773,13 +818,15 @@ class Ignore_Rule_Repository {
 		global $wpdb;
 
 		$action = in_array($action, ['suppressed', 'resembles'], true) ? $action : 'resembles';
+		$rule = self::get_by_id($exception_rule_id);
+		$snapshot = $rule ? wp_json_encode($rule->to_array()) : null;
 
 		// Check if match already exists
 		$existing = $wpdb->get_var(
 			$wpdb->prepare(
-				"SELECT id FROM `" . self::get_matches_table() . "` WHERE violation_id = %d AND ignore_rule_id = %s",
+				"SELECT id FROM `" . self::get_matches_table() . "` WHERE violation_id = %d AND exception_rule_id = %s",
 				$violation_id,
-				$ignore_rule_id
+				$exception_rule_id
 			)
 		);
 
@@ -790,9 +837,10 @@ class Ignore_Rule_Repository {
 					'matched_at' => current_time('mysql'),
 					'match_confidence' => $confidence,
 					'match_action' => $action,
+					'rule_snapshot' => $snapshot,
 				],
 				['id' => (int) $existing],
-				['%s', '%s', '%s'],
+				['%s', '%s', '%s', '%s'],
 				['%d']
 			);
 			return false !== $result;
@@ -802,28 +850,116 @@ class Ignore_Rule_Repository {
 			self::get_matches_table(),
 			[
 				'violation_id' => $violation_id,
-				'ignore_rule_id' => $ignore_rule_id,
+				'exception_rule_id' => $exception_rule_id,
 				'site_id' => $site_id,
 				'matched_at' => current_time('mysql'),
 				'match_confidence' => $confidence,
 				'match_action' => $action,
+				'rule_snapshot' => $snapshot,
 			],
-			['%d', '%s', '%d', '%s', '%s', '%s']
+			['%d', '%s', '%d', '%s', '%s', '%s', '%s']
 		);
 
 		if ($result !== false && 'suppressed' === $action) {
 			// Increment match count on rule
-			self::increment_match_count($ignore_rule_id);
+			self::increment_match_count($exception_rule_id);
 		}
 
 		return $result !== false;
 	}
 
 	/**
+	 * Count observations sharing an identity in the same scan item.
+	 *
+	 * An occurrence-level exception is safe only when the identity resolves to
+	 * exactly one observation in the current snapshot.
+	 *
+	 * @param int    $scan_item_id Scan item ID.
+	 * @param string $identity Violation identity.
+	 * @param int    $signature_version Identity signature version.
+	 * @return int Matching observation count.
+	 */
+	public static function count_identity_observations(
+		int $scan_item_id,
+		string $identity,
+		int $signature_version
+	): int {
+		global $wpdb;
+
+		if ($scan_item_id < 1 || '' === $identity || $signature_version < 1) {
+			return 0;
+		}
+
+		$issues_table = Schema::get_table_name('issues');
+		return (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM `{$issues_table}`
+				WHERE scan_item_id = %d
+					AND violation_identity_v2 = %s
+					AND identity_signature_version = %d",
+				$scan_item_id,
+				$identity,
+				$signature_version
+			)
+		);
+	}
+
+	/**
+	 * Downgrade ambiguous occurrence matches after a scan item is persisted.
+	 *
+	 * @param int $scan_item_id Scan item ID.
+	 * @return int Number of matches changed to resemblance-only.
+	 */
+	public static function downgrade_colliding_matches(int $scan_item_id): int {
+		global $wpdb;
+
+		$issues_table = Schema::get_table_name('issues');
+		$matches_table = self::get_matches_table();
+		$rules_table = self::get_table();
+		$result = $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE `{$matches_table}` matches
+				INNER JOIN `{$issues_table}` issues ON issues.id = matches.violation_id
+				INNER JOIN `{$rules_table}` rules ON rules.id = matches.exception_rule_id
+				INNER JOIN (
+					SELECT violation_identity_v2, identity_signature_version
+					FROM `{$issues_table}`
+					WHERE scan_item_id = %d
+						AND violation_identity_v2 IS NOT NULL
+					GROUP BY violation_identity_v2, identity_signature_version
+					HAVING COUNT(*) > 1
+				) collisions
+					ON collisions.violation_identity_v2 = issues.violation_identity_v2
+					AND collisions.identity_signature_version = issues.identity_signature_version
+				SET matches.match_action = 'resembles',
+					matches.match_confidence = 'partial'
+				WHERE issues.scan_item_id = %d
+					AND rules.target_type IN ('element', 'rule_on_element')
+					AND matches.match_action = 'suppressed'",
+				$scan_item_id,
+				$scan_item_id
+			)
+		);
+
+		if (false === $result) {
+			error_log(
+				sprintf(
+					'ClearA11y ERROR: Failed to downgrade ambiguous exception matches. scan_item_id=%d database_error=%s',
+					$scan_item_id,
+					$wpdb->last_error
+				)
+			);
+			return 0;
+		}
+
+		return (int) $result;
+	}
+
+	/**
 	 * Get matches for a violation.
 	 *
 	 * @param int $violation_id Violation ID.
-	 * @return array Array of matching ignore rule IDs.
+	 * @return array Array of matching exception rule IDs.
 	 */
 	public static function get_matches_for_violation(int $violation_id): array {
 		global $wpdb;
@@ -832,27 +968,27 @@ class Ignore_Rule_Repository {
 
 		return $wpdb->get_col(
 			$wpdb->prepare(
-				"SELECT ignore_rule_id FROM `{$table}` WHERE violation_id = %d",
+				"SELECT exception_rule_id FROM `{$table}` WHERE violation_id = %d",
 				$violation_id
 			)
 		);
 	}
 
 	/**
-	 * Get matches for an ignore rule.
+	 * Get matches for an exception rule.
 	 *
-	 * @param string $ignore_rule_id Ignore rule ID.
+	 * @param string $exception_rule_id Exception rule ID.
 	 * @return array Array of violation IDs.
 	 */
-	public static function get_violations_for_rule(string $ignore_rule_id): array {
+	public static function get_violations_for_rule(string $exception_rule_id): array {
 		global $wpdb;
 
 		$table = self::get_matches_table();
 
 		return $wpdb->get_col(
 			$wpdb->prepare(
-				"SELECT violation_id FROM `{$table}` WHERE ignore_rule_id = %s",
-				$ignore_rule_id
+				"SELECT violation_id FROM `{$table}` WHERE exception_rule_id = %s",
+				$exception_rule_id
 			)
 		);
 	}
@@ -860,15 +996,15 @@ class Ignore_Rule_Repository {
 	/**
 	 * Delete all matches for a rule.
 	 *
-	 * @param string $ignore_rule_id Ignore rule ID.
+	 * @param string $exception_rule_id Exception rule ID.
 	 * @return int Number of rows deleted.
 	 */
-	public static function delete_matches_for_rule(string $ignore_rule_id): int {
+	public static function delete_matches_for_rule(string $exception_rule_id): int {
 		global $wpdb;
 
 		return $wpdb->delete(
 			self::get_matches_table(),
-			['ignore_rule_id' => $ignore_rule_id],
+			['exception_rule_id' => $exception_rule_id],
 			['%s']
 		);
 	}

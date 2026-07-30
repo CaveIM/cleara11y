@@ -74,6 +74,7 @@
 
 	// DOM Elements
 	let $tbody, $pagination, $tabContent;
+	let modalReturnFocus = null;
 
 	// Initialize
 	$(document).ready(function() {
@@ -83,21 +84,21 @@
 		loadRules();
 
 		// Event listeners for row actions
-		$(document).on('click', '.cleara11y-view-ignore', viewIgnore);
-		$(document).on('click', '.cleara11y-edit-ignore', editIgnore);
-		$(document).on('click', '.cleara11y-disable-ignore', disableIgnore);
-		$(document).on('click', '.cleara11y-enable-ignore', enableIgnore);
-		$(document).on('click', '.cleara11y-delete-ignore', deleteIgnore);
+		$(document).on('click', '.cleara11y-view-exception', viewException);
+		$(document).on('click', '.cleara11y-edit-exception', editException);
+		$(document).on('click', '.cleara11y-disable-exception', disableException);
+		$(document).on('click', '.cleara11y-enable-exception', enableException);
+		$(document).on('click', '.cleara11y-revoke-exception', revokeException);
 		$(document).on('click', '.cleara11y-modal-close', closeModals);
-		$('#cleara11y-create-ignore').on('click', function(e) {
+		$('#cleara11y-create-exception').on('click', function(e) {
 			e.preventDefault();
 			openCreateWizard();
 		});
 	});
 
 	function initDOM() {
-		$tbody = $('#cleara11y-ignores-table-body');
-		$pagination = $('#cleara11y-ignores-pagination');
+		$tbody = $('#cleara11y-exceptions-table-body');
+		$pagination = $('#cleara11y-exceptions-pagination');
 		$tabContent = $('.cleara11y-tab-content');
 	}
 
@@ -126,13 +127,13 @@
 	}
 
 	function initFilters() {
-		$('#cleara11y-hide-system-ignores').on('change', function() {
+		$('#cleara11y-hide-system-exceptions').on('change', function() {
 			state.hideSystemGenerated = $(this).is(':checked');
 			state.currentPage = 1;
 			loadRules();
 		});
 
-		$('#cleara11y-refresh-ignores').on('click', function() {
+		$('#cleara11y-refresh-exceptions').on('click', function() {
 			loadRules();
 		});
 
@@ -158,11 +159,11 @@
 		}
 
 		$.ajax({
-			url: cleara11yIgnores.apiUrl,
+			url: cleara11yExceptions.apiUrl,
 			data: params,
 			method: 'GET',
 			beforeSend: function(xhr) {
-				xhr.setRequestHeader('X-WP-Nonce', cleara11yIgnores.nonce);
+				xhr.setRequestHeader('X-WP-Nonce', cleara11yExceptions.nonce);
 			},
 			success: function(response) {
 				renderRules(response.data);
@@ -170,7 +171,7 @@
 				updatePagination(response.total, response.page, response.per_page, response.total_pages);
 			},
 			error: function() {
-				showError(cleara11yIgnores.strings.error);
+				showError(cleara11yExceptions.strings.error);
 			},
 			complete: function() {
 				state.loading = false;
@@ -246,23 +247,25 @@
 			// Actions column (10%)
 			html += '<td style="width: 10%;">';
 			html += '<div class="cleara11y-row-actions">';
-			html += '<button type="button" class="button button-small cleara11y-view-ignore" data-id="' + rule.id + '">';
+			html += '<button type="button" class="button button-small cleara11y-view-exception" data-id="' + rule.id + '">';
 			html += 'View';
 			html += '</button>';
 
 			if (rule.status === 'active') {
-				html += '<button type="button" class="button button-small cleara11y-disable-ignore" data-id="' + rule.id + '">';
+				html += '<button type="button" class="button button-small cleara11y-disable-exception" data-id="' + rule.id + '">';
 				html += 'Disable';
 				html += '</button>';
-			} else {
-				html += '<button type="button" class="button button-small cleara11y-enable-ignore" data-id="' + rule.id + '">';
+			} else if (rule.status === 'disabled') {
+				html += '<button type="button" class="button button-small cleara11y-enable-exception" data-id="' + rule.id + '">';
 				html += 'Enable';
 				html += '</button>';
 			}
 
-			html += '<button type="button" class="button button-small cleara11y-delete-ignore" data-id="' + rule.id + '">';
-			html += 'Delete';
-			html += '</button>';
+			if (rule.status !== 'revoked') {
+				html += '<button type="button" class="button button-small cleara11y-revoke-exception" data-id="' + rule.id + '">';
+				html += 'Revoke';
+				html += '</button>';
+			}
 			html += '</div>';
 			html += '</td>';
 
@@ -274,16 +277,16 @@
 
 	function loadAuditLog() {
 		$.ajax({
-			url: cleara11yIgnores.apiUrl + '/audit/all',
+			url: cleara11yExceptions.apiUrl + '/audit/all',
 			method: 'GET',
 			beforeSend: function(xhr) {
-				xhr.setRequestHeader('X-WP-Nonce', cleara11yIgnores.nonce);
+				xhr.setRequestHeader('X-WP-Nonce', cleara11yExceptions.nonce);
 			},
 			success: function(response) {
 				renderAuditLog(response.data);
 			},
 			error: function() {
-				showError(cleara11yIgnores.strings.error);
+				showError(cleara11yExceptions.strings.error);
 			}
 		});
 	}
@@ -301,8 +304,8 @@
 			html += '<tr>';
 			html += '<td>' + esc_html(entry.event_label) + '</td>';
 			html += '<td>';
-			if (entry.ignore_rule_id) {
-				html += '<span class="cleara11y-ignore-rule-id">ID: ' + esc_html(entry.ignore_rule_id.substring(0, 8)) + '...</span>';
+			if (entry.exception_rule_id) {
+				html += '<span class="cleara11y-exception-rule-id">ID: ' + esc_html(entry.exception_rule_id.substring(0, 8)) + '...</span>';
 			} else {
 				html += '-';
 			}
@@ -324,6 +327,7 @@
 		$('#cleara11y-active-count').text('(' + counts.active + ')');
 		$('#cleara11y-expired-count').text('(' + counts.expired + ')');
 		$('#cleara11y-disabled-count').text('(' + counts.disabled + ')');
+		$('#cleara11y-revoked-count').text('(' + counts.revoked + ')');
 	}
 
 	function updatePagination(total, page, perPage, totalPages) {
@@ -332,15 +336,15 @@
 
 		if (total > perPage) {
 			$pagination.show();
-			$('#cleara11y-ignores-displaying-num').text(
+			$('#cleara11y-exceptions-displaying-num').text(
 				('Showing %1$s of %2$s items').replace('%1$s', (page - 1) * perPage + 1).replace('%2$s', Math.min(page * perPage, total))
 			);
-			$('#cleara11y-ignores-current-page').val(page);
-			$('#cleara11y-ignores-total-pages').text(totalPages);
+			$('#cleara11y-exceptions-current-page').val(page);
+			$('#cleara11y-exceptions-total-pages').text(totalPages);
 
 			// Update button states
-			$('#cleara11y-ignores-first-page, #cleara11y-ignores-prev-page').prop('disabled', page === 1);
-			$('#cleara11y-ignores-next-page, #cleara11y-ignores-last-page').prop('disabled', page === totalPages);
+			$('#cleara11y-exceptions-first-page, #cleara11y-exceptions-prev-page').prop('disabled', page === 1);
+			$('#cleara11y-exceptions-next-page, #cleara11y-exceptions-last-page').prop('disabled', page === totalPages);
 		} else {
 			$pagination.hide();
 		}
@@ -392,21 +396,22 @@
 		$tbody.html('<tr><td colspan="7" style="text-align: center; padding: 40px; color: #d63638;">' + esc_html(message) + '</td></tr>');
 	}
 
-	function viewIgnore(e) {
+	function viewException(e) {
 		e.preventDefault();
 		const ruleId = $(this).data('id');
+		modalReturnFocus = this;
 
 		$.ajax({
-			url: cleara11yIgnores.apiUrl + '/' + ruleId,
+			url: cleara11yExceptions.apiUrl + '/' + ruleId,
 			method: 'GET',
 			beforeSend: function(xhr) {
-				xhr.setRequestHeader('X-WP-Nonce', cleara11yIgnores.nonce);
+				xhr.setRequestHeader('X-WP-Nonce', cleara11yExceptions.nonce);
 			},
 			success: function(rule) {
 				showRuleDetailModal(rule);
 			},
 			error: function() {
-				alert(cleara11yIgnores.strings.error);
+				alert(cleara11yExceptions.strings.error);
 			}
 		});
 	}
@@ -427,90 +432,110 @@
 		html += '<div class="cleara11y-detail-row"><span class="cleara11y-detail-label">Matched Issues:</span><span class="cleara11y-detail-value">' + rule.match_count + '</span></div>';
 		html += '</div>';
 
-		$('#cleara11y-ignore-detail-body').html(html);
-		$('#cleara11y-ignore-detail-modal').show();
+		$('#cleara11y-exception-detail-body').html(html);
+		$('#cleara11y-edit-exception')
+			.data('id', rule.id)
+			.toggle(!rule.system_generated && rule.status !== 'revoked');
+		$('#cleara11y-exception-detail-modal').show();
+		$('#cleara11y-exception-detail-modal .cleara11y-modal-close').first().trigger('focus');
 	}
 
 	function closeModals() {
 		$('.cleara11y-modal-backdrop').parent().hide();
+		if (modalReturnFocus && document.contains(modalReturnFocus)) {
+			modalReturnFocus.focus();
+		}
 	}
 
-	function disableIgnore(e) {
+	function disableException(e) {
 		e.preventDefault();
 		const ruleId = $(this).data('id');
 
-		if (!confirm(cleara11yIgnores.strings.confirmDisable)) {
+		if (!confirm(cleara11yExceptions.strings.confirmDisable)) {
 			return;
 		}
 
 		$.ajax({
-			url: cleara11yIgnores.apiUrl + '/' + ruleId + '/disable',
+			url: cleara11yExceptions.apiUrl + '/' + ruleId + '/disable',
 			method: 'POST',
 			beforeSend: function(xhr) {
-				xhr.setRequestHeader('X-WP-Nonce', cleara11yIgnores.nonce);
+				xhr.setRequestHeader('X-WP-Nonce', cleara11yExceptions.nonce);
 			},
 			success: function() {
 				loadRules();
 			},
 			error: function() {
-				alert(cleara11yIgnores.strings.error);
+				alert(cleara11yExceptions.strings.error);
 			}
 		});
 	}
 
-	function enableIgnore(e) {
+	function enableException(e) {
 		e.preventDefault();
 		const ruleId = $(this).data('id');
 
 		$.ajax({
-			url: cleara11yIgnores.apiUrl + '/' + ruleId + '/enable',
+			url: cleara11yExceptions.apiUrl + '/' + ruleId + '/enable',
 			method: 'POST',
 			beforeSend: function(xhr) {
-				xhr.setRequestHeader('X-WP-Nonce', cleara11yIgnores.nonce);
+				xhr.setRequestHeader('X-WP-Nonce', cleara11yExceptions.nonce);
 			},
 			success: function() {
 				loadRules();
 			},
 			error: function() {
-				alert(cleara11yIgnores.strings.error);
+				alert(cleara11yExceptions.strings.error);
 			}
 		});
 	}
 
-	function deleteIgnore(e) {
+	function revokeException(e) {
 		e.preventDefault();
 		const ruleId = $(this).data('id');
 
-		if (!confirm(cleara11yIgnores.strings.confirmDelete)) {
+		if (!confirm(cleara11yExceptions.strings.confirmDelete)) {
 			return;
 		}
 
 		$.ajax({
-			url: cleara11yIgnores.apiUrl + '/' + ruleId,
+			url: cleara11yExceptions.apiUrl + '/' + ruleId,
 			method: 'DELETE',
 			beforeSend: function(xhr) {
-				xhr.setRequestHeader('X-WP-Nonce', cleara11yIgnores.nonce);
+				xhr.setRequestHeader('X-WP-Nonce', cleara11yExceptions.nonce);
 			},
 			success: function() {
 				closeModals();
 				loadRules();
 			},
 			error: function() {
-				alert(cleara11yIgnores.strings.error);
+				alert(cleara11yExceptions.strings.error);
 			}
 		});
 	}
 
-	function editIgnore() {
+	function editException(event) {
+		const ruleId = $(event.currentTarget).data('id');
 		closeModals();
-		// TODO: Open edit wizard
-		alert('Edit functionality coming soon.');
+		$.ajax({
+			url: cleara11yExceptions.apiUrl + '/' + encodeURIComponent(ruleId),
+			method: 'GET',
+			beforeSend: function(xhr) {
+				xhr.setRequestHeader('X-WP-Nonce', cleara11yExceptions.nonce);
+			},
+			success: function(rule) {
+				openCreateWizard(rule, ruleId);
+			},
+			error: function(xhr) {
+				alert(xhr.responseJSON?.message || cleara11yExceptions.strings.error);
+			}
+		});
 	}
 
 	// Wizard state
 	const wizardState = {
 		currentStep: 1,
 		totalSteps: 5,
+		editingId: null,
 		data: {
 			target_type: '',
 			rule_ids: [],
@@ -525,13 +550,20 @@
 
 	// Helper function to get localized string
 	function str(key) {
-		return cleara11yIgnores.strings[key] || key;
+		return cleara11yExceptions.strings[key] || key;
 	}
 
-	function openCreateWizard() {
+	let wizardReturnFocus = null;
+
+	function openCreateWizard(initialData = {}, editingId = null) {
+		wizardReturnFocus = document.activeElement;
 		resetWizard();
+		wizardState.editingId = editingId;
+		wizardState.data = $.extend(true, {}, wizardState.data, initialData || {});
 		renderWizardModal();
+		hydrateWizard();
 		showWizardStep(1);
+		$('#cleara11y-wizard-modal input[name="target_type"]').first().trigger('focus');
 	}
 
 	function resetWizard() {
@@ -546,16 +578,60 @@
 			note: ''
 		};
 		wizardState.impactPreview = null;
+		wizardState.editingId = null;
+	}
+
+	function hydrateWizard() {
+		const data = wizardState.data;
+		const contextPostType = data.context?.post_type || '';
+		if (
+			contextPostType
+			&& !$('input[name="post_types"]').filter(function() {
+				return this.value === contextPostType;
+			}).length
+		) {
+			const $label = $('<label>');
+			const $input = $('<input>', {
+				type: 'checkbox',
+				name: 'post_types',
+				value: contextPostType
+			});
+			$label.append($input, ' ' + contextPostType);
+			$('#cleara11y-scope-content-type-section > div').append($label);
+		}
+		if (data.target_type) {
+			$('input[name="target_type"][value="' + data.target_type + '"]').prop('checked', true).trigger('change');
+		}
+		$('#cleara11y-rule-ids').val((data.rule_ids || []).join(', '));
+		if (data.element_match?.css_selector) {
+			$('input[name="element_match_type"][value="css_selector"]').prop('checked', true).trigger('change');
+			$('#cleara11y-css-selector').val(data.element_match.css_selector);
+		}
+		if (data.scope?.scope_type) {
+			$('input[name="scope_type"][value="' + data.scope.scope_type + '"]').prop('checked', true).trigger('change');
+			$('#cleara11y-scope-url').val(data.scope.url || '');
+			$('#cleara11y-scope-patterns').val((data.scope.patterns || []).join(', '));
+			(data.scope.post_types || []).forEach(type => {
+				$('input[name="post_types"][value="' + type + '"]').prop('checked', true);
+			});
+		}
+		if (data.duration?.duration_type) {
+			$('input[name="duration_type"][value="' + data.duration.duration_type + '"]').prop('checked', true).trigger('change');
+			$('#cleara11y-expires-at').val((data.duration.expires_at || '').replace(' ', 'T').slice(0, 16));
+		}
+		$('#cleara11y-reason-category').val(data.reason_category || '');
+		$('#cleara11y-note').val(data.note || '');
+		updateNextButtonState();
 	}
 
 	function renderWizardModal() {
 		const wizardHtml = `
 			<div id="cleara11y-wizard-modal" style="display: none;">
 				<div class="cleara11y-modal-backdrop"></div>
-				<div class="cleara11y-modal-content cleara11y-wizard-content">
+				<div class="cleara11y-modal-content cleara11y-wizard-content" role="dialog" aria-modal="true" aria-labelledby="cleara11y-wizard-title">
 					<div class="cleara11y-modal-header">
-						<h2>${esc_html(str('createWizardTitle'))}</h2>
-						<button type="button" class="cleara11y-modal-close">
+						<h2 id="cleara11y-wizard-title">${esc_html(wizardState.editingId ? 'Edit reviewed exception' : str('createWizardTitle'))}</h2>
+						<button type="button" class="cleara11y-modal-close" aria-label="${esc_html(str('cancel'))}">
 							<span class="dashicons dashicons-no-alt"></span>
 						</button>
 					</div>
@@ -599,7 +675,7 @@
 							${esc_html(str('next'))}
 						</button>
 						<button type="button" class="button button-primary" id="cleara11y-wizard-create" style="display: none;">
-							${esc_html(str('createRule'))}
+							${esc_html(wizardState.editingId ? 'Save Exception' : str('createRule'))}
 						</button>
 					</div>
 				</div>
@@ -863,6 +939,12 @@
 		$('#cleara11y-wizard-modal .cleara11y-modal-close, #cleara11y-wizard-cancel').on('click', function() {
 			closeWizard();
 		});
+		$('#cleara11y-wizard-modal').on('keydown', function(event) {
+			if (event.key === 'Escape') {
+				event.preventDefault();
+				closeWizard();
+			}
+		});
 
 		// Next button
 		$('#cleara11y-wizard-next').on('click', function() {
@@ -876,7 +958,7 @@
 
 		// Create button
 		$('#cleara11y-wizard-create').on('click', function() {
-			createIgnoreRule();
+			createExceptionRule();
 		});
 
 		// Step 1: Target type changes
@@ -908,6 +990,13 @@
 			$('#cleara11y-scope-page-section').toggle(value === 'page');
 			$('#cleara11y-scope-content-type-section').toggle(value === 'content_type');
 			$('#cleara11y-scope-url-pattern-section').toggle(value === 'url_pattern');
+			if (
+				value === 'content_type'
+				&& wizardState.data.context?.post_type
+				&& !$('input[name="post_types"]:checked').length
+			) {
+				$('input[name="post_types"][value="' + wizardState.data.context.post_type + '"]').prop('checked', true);
+			}
 			updateNextButtonState();
 		});
 		$('#cleara11y-scope-url, #cleara11y-scope-patterns').on('input', updateNextButtonState);
@@ -1000,7 +1089,7 @@
 				return true;
 
 			case 4:
-				return $('#cleara11y-reason-category').val() !== '';
+				return $('#cleara11y-reason-category').val() !== '' && $('#cleara11y-note').val().trim() !== '';
 
 			default:
 				return true;
@@ -1104,12 +1193,12 @@
 		$('#cleara11y-impact-preview-content').html('<span class="spinner is-active"></span> ' + esc_html(str('calculatingImpact')));
 
 		$.ajax({
-			url: cleara11yIgnores.apiUrl + '/preview',
+			url: cleara11yExceptions.apiUrl + '/preview',
 			method: 'POST',
 			data: JSON.stringify(wizardState.data),
 			contentType: 'application/json',
 			beforeSend: function(xhr) {
-				xhr.setRequestHeader('X-WP-Nonce', cleara11yIgnores.nonce);
+				xhr.setRequestHeader('X-WP-Nonce', cleara11yExceptions.nonce);
 			},
 			success: function(response) {
 				wizardState.impactPreview = response.data;
@@ -1129,7 +1218,7 @@
 		if (impact.issues > 0) {
 			html += '<div class="cleara11y-impact-item">';
 			html += '<span class="cleara11y-impact-count">' + impact.issues + '</span> ';
-			html += esc_html(str('issuesIgnored'));
+			html += esc_html(str('issuesExcepted'));
 			html += '</div>';
 		} else {
 			html += '<div class="cleara11y-impact-item">';
@@ -1154,24 +1243,24 @@
 		$('#cleara11y-impact-preview-content').html(html);
 	}
 
-	function createIgnoreRule() {
+	function createExceptionRule() {
 		const $createBtn = $('#cleara11y-wizard-create');
-		$createBtn.prop('disabled', true).text(esc_html(str('creating')));
+		$createBtn.prop('disabled', true).text(esc_html(wizardState.editingId ? 'Saving...' : str('creating')));
 
 		$.ajax({
-			url: cleara11yIgnores.apiUrl,
-			method: 'POST',
+			url: cleara11yExceptions.apiUrl + (wizardState.editingId ? '/' + encodeURIComponent(wizardState.editingId) : ''),
+			method: wizardState.editingId ? 'PUT' : 'POST',
 			data: JSON.stringify(wizardState.data),
 			contentType: 'application/json',
 			beforeSend: function(xhr) {
-				xhr.setRequestHeader('X-WP-Nonce', cleara11yIgnores.nonce);
+				xhr.setRequestHeader('X-WP-Nonce', cleara11yExceptions.nonce);
 			},
 			success: function(response) {
 				closeWizard();
 				loadRules();
-				$('#cleara11y-create-ignore').after(
+				$('#cleara11y-create-exception').after(
 					'<div class="notice notice-success is-dismissible" style="margin: 20px 0;">' +
-					'<p>' + esc_html(str('createSuccess')) + '</p>' +
+					'<p>' + esc_html(wizardState.editingId ? 'Exception updated successfully.' : str('createSuccess')) + '</p>' +
 					'</div>'
 				);
 				setTimeout(function() {
@@ -1192,6 +1281,9 @@
 
 	function closeWizard() {
 		$('#cleara11y-wizard-modal').remove();
+		if (wizardReturnFocus && document.contains(wizardReturnFocus)) {
+			wizardReturnFocus.focus();
+		}
 	}
 
 	// Helper functions
@@ -1239,28 +1331,28 @@
 	}
 
 	// Pagination handlers
-	$('#cleara11y-ignores-first-page').on('click', function() {
+	$('#cleara11y-exceptions-first-page').on('click', function() {
 		if (state.currentPage > 1) {
 			state.currentPage = 1;
 			loadRules();
 		}
 	});
 
-	$('#cleara11y-ignores-prev-page').on('click', function() {
+	$('#cleara11y-exceptions-prev-page').on('click', function() {
 		if (state.currentPage > 1) {
 			state.currentPage--;
 			loadRules();
 		}
 	});
 
-	$('#cleara11y-ignores-next-page').on('click', function() {
+	$('#cleara11y-exceptions-next-page').on('click', function() {
 		if (state.currentPage < state.totalPages) {
 			state.currentPage++;
 			loadRules();
 		}
 	});
 
-	$('#cleara11y-ignores-last-page').on('click', function() {
+	$('#cleara11y-exceptions-last-page').on('click', function() {
 		if (state.currentPage < state.totalPages) {
 			state.currentPage = state.totalPages;
 			loadRules();

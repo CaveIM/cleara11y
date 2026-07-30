@@ -34,7 +34,7 @@ define('CLEARA11Y_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('CLEARA11Y_PLUGIN_BASENAME', plugin_basename(__FILE__));
 
 // Database version constant.
-define('CLEARA11Y_DB_VERSION', '2.3.0');
+define('CLEARA11Y_DB_VERSION', '2.4.0');
 
 /**
  * PSR-4 Autoloader
@@ -251,16 +251,16 @@ class ClearA11y_Plugin {
 			}
 		}
 
-			// Need to run migration if version is older than 1.7.0 or ignore tables are missing.
-			if (version_compare($current_db_version, '1.7.0', '<') || ! \ClearA11y\Database\Ignore_Schema::tables_exist()) {
-			$result = \ClearA11y\Database\Ignore_Schema::create_tables();
+			// Need to run migration if version is older than 1.7.0 or exception tables are missing.
+			if (version_compare($current_db_version, '1.7.0', '<') || ! \ClearA11y\Database\Exception_Schema::tables_exist()) {
+			$result = \ClearA11y\Database\Exception_Schema::create_tables();
 
 			if ($result) {
 				if (version_compare($current_db_version, '1.7.0', '<')) {
 					update_option('cleara11y_db_version', '1.7.0');
 				}
 				add_action('admin_notices', function() {
-					echo '<div class="notice notice-success is-dismissible"><p>ClearA11y: Ignore system tables added successfully!</p></div>';
+					echo '<div class="notice notice-success is-dismissible"><p>ClearA11y: Exception system tables added successfully!</p></div>';
 				});
 			}
 			}
@@ -307,7 +307,7 @@ class ClearA11y_Plugin {
 
 		// Replace probabilistic occurrence suppression with fail-safe v2 matching.
 		if (version_compare($current_db_version, '2.2.0', '<')) {
-			if (\ClearA11y\Database\Ignore_Schema::add_v2_matching_columns()) {
+			if (\ClearA11y\Database\Exception_Schema::add_v2_matching_columns()) {
 				update_option('cleara11y_db_version', '2.2.0');
 			}
 		}
@@ -316,6 +316,16 @@ class ClearA11y_Plugin {
 		if (version_compare($current_db_version, '2.3.0', '<')) {
 			if (\ClearA11y\Database\Schema::add_occurrence_state_table()) {
 				update_option('cleara11y_db_version', '2.3.0');
+			}
+		}
+
+		// Adopt exception terminology and preserve a snapshot with every match.
+		if (version_compare($current_db_version, '2.4.0', '<')) {
+			if (
+				\ClearA11y\Database\Exception_Schema::create_tables()
+				&& \ClearA11y\Database\Exception_Schema::add_v2_matching_columns()
+			) {
+				update_option('cleara11y_db_version', '2.4.0');
 			}
 		}
 	}
@@ -372,7 +382,7 @@ class ClearA11y_Plugin {
 
 		// Initialize REST API
 		new ClearA11y\API\REST_Controller();
-			new ClearA11y\API\Ignore_REST_Controller();
+			new ClearA11y\API\Exception_REST_Controller();
 
 		// Initialize frontend scanner (checks for scan tokens)
 		new ClearA11y\Frontend\Scanner();
@@ -731,7 +741,7 @@ class ClearA11y_Plugin {
 		 */
 		public function run_test_if_requested(): void {
 			// Only run if specific parameter is set and user is admin
-			if (!isset($_GET['cleara11y_test_quick_ignore']) || !current_user_can('manage_options')) {
+			if (!isset($_GET['cleara11y_test_quick_exception']) || !current_user_can('manage_options')) {
 				return;
 			}
 

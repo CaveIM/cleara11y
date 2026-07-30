@@ -11,8 +11,8 @@
 namespace ClearA11y\Services;
 
 use ClearA11y\Database\Issue_Repository;
-use ClearA11y\Database\Ignore_Rule_Repository;
-use ClearA11y\Database\Ignore_Schema;
+use ClearA11y\Database\Exception_Rule_Repository;
+use ClearA11y\Database\Exception_Schema;
 use ClearA11y\Database\Occurrence_Repository;
 use ClearA11y\Database\Scan_Repository;
 use ClearA11y\Database\Scan_Item_Repository;
@@ -148,15 +148,15 @@ class Scan_Results_Processor {
 								$evidence_diagnostics['missing']++;
 							}
 						}
-						if (Ignore_Schema::tables_exist()) {
-							$ignore_matches = Ignore_Matcher_Service::find_matches($issue, get_current_blog_id());
-							foreach ($ignore_matches as $ignore_match) {
-								Ignore_Rule_Repository::create_match(
+						if (Exception_Schema::tables_exist()) {
+							$exception_matches = Exception_Matcher_Service::find_matches($issue, get_current_blog_id());
+							foreach ($exception_matches as $exception_match) {
+								Exception_Rule_Repository::create_match(
 									$issue->id,
-									$ignore_match['rule']->id,
+									$exception_match['rule']->id,
 									get_current_blog_id(),
-									$ignore_match['confidence'],
-									$ignore_match['action']
+									$exception_match['confidence'],
+									$exception_match['action']
 								);
 							}
 						}
@@ -171,6 +171,14 @@ class Scan_Results_Processor {
 					}
 				}
 			}
+		}
+
+		if (Exception_Schema::tables_exist()) {
+			Exception_Rule_Repository::downgrade_colliding_matches($scan_item_id);
+			Exception_Rule_Repository::expire_snoozes_for_url(
+				get_current_blog_id(),
+				(string) $scan_item->post_url
+			);
 		}
 
 		// Calculate scoring data
@@ -337,10 +345,6 @@ class Scan_Results_Processor {
 				$scan->completed_at = \current_time('mysql');
 				Scan_Repository::update($scan);
 
-				// Expire "until_next_scan" ignore rules for this page/post (only if post_id exists)
-				if (isset($scan->post_id) && $scan->post_id !== null) {
-					self::expire_until_next_scan_rules((int) $scan->post_id);
-				}
 			}
 		}
 
@@ -360,7 +364,6 @@ class Scan_Results_Processor {
 		if (!$scan) {
 			return;
 		}
-		$was_completed = 'completed' === $scan->status;
 
 		// Recalculate totals from all scan items (not increment)
 		// This ensures re-scans replace old counts instead of adding to them
@@ -399,31 +402,11 @@ class Scan_Results_Processor {
 		if ($total_items === ($completed_items + $failed_items)) {
 			$scan->status = 'completed';
 
-			// Expire "until_next_scan" ignore rules for this page/post (only if post_id exists)
-			if (isset($scan->post_id) && $scan->post_id !== null) {
-				self::expire_until_next_scan_rules((int) $scan->post_id);
-			}
-
 			$scan->completed_at = \current_time('mysql');
 		}
 
 		Scan_Repository::update($scan);
 
-		if (! $was_completed && 'completed' === $scan->status) {
-			$report = Ignore_Rule_Repository::finalize_legacy_reanchoring(
-				get_current_blog_id(),
-				$scan->started_at,
-				$scan_id
-			);
-			error_log(
-				sprintf(
-					'[ClearA11y] Legacy exception re-anchor report: scan_id=%d anchored=%d unmatched=%d',
-					$scan_id,
-					$report['anchored'],
-					$report['unmatched']
-				)
-			);
-		}
 	}
 
 	/**
@@ -547,40 +530,4 @@ class Scan_Results_Processor {
 		];
 	}
 
-	/**
-	 * Expire "until_next_scan" ignore rules for a specific post.
-	 *
-	 * When a scan completes, all "until_next_scan" rules for that post
-	 * should be expired so that if issues still exist, they reappear.
-	 *
-	 * @param int $post_id The post ID that was scanned.
-	 * @return void
-	 */
-	private static function expire_until_next_scan_rules(int $post_id): void {
-		global $wpdb;
-
-		$ignore_rules_table = \ClearA11y\Database\Ignore_Schema::get_table_name('ignore_rules');
-
-		// Find all "until_next_scan" rules for this post/page
-		// We need to check the scope JSON for the post URL
-		$post = get_post($post_id);
-		if (!$post) {
-			return;
-		}
-
-		$post_url = get_permalink($post_id);
-
-		// Update rules to expire them
-		$wpdb->query(
-			$wpdb->prepare(
-				"UPDATE `{$ignore_rules_table}`
-				SET status = 'expired', updated_at = NOW()
-				WHERE status = 'active'
-				AND system_generated = 1
-				AND JSON_EXTRACT(duration, '$.duration_type') = 'until_next_scan'
-				AND JSON_EXTRACT(scope, '$.url') = %s",
-				$post_url
-			)
-		);
-	}
 }

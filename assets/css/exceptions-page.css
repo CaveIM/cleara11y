@@ -1,6 +1,6 @@
-/* ClearA11y Ignores Management Page Styles */
+/* ClearA11y Exceptions Management Page Styles */
 
-.cleara11y-ignores-wrap {
+.cleara11y-exceptions-wrap {
 	position: relative;
 }
 
@@ -97,7 +97,7 @@
 	flex: 1;
 }
 
-.cleara11y-ignore-rule-id {
+.cleara11y-exception-rule-id {
 	font-family: monospace;
 	font-size: 12px;
 	background: #f0f6fc;
@@ -106,15 +106,15 @@
 }
 
 /* Tab Navigation */
-.cleara11y-ignores-wrap .nav-tab-wrapper {
+.cleara11y-exceptions-wrap .nav-tab-wrapper {
 	margin-bottom: 20px;
 }
 
-.cleara11y-ignores-wrap .nav-tab {
+.cleara11y-exceptions-wrap .nav-tab {
 	position: relative;
 }
 
-.cleara11y-ignores-wrap .nav-tab .count {
+.cleara11y-exceptions-wrap .nav-tab .count {
 	font-size: 12px;
 	font-weight: 400;
 	color: #646970;
@@ -138,16 +138,16 @@
 }
 
 /* Table Styles */
-.cleara11y-ignores-wrap .wp-list-table {
+.cleara11y-exceptions-wrap .wp-list-table {
 	border-collapse: collapse;
 	width: 100%;
 }
 
-.cleara11y-ignores-wrap .wp-list-table th {
+.cleara11y-exceptions-wrap .wp-list-table th {
 	font-weight: 600;
 }
 
-.cleara11y-ignores-wrap .wp-list-table td {
+.cleara11y-exceptions-wrap .wp-list-table td {
 	vertical-align: middle;
 }
 

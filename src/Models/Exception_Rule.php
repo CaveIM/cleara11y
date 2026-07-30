@@ -1,8 +1,8 @@
 <?php
 /**
- * Ignore Rule Model
+ * Exception Rule Model
  *
- * Represents a structured ignore rule for suppressing accessibility violations.
+ * Represents a structured exception rule for suppressing accessibility violations.
  *
  * @package ClearA11y
  * @namespace ClearA11y\Models
@@ -11,9 +11,9 @@
 namespace ClearA11y\Models;
 
 /**
- * Ignore Rule Model Class
+ * Exception Rule Model Class
  */
-class Ignore_Rule {
+class Exception_Rule {
 
 	/**
 	 * Rule ID (UUID).
@@ -44,7 +44,7 @@ class Ignore_Rule {
 	public string $target_type = '';
 
 	/**
-	 * Array of rule IDs to ignore.
+	 * Array of rule IDs covered by this exception.
 	 *
 	 * @var array
 	 */
@@ -174,7 +174,7 @@ class Ignore_Rule {
 	 *
 	 * @var array
 	 */
-	public const STATUSES = ['active', 'disabled', 'expired'];
+	public const STATUSES = ['active', 'disabled', 'expired', 'revoked'];
 
 	/**
 	 * Valid scope types.
@@ -213,19 +213,19 @@ class Ignore_Rule {
 	 * @var array
 	 */
 	public const AUDIT_EVENTS = [
-		'ignore_created',
-		'ignore_edited',
-		'ignore_disabled',
-		'ignore_enabled',
-		'ignore_deleted',
-		'ignore_expired',
-		'quick_ignore_created',
+		'exception_created',
+		'exception_edited',
+		'exception_disabled',
+		'exception_enabled',
+		'exception_revoked',
+		'exception_expired',
+		'occurrence_snoozed',
 		'violation_suppressed',
-		'ignore_reanchored_v2',
+		'exception_reanchored_v2',
 	];
 
 	/**
-	 * Create Ignore_Rule from database row.
+	 * Create Exception_Rule from database row.
 	 *
 	 * @param object $row Database row object.
 	 * @return self
@@ -351,22 +351,22 @@ class Ignore_Rule {
 				if (count($this->rule_ids) > 2) {
 					$rule_names .= sprintf(' + %d more', count($this->rule_ids) - 2);
 				}
-				return sprintf('Ignore rule(s): %s', $rule_names);
+				return sprintf('Exception for rule(s): %s', $rule_names);
 
 			case 'element':
 				$element = $this->element_match['tag_name'] ?? 'element';
 				if (isset($this->element_match['css_selector'])) {
-					return sprintf('Ignore element: %s', $this->element_match['css_selector']);
+					return sprintf('Exception for element: %s', $this->element_match['css_selector']);
 				}
-				return sprintf('Ignore element: %s', $element);
+				return sprintf('Exception for element: %s', $element);
 
 			case 'rule_on_element':
 				$rule = $this->rule_ids[0] ?? 'rule';
 				$element = $this->element_match['css_selector'] ?? ($this->element_match['tag_name'] ?? 'element');
-				return sprintf('Ignore %s on %s', $rule, $element);
+				return sprintf('Exception for %s on %s', $rule, $element);
 
 			default:
-				return 'Ignore rule';
+				return 'Reviewed exception';
 		}
 	}
 

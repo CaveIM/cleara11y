@@ -23,11 +23,12 @@ if (! \ClearA11y\Database\Schema::add_occurrence_state_table()) {
 $wpdb->query('START TRANSACTION');
 
 try {
-	$post_id = 1;
-	$page_url = 'https://example.test/lifecycle/';
+	$fixture_id = wp_generate_uuid4();
+	$post_id = 0;
+	$page_url = 'https://example.test/lifecycle/' . rawurlencode($fixture_id) . '/';
 	$page_key = Fingerprint_Service::resolve_page_object_key($page_url, $post_id);
-	$element_identity = hash('sha256', 'lifecycle-element');
-	$violation_identity = hash('sha256', 'lifecycle-violation');
+	$element_identity = hash('sha256', 'lifecycle-element-' . $fixture_id);
+	$violation_identity = hash('sha256', 'lifecycle-violation-' . $fixture_id);
 
 	$make_scan_item = static function() use ($post_id, $page_url): array {
 		$scan = new Scan();

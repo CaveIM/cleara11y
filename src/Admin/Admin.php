@@ -492,8 +492,8 @@ class Admin {
 			__('Exceptions', 'cleara11y'),
 			__('Exceptions', 'cleara11y'),
 			'manage_options',
-			'cleara11y-ignores',
-			[Ignores_Page::class, 'render']
+			'cleara11y-exceptions',
+			[Exceptions_Page::class, 'render']
 		);
 
 		// // Add Issue Types submenu page
@@ -733,7 +733,7 @@ class Admin {
 		$is_issues_page = ($hook_suffix === 'cleara11y_page_cleara11y-issues');
 		$is_issue_types_page = ($hook_suffix === 'cleara11y_page_cleara11y-issue-types');
 		$is_issue_reference_page = ($hook_suffix === 'cleara11y_page_cleara11y-issue-reference');
-		$is_ignores_page = ($hook_suffix === 'cleara11y_page_cleara11y-ignores');
+		$is_exceptions_page = ($hook_suffix === 'cleara11y_page_cleara11y-exceptions');
 
 		// Enqueue the appropriate JavaScript
 		if ($is_issues_page) {
@@ -754,8 +754,8 @@ class Admin {
 
 			// Enqueue ignores page CSS for wizard
 			wp_enqueue_style(
-				'cleara11y-ignores-page',
-				CLEARA11Y_PLUGIN_URL . 'assets/css/ignores-page.css',
+				'cleara11y-exceptions-page',
+				CLEARA11Y_PLUGIN_URL . 'assets/css/exceptions-page.css',
 				[],
 				CLEARA11Y_VERSION
 			);
@@ -765,18 +765,18 @@ class Admin {
 
 			// Enqueue ignores page script for wizard functionality
 			wp_enqueue_script(
-				'cleara11y-ignores-page',
-				CLEARA11Y_PLUGIN_URL . 'assets/js/ignores-page.js',
+				'cleara11y-exceptions-page',
+				CLEARA11Y_PLUGIN_URL . 'assets/js/exceptions-page.js',
 				['jquery'],
 				rand(),
 				true
 			);
 
 			// Localize ignores page script
-			wp_localize_script('cleara11y-ignores-page', 'cleara11yIgnores', [
-				'apiUrl' => $rest_url . 'cleara11y/v1/ignores',
+			wp_localize_script('cleara11y-exceptions-page', 'cleara11yExceptions', [
+				'apiUrl' => $rest_url . 'cleara11y/v1/exceptions',
 				'nonce' => wp_create_nonce('wp_rest'),
-				'strings' => Ignores_Page::get_script_strings(),
+				'strings' => Exceptions_Page::get_script_strings(),
 			]);
 
 			wp_enqueue_script(
@@ -856,21 +856,21 @@ class Admin {
 				// Include severity mapping for all axe-core rules
 				'severityMap' => \ClearA11y\Services\Rule_Severity_Map::get_severity_map(),
 			]);
-		} elseif ($is_ignores_page) {
+		} elseif ($is_exceptions_page) {
 			// Enqueue ignores page JavaScript
 			wp_enqueue_script(
-				'cleara11y-ignores-page',
-				CLEARA11Y_PLUGIN_URL . 'assets/js/ignores-page.js',
+				'cleara11y-exceptions-page',
+				CLEARA11Y_PLUGIN_URL . 'assets/js/exceptions-page.js',
 				['jquery', 'wp-api'],
 				rand(),
 				true
 			);
 
 			// Localize ignores page script
-			wp_localize_script('cleara11y-ignores-page', 'cleara11yIgnores', [
-				'apiUrl' => $rest_url . 'cleara11y/v1/ignores',
+			wp_localize_script('cleara11y-exceptions-page', 'cleara11yExceptions', [
+				'apiUrl' => $rest_url . 'cleara11y/v1/exceptions',
 				'nonce' => wp_create_nonce('wp_rest'),
-				'strings' => Ignores_Page::get_script_strings(),
+				'strings' => Exceptions_Page::get_script_strings(),
 			]);
 		} else {
 			// Enqueue scanner orchestrator first (loaded but not executed directly)

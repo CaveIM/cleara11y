@@ -90,7 +90,7 @@ class Scan_Detail_Page {
 			<?php self::render_card(__('Type', 'cleara11y'), Scans_Page::format_label($scan->scan_type)); ?>
 			<?php self::render_card(__('Progress', 'cleara11y'), sprintf('%s%%', number_format_i18n($progress, 2))); ?>
 			<?php self::render_card(__('Pages', 'cleara11y'), sprintf('%d / %d', $scan->scanned_items, $scan->total_items)); ?>
-			<?php self::render_card(__('Issues', 'cleara11y'), (string) $scan->total_issues); ?>
+			<?php self::render_card(__('Detected findings (raw)', 'cleara11y'), (string) $scan->total_issues); ?>
 		</div>
 
 		<div class="cleara11y-scan-metadata" style="margin: 20px 0; padding: 15px; background: #fff; border: 1px solid #c3c4c7; box-shadow: 0 1px 1px rgba(0,0,0,.04);">

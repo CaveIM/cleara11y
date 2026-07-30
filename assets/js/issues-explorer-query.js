@@ -12,7 +12,7 @@
 	'use strict';
 
 	const enums = {
-		status: ['active', 'ignored', 'all'],
+		status: ['active', 'exception', 'all'],
 		severity: ['critical', 'moderate', 'minor'],
 		groupBy: ['page', 'rule', 'none'],
 		sort: ['severity', 'newest', 'page', 'rule']

@@ -424,7 +424,7 @@ class REST_Controller {
 				'args' => [
 					'status' => [
 						'type' => 'string',
-						'enum' => ['active', 'ignored', 'all'],
+						'enum' => ['active', 'exception', 'all'],
 						'default' => 'active',
 					],
 					'severity' => [
@@ -497,7 +497,7 @@ class REST_Controller {
 					],
 					'status' => [
 						'type' => 'string',
-						'enum' => ['active', 'ignored', 'all'],
+						'enum' => ['active', 'exception', 'all'],
 						'default' => 'active',
 						'description' => 'Filter by exception status.',
 					],
@@ -1764,8 +1764,8 @@ class REST_Controller {
 	public function get_issues_list(\WP_REST_Request $request): \WP_REST_Response {
 		global $wpdb;
 
-		if (! \ClearA11y\Database\Ignore_Schema::tables_exist()) {
-			\ClearA11y\Database\Ignore_Schema::create_tables();
+		if (! \ClearA11y\Database\Exception_Schema::tables_exist()) {
+			\ClearA11y\Database\Exception_Schema::create_tables();
 		}
 
 		$severity = $request->get_param('severity');
@@ -1777,17 +1777,17 @@ class REST_Controller {
 
 		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
 		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
-		$matches_table = \ClearA11y\Database\Ignore_Schema::get_table_name('violation_ignore_matches');
-		$rules_table = \ClearA11y\Database\Ignore_Schema::get_table_name('ignore_rules');
-		$active_ignore_join = "
+		$matches_table = \ClearA11y\Database\Exception_Schema::get_table_name('issue_exception_matches');
+		$rules_table = \ClearA11y\Database\Exception_Schema::get_table_name('exception_rules');
+		$active_exception_join = "
 			LEFT JOIN (
 				SELECT DISTINCT vm.violation_id
 				FROM `{$matches_table}` vm
-				INNER JOIN `{$rules_table}` ir ON vm.ignore_rule_id = ir.id
+				INNER JOIN `{$rules_table}` ir ON vm.exception_rule_id = ir.id
 				WHERE ir.status = 'active'
 					AND vm.match_action = 'suppressed'
 					AND (ir.expires_at IS NULL OR ir.expires_at > NOW())
-			) active_ignores ON i.id = active_ignores.violation_id";
+			) active_exceptions ON i.id = active_exceptions.violation_id";
 
 		// Build WHERE clause
 		$where = ['1=1'];
@@ -1798,13 +1798,13 @@ class REST_Controller {
 			$where_params[] = $severity;
 		}
 
-		// Filter by status (active/ignored/all)
+		// Filter by status (active/exceptions/all)
 		if ($status === 'active') {
-			// Show only issues without active ignore matches
-			$where[] = 'active_ignores.violation_id IS NULL';
-		} elseif ($status === 'ignored') {
-			// Show only issues with active ignore matches
-			$where[] = 'active_ignores.violation_id IS NOT NULL';
+			// Show only issues without active exception matches
+			$where[] = 'active_exceptions.violation_id IS NULL';
+		} elseif ($status === 'exception') {
+			// Show only issues with active exception matches
+			$where[] = 'active_exceptions.violation_id IS NOT NULL';
 		}
 		// 'all' doesn't filter
 
@@ -1822,7 +1822,7 @@ class REST_Controller {
 		// Get total count
 		$count_query = "SELECT COUNT(DISTINCT i.id) FROM `{$issues_table}` i
 					   INNER JOIN `{$scan_items_table}` si ON i.scan_item_id = si.id
-					   {$active_ignore_join}
+					   {$active_exception_join}
 					   WHERE {$where_clause}";
 		// @phpstan-ignore-next-line
 		$total = !empty($where_params)
@@ -1831,12 +1831,12 @@ class REST_Controller {
 
 		// Get issues
 		$query = "SELECT i.*, si.post_title, si.post_url,
-					CASE WHEN active_ignores.violation_id IS NOT NULL THEN 1 ELSE 0 END as is_ignored
+					CASE WHEN active_exceptions.violation_id IS NOT NULL THEN 1 ELSE 0 END as is_exception
 				 FROM `{$issues_table}` i
 				 INNER JOIN `{$scan_items_table}` si ON i.scan_item_id = si.id
-				 {$active_ignore_join}
+				 {$active_exception_join}
 				 WHERE {$where_clause}
-				 ORDER BY is_ignored ASC, FIELD(i.severity, 'critical', 'moderate', 'minor'), i.id DESC
+				 ORDER BY is_exception ASC, FIELD(i.severity, 'critical', 'moderate', 'minor'), i.id DESC
 				 LIMIT %d OFFSET %d";
 
 		$where_params[] = $per_page;
@@ -1863,34 +1863,34 @@ class REST_Controller {
 	public function get_issues_stats(\WP_REST_Request $request): \WP_REST_Response {
 		global $wpdb;
 
-		if (! \ClearA11y\Database\Ignore_Schema::tables_exist()) {
-			\ClearA11y\Database\Ignore_Schema::create_tables();
+		if (! \ClearA11y\Database\Exception_Schema::tables_exist()) {
+			\ClearA11y\Database\Exception_Schema::create_tables();
 		}
 
 		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
-		$matches_table = \ClearA11y\Database\Ignore_Schema::get_table_name('violation_ignore_matches');
-		$rules_table = \ClearA11y\Database\Ignore_Schema::get_table_name('ignore_rules');
-		$active_ignore_join = "
+		$matches_table = \ClearA11y\Database\Exception_Schema::get_table_name('issue_exception_matches');
+		$rules_table = \ClearA11y\Database\Exception_Schema::get_table_name('exception_rules');
+		$active_exception_join = "
 			LEFT JOIN (
 				SELECT DISTINCT vm.violation_id
 				FROM `{$matches_table}` vm
-				INNER JOIN `{$rules_table}` ir ON vm.ignore_rule_id = ir.id
+				INNER JOIN `{$rules_table}` ir ON vm.exception_rule_id = ir.id
 				WHERE ir.status = 'active'
 					AND vm.match_action = 'suppressed'
 					AND (ir.expires_at IS NULL OR ir.expires_at > NOW())
-			) active_ignores ON i.id = active_ignores.violation_id";
+			) active_exceptions ON i.id = active_exceptions.violation_id";
 
-		// Get counts by severity, excluding ignored issues
+		// Get raw and actionable counts while keeping scan evidence unchanged.
 		$counts = $wpdb->get_results(
 			"SELECT
-				SUM(CASE WHEN i.severity = 'critical' AND active_ignores.violation_id IS NULL THEN 1 ELSE 0 END) as critical,
-				SUM(CASE WHEN i.severity = 'moderate' AND active_ignores.violation_id IS NULL THEN 1 ELSE 0 END) as moderate,
-				SUM(CASE WHEN i.severity = 'minor' AND active_ignores.violation_id IS NULL THEN 1 ELSE 0 END) as minor,
-				SUM(CASE WHEN active_ignores.violation_id IS NULL THEN 1 ELSE 0 END) as active,
-				SUM(CASE WHEN active_ignores.violation_id IS NOT NULL THEN 1 ELSE 0 END) as ignored,
+				SUM(CASE WHEN i.severity = 'critical' AND active_exceptions.violation_id IS NULL THEN 1 ELSE 0 END) as critical,
+				SUM(CASE WHEN i.severity = 'moderate' AND active_exceptions.violation_id IS NULL THEN 1 ELSE 0 END) as moderate,
+				SUM(CASE WHEN i.severity = 'minor' AND active_exceptions.violation_id IS NULL THEN 1 ELSE 0 END) as minor,
+				SUM(CASE WHEN active_exceptions.violation_id IS NULL THEN 1 ELSE 0 END) as active,
+				SUM(CASE WHEN active_exceptions.violation_id IS NOT NULL THEN 1 ELSE 0 END) as exception,
 				COUNT(*) as total
 			FROM `{$issues_table}` i
-			{$active_ignore_join}",
+			{$active_exception_join}",
 			ARRAY_A
 		);
 
@@ -1899,7 +1899,7 @@ class REST_Controller {
 			'moderate' => 0,
 			'minor' => 0,
 			'active' => 0,
-			'ignored' => 0,
+			'exception' => 0,
 			'total' => 0,
 		];
 
@@ -2506,13 +2506,6 @@ class REST_Controller {
 		);
 
 		if ($pending_count == 0) {
-			$scan_started_at = $wpdb->get_var(
-				$wpdb->prepare(
-					"SELECT started_at FROM `{$scans_table}` WHERE id = %d",
-					$scan_id
-				)
-			);
-
 			// All jobs are complete - update scan status
 			$updated = $wpdb->update(
 				$scans_table,
@@ -2529,20 +2522,7 @@ class REST_Controller {
 			);
 
 			if ($updated) {
-				$reanchor_report = \ClearA11y\Database\Ignore_Rule_Repository::finalize_legacy_reanchoring(
-					get_current_blog_id(),
-					is_string($scan_started_at) ? $scan_started_at : null,
-					$scan_id
-				);
 				error_log(sprintf('[ClearA11y] Scan %d marked as completed', $scan_id));
-				error_log(
-					sprintf(
-						'[ClearA11y] Legacy exception re-anchor report: scan_id=%d anchored=%d unmatched=%d',
-						$scan_id,
-						$reanchor_report['anchored'],
-						$reanchor_report['unmatched']
-					)
-				);
 			}
 		}
 	}

@@ -114,7 +114,7 @@ class Scans_Page {
 						<th scope="col"><?php echo wp_kses_post(self::sort_link(__('Type', 'cleara11y'), 'scan_type', $filters)); ?></th>
 						<th scope="col"><?php echo wp_kses_post(self::sort_link(__('Status', 'cleara11y'), 'status', $filters)); ?></th>
 						<th scope="col"><?php echo wp_kses_post(self::sort_link(__('Pages', 'cleara11y'), 'scanned_items', $filters)); ?></th>
-						<th scope="col"><?php echo wp_kses_post(self::sort_link(__('Issues', 'cleara11y'), 'total_issues', $filters)); ?></th>
+						<th scope="col"><?php echo wp_kses_post(self::sort_link(__('Detected', 'cleara11y'), 'total_issues', $filters)); ?></th>
 						<th scope="col"><?php echo wp_kses_post(self::sort_link(__('Created', 'cleara11y'), 'created_at', $filters)); ?></th>
 						<th scope="col"><?php echo wp_kses_post(self::sort_link(__('Completed', 'cleara11y'), 'completed_at', $filters)); ?></th>
 					</tr>

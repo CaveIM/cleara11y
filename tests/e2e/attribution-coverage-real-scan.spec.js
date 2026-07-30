@@ -95,7 +95,7 @@ function cleanupScans(scanIds) {
 			);
 			if ($issue_ids) {
 				$GLOBALS['wpdb']->query(
-					"DELETE FROM {$prefix}violation_ignore_matches
+					"DELETE FROM {$prefix}issue_exception_matches
 					WHERE violation_id IN (" . implode(',', array_map('absint', $issue_ids)) . ")"
 				);
 			}

@@ -147,12 +147,12 @@ class Highlighter {
 		// Get site ID for ignore matching
 		$site_id = get_current_blog_id();
 
-		// Prepare issues data for frontend (excluding ignored issues)
+		// Prepare issue data for the frontend, excluding active exceptions.
 		$frontend_issues = [];
 
 		foreach ($issues as $issue) {
-			// Check if this issue is ignored by any active ignore rule
-			$matches = \ClearA11y\Services\Ignore_Matcher_Service::find_matches($issue, $site_id);
+			// Check if this issue matches an active exception.
+			$matches = \ClearA11y\Services\Exception_Matcher_Service::find_matches($issue, $site_id);
 
 			// Skip issues that have matching ignore rules
 			if (!empty($matches)) {

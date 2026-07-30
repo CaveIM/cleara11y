@@ -404,7 +404,7 @@ class Issue_Types_Page {
 				margin: 0 auto 10px;
 			}
 
-			.cleara11y-ignore-modal textarea {
+			.cleara11y-exception-modal textarea {
 				width: 100%;
 				padding: 10px;
 				border: 1px solid #c3c4c7;

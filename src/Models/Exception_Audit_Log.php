@@ -1,8 +1,8 @@
 <?php
 /**
- * Ignore Audit Log Model
+ * Exception Audit Log Model
  *
- * Represents an audit log entry for ignore rule actions.
+ * Represents an audit log entry for exception rule actions.
  *
  * @package ClearA11y
  * @namespace ClearA11y\Models
@@ -11,9 +11,9 @@
 namespace ClearA11y\Models;
 
 /**
- * Ignore Audit Log Model Class
+ * Exception Audit Log Model Class
  */
-class Ignore_Audit_Log {
+class Exception_Audit_Log {
 
 	/**
 	 * Log entry ID.
@@ -23,11 +23,11 @@ class Ignore_Audit_Log {
 	public int $id = 0;
 
 	/**
-	 * Associated ignore rule ID.
+	 * Associated exception rule ID.
 	 *
 	 * @var string|null
 	 */
-	public ?string $ignore_rule_id = null;
+	public ?string $exception_rule_id = null;
 
 	/**
 	 * Event type.
@@ -63,13 +63,13 @@ class Ignore_Audit_Log {
 	 * @var array
 	 */
 	public const EVENT_TYPES = [
-		'ignore_created',
-		'ignore_edited',
-		'ignore_disabled',
-		'ignore_enabled',
-		'ignore_deleted',
-		'ignore_expired',
-		'quick_ignore_created',
+		'exception_created',
+		'exception_edited',
+		'exception_disabled',
+		'exception_enabled',
+		'exception_revoked',
+		'exception_expired',
+		'occurrence_snoozed',
 		'violation_suppressed',
 	];
 
@@ -83,7 +83,7 @@ class Ignore_Audit_Log {
 		$log = new self();
 
 		$log->id = (int) ($row->id ?? 0);
-		$log->ignore_rule_id = $row->ignore_rule_id ?? null;
+		$log->exception_rule_id = $row->exception_rule_id ?? null;
 		$log->event_type = $row->event_type ?? '';
 		$log->actor_user_id = isset($row->actor_user_id) ? (int) $row->actor_user_id : null;
 		$log->timestamp = $row->timestamp ?? '';
@@ -102,7 +102,7 @@ class Ignore_Audit_Log {
 
 		return [
 			'id' => $this->id,
-			'ignore_rule_id' => $this->ignore_rule_id,
+			'exception_rule_id' => $this->exception_rule_id,
 			'event_type' => $this->event_type,
 			'event_label' => $this->get_event_label(),
 			'actor_user_id' => $this->actor_user_id,
@@ -120,26 +120,26 @@ class Ignore_Audit_Log {
 	 */
 	private function get_event_label(): string {
 			switch ($this->event_type) {
-			case 'ignore_created':
+			case 'exception_created':
 				return 'Reviewed exception created';
 
-			case 'ignore_edited':
+			case 'exception_edited':
 				return 'Reviewed exception updated';
 
-			case 'ignore_disabled':
+			case 'exception_disabled':
 				return 'Reviewed exception disabled';
 
-			case 'ignore_enabled':
+			case 'exception_enabled':
 				return 'Reviewed exception enabled';
 
-			case 'ignore_deleted':
-				return 'Reviewed exception deleted';
+			case 'exception_revoked':
+				return 'Reviewed exception revoked';
 
-			case 'ignore_expired':
+			case 'exception_expired':
 				return 'Reviewed exception expired';
 
-			case 'quick_ignore_created':
-				return 'Temporary exception created';
+			case 'occurrence_snoozed':
+				return 'Issue snoozed until next scan';
 
 			case 'violation_suppressed':
 				return 'Issue marked as exception';
@@ -153,16 +153,16 @@ class Ignore_Audit_Log {
 	 * Create a new audit log entry.
 	 *
 	 * @param string $event_type Event type.
-	 * @param string|null $ignore_rule_id Associated ignore rule ID.
+	 * @param string|null $exception_rule_id Associated exception rule ID.
 	 * @param int|null $actor_user_id User ID who performed the action.
 	 * @param array $metadata Additional metadata.
 	 * @return self
 	 */
-	public static function create(string $event_type, ?string $ignore_rule_id = null, ?int $actor_user_id = null, array $metadata = []): self {
+	public static function create(string $event_type, ?string $exception_rule_id = null, ?int $actor_user_id = null, array $metadata = []): self {
 		$log = new self();
 
 		$log->event_type = $event_type;
-		$log->ignore_rule_id = $ignore_rule_id;
+		$log->exception_rule_id = $exception_rule_id;
 		$log->actor_user_id = $actor_user_id;
 		$log->timestamp = current_time('mysql');
 		$log->metadata = $metadata;

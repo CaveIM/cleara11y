@@ -1,8 +1,8 @@
 <?php
 /**
- * Ignore System Database Schema
+ * Exception System Database Schema
  *
- * Handles creation and management of ignore-related database tables.
+ * Handles creation and management of exception-related database tables.
  *
  * @package ClearA11y
  * @namespace ClearA11y\Database
@@ -11,9 +11,9 @@
 namespace ClearA11y\Database;
 
 /**
- * Ignore Schema Class
+ * Exception Schema Class
  */
-class Ignore_Schema {
+class Exception_Schema {
 
 	/**
 	 * Get table prefix.
@@ -36,18 +36,22 @@ class Ignore_Schema {
 	}
 
 	/**
-	 * Create ignore system tables.
+	 * Create exception system tables.
 	 *
 	 * @return bool True if successful.
 	 */
 	public static function create_tables(): bool {
 		global $wpdb;
 
+		if (! self::migrate_legacy_table_names()) {
+			return false;
+		}
+
 		$charset_collate = $wpdb->get_charset_collate();
 		$prefix = self::get_prefix();
 
-		// 1. Ignore Rules table - Structured ignore rule definitions
-		$query = "CREATE TABLE IF NOT EXISTS `{$prefix}ignore_rules` (
+		// 1. Exception Rules table - Structured exception rule definitions.
+		$query = "CREATE TABLE IF NOT EXISTS `{$prefix}exception_rules` (
 			`id` varchar(36) NOT NULL,
 			`site_id` bigint(20) UNSIGNED NOT NULL,
 			`status` varchar(20) NOT NULL DEFAULT 'active',
@@ -83,41 +87,42 @@ class Ignore_Schema {
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta($query);
 
-		// 2. Ignore Audit Log table - Immutable audit events
-		$query = "CREATE TABLE IF NOT EXISTS `{$prefix}ignore_audit_log` (
+		// 2. Exception Audit Log table - Immutable audit events.
+		$query = "CREATE TABLE IF NOT EXISTS `{$prefix}exception_audit_log` (
 			`id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
-			`ignore_rule_id` varchar(36) DEFAULT NULL,
+			`exception_rule_id` varchar(36) DEFAULT NULL,
 			`event_type` varchar(50) NOT NULL,
 			`actor_user_id` bigint(20) UNSIGNED DEFAULT NULL,
 			`timestamp` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			`metadata` text DEFAULT NULL,
 			PRIMARY KEY (`id`),
-			KEY `ignore_rule_id` (`ignore_rule_id`),
+			KEY `exception_rule_id` (`exception_rule_id`),
 			KEY `event_type` (`event_type`),
 			KEY `timestamp` (`timestamp`)
 		) $charset_collate;";
 
 		dbDelta($query);
 
-		// 3. Violation Ignore Matches table - Junction table for resolved matches
-		$query = "CREATE TABLE IF NOT EXISTS `{$prefix}violation_ignore_matches` (
+		// 3. Issue Exception Matches table - Junction table for resolved matches.
+		$query = "CREATE TABLE IF NOT EXISTS `{$prefix}issue_exception_matches` (
 			`id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
 			`violation_id` bigint(20) UNSIGNED NOT NULL,
-			`ignore_rule_id` varchar(36) NOT NULL,
+			`exception_rule_id` varchar(36) NOT NULL,
 			`site_id` bigint(20) UNSIGNED NOT NULL,
 			`matched_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			`match_confidence` varchar(20) DEFAULT 'high',
 			`match_action` varchar(20) NOT NULL DEFAULT 'suppressed',
+			`rule_snapshot` longtext DEFAULT NULL,
 			PRIMARY KEY (`id`),
 			KEY `violation_id` (`violation_id`),
-			KEY `ignore_rule_id` (`ignore_rule_id`),
+			KEY `exception_rule_id` (`exception_rule_id`),
 			KEY `site_id` (`site_id`),
-			UNIQUE KEY `violation_ignore_unique` (`violation_id`, `ignore_rule_id`)
+			UNIQUE KEY `issue_exception_unique` (`violation_id`, `exception_rule_id`)
 		) $charset_collate;";
 
 		dbDelta($query);
 
-		update_option('cleara11y_ignore_db_version', '2.0');
+		update_option('cleara11y_exception_db_version', '3.0');
 
 		return true;
 	}
@@ -130,8 +135,8 @@ class Ignore_Schema {
 	public static function add_v2_matching_columns(): bool {
 		global $wpdb;
 
-		$rules_table = self::get_table_name('ignore_rules');
-		$matches_table = self::get_table_name('violation_ignore_matches');
+		$rules_table = self::get_table_name('exception_rules');
+		$matches_table = self::get_table_name('issue_exception_matches');
 		$columns = [
 			$rules_table => [
 				'violation_identity_v2' => 'varchar(64) DEFAULT NULL',
@@ -142,6 +147,7 @@ class Ignore_Schema {
 			],
 			$matches_table => [
 				'match_action' => "varchar(20) NOT NULL DEFAULT 'suppressed'",
+				'rule_snapshot' => 'longtext DEFAULT NULL',
 			],
 		];
 
@@ -192,7 +198,7 @@ class Ignore_Schema {
 			WHERE target_type = 'rule' AND legacy_reanchor_status = 'pending'"
 		);
 
-		update_option('cleara11y_ignore_db_version', '2.0');
+		update_option('cleara11y_exception_db_version', '3.0');
 
 		return true;
 	}
@@ -238,7 +244,87 @@ class Ignore_Schema {
 	}
 
 	/**
-	 * Check if ignore tables exist.
+	 * Rename pre-launch ignore tables without changing or copying their data.
+	 *
+	 * The migration deliberately refuses to choose between two populated table
+	 * sets. That state needs manual inspection; silently preferring either side
+	 * could orphan review history.
+	 *
+	 * @return bool True when legacy names are absent or were renamed.
+	 */
+	private static function migrate_legacy_table_names(): bool {
+		global $wpdb;
+
+		$pairs = [
+			'ignore_rules' => 'exception_rules',
+			'ignore_audit_log' => 'exception_audit_log',
+			'violation_ignore_matches' => 'issue_exception_matches',
+		];
+
+		foreach ($pairs as $legacy_suffix => $current_suffix) {
+			$legacy = self::get_table_name($legacy_suffix);
+			$current = self::get_table_name($current_suffix);
+			$legacy_exists = $legacy === $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $legacy));
+			$current_exists = $current === $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $current));
+
+			if ($legacy_exists && $current_exists) {
+				error_log(
+					sprintf(
+						'ClearA11y ERROR: Exception table migration stopped because both legacy and current tables exist. legacy=%s current=%s',
+						$legacy,
+						$current
+					)
+				);
+				return false;
+			}
+
+			if ($legacy_exists && false === $wpdb->query("RENAME TABLE `{$legacy}` TO `{$current}`")) {
+				error_log(
+					sprintf(
+						'ClearA11y ERROR: Failed to rename exception table. legacy=%s current=%s database_error=%s',
+						$legacy,
+						$current,
+						$wpdb->last_error
+					)
+				);
+				return false;
+			}
+		}
+
+		$columns = [
+			self::get_table_name('exception_audit_log'),
+			self::get_table_name('issue_exception_matches'),
+		];
+		foreach ($columns as $table) {
+			if (
+				self::column_exists($table, 'ignore_rule_id')
+				&& ! self::column_exists($table, 'exception_rule_id')
+				&& false === $wpdb->query(
+					"ALTER TABLE `{$table}` CHANGE `ignore_rule_id` `exception_rule_id` varchar(36) NOT NULL"
+				)
+			) {
+				error_log(
+					sprintf(
+						'ClearA11y ERROR: Failed renaming legacy exception relation column. table=%s database_error=%s',
+						$table,
+						$wpdb->last_error
+					)
+				);
+				return false;
+			}
+		}
+
+		$legacy_version = get_option('cleara11y_ignore_db_version');
+		if (false !== $legacy_version && false === get_option('cleara11y_exception_db_version')) {
+			update_option('cleara11y_exception_db_version', $legacy_version);
+			delete_option('cleara11y_ignore_db_version');
+		}
+
+		return true;
+	}
+
+	/**
+	 * Check if exception tables exist.
 	 *
 	 * @return bool True if all tables exist.
 	 */
@@ -247,9 +333,9 @@ class Ignore_Schema {
 
 		$prefix = self::get_prefix();
 		$tables = [
-			"{$prefix}ignore_rules",
-			"{$prefix}ignore_audit_log",
-			"{$prefix}violation_ignore_matches",
+			"{$prefix}exception_rules",
+			"{$prefix}exception_audit_log",
+			"{$prefix}issue_exception_matches",
 		];
 
 		foreach ($tables as $table) {
@@ -263,7 +349,7 @@ class Ignore_Schema {
 	}
 
 	/**
-	 * Drop ignore system tables.
+	 * Drop exception system tables.
 	 *
 	 * @return bool True if successful.
 	 */
@@ -272,16 +358,16 @@ class Ignore_Schema {
 
 		$prefix = self::get_prefix();
 		$tables = [
-			"{$prefix}ignore_rules",
-			"{$prefix}ignore_audit_log",
-			"{$prefix}violation_ignore_matches",
+			"{$prefix}exception_rules",
+			"{$prefix}exception_audit_log",
+			"{$prefix}issue_exception_matches",
 		];
 
 		foreach ($tables as $table) {
 			$wpdb->query("DROP TABLE IF EXISTS `$table`");
 		}
 
-		delete_option('cleara11y_ignore_db_version');
+		delete_option('cleara11y_exception_db_version');
 
 		return true;
 	}

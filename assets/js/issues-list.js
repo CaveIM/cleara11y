@@ -144,7 +144,7 @@
 			title = 'Issues on ' + context.page.label;
 		} else if (query.severity) {
 			title = capitalize(query.severity) + ' accessibility issues';
-		} else if (query.status === 'ignored') {
+		} else if (query.status === 'exception') {
 			title = 'Accessibility exceptions';
 		} else if (query.status === 'all') {
 			title = 'All accessibility issues';
@@ -174,7 +174,7 @@
 		const items = data.items || [];
 		el['issues-container'].removeAttribute('aria-busy');
 		if (!items.length) {
-			const filtered = Boolean(query.search || query.severity || query.ruleId || query.pageId || query.status === 'ignored');
+			const filtered = Boolean(query.search || query.severity || query.ruleId || query.pageId || query.status === 'exception');
 			const text = query.scanId
 				? cleara11yData.strings.noScanIssues
 				: (filtered ? cleara11yData.strings.noFilteredIssues : cleara11yData.strings.noIssues);
@@ -217,7 +217,7 @@
 				<div class="cleara11y-result-row__heading">
 					<h4>${escapeHtml(item.rule.title)}</h4>
 					<span class="cleara11y-badge severity-${escapeHtml(item.severity)}">${escapeHtml(capitalize(item.severity))}</span>
-					<span class="cleara11y-status-text">${item.status === 'ignored' ? 'Exception' : (item.finding_type === 'review' ? 'Needs review' : 'Confirmed')}</span>
+					<span class="cleara11y-status-text">${item.status === 'exception' ? 'Exception' : (item.finding_type === 'review' ? 'Needs review' : 'Confirmed')}</span>
 				</div>
 				<p>${escapeHtml(item.message || item.help_text)}</p>
 				<p class="cleara11y-result-row__meta"><strong>${escapeHtml(item.page.title)}</strong>
@@ -284,7 +284,7 @@
 				<h2 id="cleara11y-detail-title" tabindex="-1">${escapeHtml(item.rule.title)}</h2>
 				<p><code>${escapeHtml(item.rule.id)}</code>
 					<span class="cleara11y-badge severity-${escapeHtml(item.severity)}">${escapeHtml(capitalize(item.severity))}</span>
-					<span class="cleara11y-status-text">${item.status === 'ignored' ? 'Current exception' : (item.finding_type === 'review' ? 'Needs review' : 'Confirmed issue')}</span></p>
+					<span class="cleara11y-status-text">${item.status === 'exception' ? 'Current exception' : (item.finding_type === 'review' ? 'Needs review' : 'Confirmed issue')}</span></p>
 				${item.finding_type === 'review' ? '<p class="cleara11y-review-note"><strong>Manual review recommended.</strong> The scanner found evidence of a possible failure but could not classify it with full certainty.</p>' : ''}
 			</header>
 			<section><h3>Location</h3>
@@ -316,11 +316,11 @@
 					<dt>Captured</dt><dd>${escapeHtml(formatDate(item.scan.scanned_at) || 'Unavailable')}</dd></dl>
 			</section>
 			<section><h3>Exception workflow</h3>
-				${item.status === 'ignored'
+				${item.status === 'exception'
 					? '<p>This observation currently matches an active exception.</p>'
 					: `<div class="cleara11y-detail__actions">
 						<button type="button" class="button" data-structured-exception data-occurrence-id="${item.id}">Create exception…</button>
-						<button type="button" class="button" data-temporary-exception data-occurrence-id="${item.id}">Temporary exception</button>
+						<button type="button" class="button" data-temporary-exception data-occurrence-id="${item.id}">Snooze until next scan</button>
 					</div>`}
 			</section>`;
 	}
@@ -372,7 +372,7 @@
 	async function createTemporaryException(id, button) {
 		button.disabled = true;
 		try {
-			const response = await fetch(API_URL + 'ignores/quick', {
+			const response = await fetch(API_URL + 'exceptions/snooze', {
 				method: 'POST',
 				headers: {'X-WP-Nonce': NONCE, 'Content-Type': 'application/json'},
 				body: JSON.stringify({violation_id: id})
@@ -391,14 +391,16 @@
 			window.alert('The exception wizard is unavailable. Open the Exceptions screen to create an exception.');
 			return;
 		}
-		const state = window.cleara11yWizard.state;
-		state.data.target_type = 'rule_on_element';
-		state.data.rule_ids = [item.rule.id];
-		state.data.element_match = {css_selector: item.selector || ''};
-		state.data.scope = {scope_type: 'page', url: item.page.url};
-		state.data.duration = {duration_type: 'permanent'};
-		state.data.note = item.message || '';
-		window.cleara11yWizard.open();
+		window.cleara11yWizard.open({
+			violation_id: id,
+			target_type: 'rule_on_element',
+			rule_ids: [item.rule.id],
+			element_match: {css_selector: item.selector || ''},
+			scope: {scope_type: 'page', url: item.page.url},
+			context: {post_type: item.page.post_type || ''},
+			duration: {duration_type: 'permanent'},
+			note: item.message || ''
+		});
 	}
 
 	function setupEntityFilters() {

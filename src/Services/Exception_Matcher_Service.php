@@ -1,8 +1,8 @@
 <?php
 /**
- * Ignore Matcher Service
+ * Exception Matcher Service
  *
- * Handles flexible matching logic for ignore rules against violations.
+ * Handles flexible matching logic for exception rules against violations.
  *
  * @package ClearA11y
  * @namespace ClearA11y\Services
@@ -10,14 +10,14 @@
 
 namespace ClearA11y\Services;
 
-use ClearA11y\Models\Ignore_Rule;
+use ClearA11y\Models\Exception_Rule;
 use ClearA11y\Models\Issue;
-use ClearA11y\Database\Ignore_Rule_Repository;
+use ClearA11y\Database\Exception_Rule_Repository;
 
 /**
- * Ignore Matcher Service Class
+ * Exception Matcher Service Class
  */
-class Ignore_Matcher_Service {
+class Exception_Matcher_Service {
 
 	/**
 	 * Match confidence levels.
@@ -32,7 +32,7 @@ class Ignore_Matcher_Service {
 	];
 
 	/**
-	 * Find matching ignore rules for a violation.
+	 * Find matching exception rules for a violation.
 	 *
 	 * @param Issue $issue Issue to check.
 	 * @param int   $site_id Site ID.
@@ -41,7 +41,7 @@ class Ignore_Matcher_Service {
 	 */
 	public static function find_matches(Issue $issue, int $site_id, bool $allow_legacy_reanchor = true): array {
 		// Get active rules for site
-		$rules = Ignore_Rule_Repository::get_active($site_id);
+		$rules = Exception_Rule_Repository::get_active($site_id);
 
 		$matches = [];
 
@@ -61,16 +61,16 @@ class Ignore_Matcher_Service {
 	}
 
 	/**
-	 * Check if an issue matches an ignore rule.
+	 * Check if an issue matches an exception rule.
 	 *
 	 * @param Issue      $issue Issue to check.
-	 * @param Ignore_Rule $rule  Ignore rule to match against.
+	 * @param Exception_Rule $rule  Exception rule to match against.
 	 * @param bool        $allow_legacy_reanchor Whether the legacy bridge may write.
 	 * @return array|null Match result or null if no match.
 	 */
 	public static function matches_rule(
 		Issue $issue,
-		Ignore_Rule $rule,
+		Exception_Rule $rule,
 		bool $allow_legacy_reanchor = true
 	): ?array {
 		// Rule-level exceptions are explicit scoped declarations and retain
@@ -92,6 +92,19 @@ class Ignore_Matcher_Service {
 				&& $rule->identity_signature_version === $issue->identity_signature_version
 				&& hash_equals($rule->violation_identity_v2, $issue->violation_identity_v2)
 			) {
+				$identity_count = Exception_Rule_Repository::count_identity_observations(
+					$issue->scan_item_id,
+					$issue->violation_identity_v2,
+					$issue->identity_signature_version
+				);
+				if ($identity_count > 1) {
+					return [
+						'confidence' => self::CONFIDENCE['PARTIAL'],
+						'matched_by' => 'violation_identity_collision',
+						'action' => 'resembles',
+					];
+				}
+
 				return [
 					'confidence' => self::CONFIDENCE['EXACT'],
 					'matched_by' => 'violation_identity_v2',
@@ -115,48 +128,9 @@ class Ignore_Matcher_Service {
 			return null;
 		}
 
-		// The pre-v2 semantic matcher is intentionally limited to a one-time
-		// compatibility bridge. It cannot suppress unless it successfully
-		// persists an exact v2 anchor for this issue.
-		if (
-			! $allow_legacy_reanchor
-			|| 'pending' !== $rule->legacy_reanchor_status
-			|| ! self::matches_legacy_reanchor_scope($issue, $rule)
-		) {
-			return null;
-		}
-
-		$legacy_match = self::matches_target($issue, $rule);
-		if (
-			! $legacy_match
-			|| empty($issue->violation_identity_v2)
-			|| empty($issue->element_identity_v2)
-			|| empty($issue->identity_signature_version)
-		) {
-			return null;
-		}
-
-		if (
-			! Ignore_Rule_Repository::reanchor_to_v2(
-				$rule->id,
-				$issue->violation_identity_v2,
-				$issue->element_identity_v2,
-				$issue->identity_signature_version
-			)
-		) {
-			return null;
-		}
-
-		$rule->violation_identity_v2 = $issue->violation_identity_v2;
-		$rule->element_identity_v2 = $issue->element_identity_v2;
-		$rule->identity_signature_version = $issue->identity_signature_version;
-		$rule->legacy_reanchor_status = 'anchored';
-
-		return [
-			'confidence' => self::CONFIDENCE['EXACT'],
-			'matched_by' => 'legacy_reanchored_v2',
-			'action' => 'suppressed',
-		];
+		// Pre-launch data is disposable, so selector-only occurrence rules are
+		// deliberately retired instead of being allowed one probabilistic match.
+		return null;
 	}
 
 	/**
@@ -167,12 +141,12 @@ class Ignore_Matcher_Service {
 	 * one-time bridge when available.
 	 *
 	 * @param Issue       $issue Current issue.
-	 * @param Ignore_Rule $rule Legacy rule.
+	 * @param Exception_Rule $rule Legacy rule.
 	 * @return bool True when the scan covers the intended scope.
 	 */
-	private static function matches_legacy_reanchor_scope(Issue $issue, Ignore_Rule $rule): bool {
+	private static function matches_legacy_reanchor_scope(Issue $issue, Exception_Rule $rule): bool {
 		if ('page' === ($rule->scope['scope_type'] ?? '') && $issue->post_id > 0) {
-			$anchor_post_ids = Ignore_Rule_Repository::get_legacy_anchor_post_ids($rule->id);
+			$anchor_post_ids = Exception_Rule_Repository::get_legacy_anchor_post_ids($rule->id);
 			if (in_array($issue->post_id, $anchor_post_ids, true)) {
 				return true;
 			}
@@ -185,10 +159,10 @@ class Ignore_Matcher_Service {
 	 * Check if issue matches rule's scope.
 	 *
 	 * @param Issue      $issue Issue to check.
-	 * @param Ignore_Rule $rule  Ignore rule.
+	 * @param Exception_Rule $rule  Exception rule.
 	 * @return bool True if matches scope.
 	 */
-	private static function matches_scope(Issue $issue, Ignore_Rule $rule): bool {
+	private static function matches_scope(Issue $issue, Exception_Rule $rule): bool {
 		$scope = $rule->scope;
 		$scope_type = $scope['scope_type'] ?? '';
 
@@ -237,10 +211,10 @@ class Ignore_Matcher_Service {
 	 * Check if issue matches rule's target.
 	 *
 	 * @param Issue      $issue Issue to check.
-	 * @param Ignore_Rule $rule  Ignore rule.
+	 * @param Exception_Rule $rule  Exception rule.
 	 * @return array|null Match result or null if no match.
 	 */
-	private static function matches_target(Issue $issue, Ignore_Rule $rule): ?array {
+	private static function matches_target(Issue $issue, Exception_Rule $rule): ?array {
 		$target_type = $rule->target_type;
 
 		switch ($target_type) {
@@ -262,10 +236,10 @@ class Ignore_Matcher_Service {
 	 * Match: Rule only (any element with this rule).
 	 *
 	 * @param Issue      $issue Issue to check.
-	 * @param Ignore_Rule $rule  Ignore rule.
+	 * @param Exception_Rule $rule  Exception rule.
 	 * @return array|null Match result or null.
 	 */
-	private static function matches_rule_only(Issue $issue, Ignore_Rule $rule): ?array {
+	private static function matches_rule_only(Issue $issue, Exception_Rule $rule): ?array {
 		$rule_ids = $rule->rule_ids ?? [];
 
 		if (empty($rule_ids)) {
@@ -287,10 +261,10 @@ class Ignore_Matcher_Service {
 	 * Match: Rule on specific element.
 	 *
 	 * @param Issue      $issue Issue to check.
-	 * @param Ignore_Rule $rule  Ignore rule.
+	 * @param Exception_Rule $rule  Exception rule.
 	 * @return array|null Match result or null.
 	 */
-	private static function matches_rule_on_element(Issue $issue, Ignore_Rule $rule): ?array {
+	private static function matches_rule_on_element(Issue $issue, Exception_Rule $rule): ?array {
 		$rule_ids = $rule->rule_ids ?? [];
 
 		if (empty($rule_ids) || !in_array($issue->rule_id, $rule_ids, true)) {
@@ -310,10 +284,10 @@ class Ignore_Matcher_Service {
 	 * Match: Element only (all rules on this element).
 	 *
 	 * @param Issue      $issue Issue to check.
-	 * @param Ignore_Rule $rule  Ignore rule.
+	 * @param Exception_Rule $rule  Exception rule.
 	 * @return array|null Match result or null.
 	 */
-	private static function matches_element_only(Issue $issue, Ignore_Rule $rule): ?array {
+	private static function matches_element_only(Issue $issue, Exception_Rule $rule): ?array {
 		$element_match = $rule->element_match ?? [];
 
 		if (empty($element_match)) {
@@ -523,15 +497,15 @@ class Ignore_Matcher_Service {
 	}
 
 	/**
-	 * Calculate impact preview for an ignore rule.
+	 * Calculate impact preview for an exception rule.
 	 *
 	 * Returns the number of issues and pages that would be affected.
 	 *
-	 * @param Ignore_Rule $rule  Ignore rule to preview.
+	 * @param Exception_Rule $rule  Exception rule to preview.
 	 * @param int         $site_id Site ID.
 	 * @return array Impact data with issues and pages count.
 	 */
-	public static function calculate_impact(Ignore_Rule $rule, int $site_id): array {
+	public static function calculate_impact(Exception_Rule $rule, int $site_id): array {
 		global $wpdb;
 
 		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');

@@ -92,6 +92,33 @@ function cleanupOccurrenceFixture() {
 			`
 		]);
 	}
+	wp([
+		'eval',
+		`
+			$prefix = $GLOBALS['wpdb']->prefix . 'cleara11y_';
+			$rule_ids = $GLOBALS['wpdb']->get_col(
+				"SELECT id FROM {$prefix}exception_rules
+				WHERE scope LIKE '%cleara11y-issues-explorer-fixture%'"
+			);
+			foreach ($rule_ids as $rule_id) {
+				$GLOBALS['wpdb']->delete(
+					$prefix . 'issue_exception_matches',
+					['exception_rule_id' => $rule_id],
+					['%s']
+				);
+				$GLOBALS['wpdb']->delete(
+					$prefix . 'exception_audit_log',
+					['exception_rule_id' => $rule_id],
+					['%s']
+				);
+				$GLOBALS['wpdb']->delete(
+					$prefix . 'exception_rules',
+					['id' => $rule_id],
+					['%s']
+				);
+			}
+		`
+	]);
 	if (fixturePostId) {
 		wp(['post', 'delete', String(fixturePostId), '--force']);
 	}
@@ -124,23 +151,62 @@ async function rescanOccurrenceFixture(page) {
 }
 
 async function login(page) {
-	await page.goto('/wp-login.php');
-	await page.locator('#loginform').evaluate(form => {
-		form.action = window.location.origin + '/wp-login.php';
-	});
-	await page.locator('input[name="redirect_to"]').evaluate(
-		(input, value) => { input.value = value; },
-		new URL('/wp-admin/', page.url()).href
-	);
-	await page.getByLabel('Username or Email Address').fill(process.env.CLEARA11Y_ADMIN_USER || 'admin');
-	await page.locator('#user_pass').fill(process.env.CLEARA11Y_ADMIN_PASSWORD || 'password');
-	await page.getByRole('button', {name: 'Log In'}).click();
-	await expect(page).toHaveURL(/wp-admin/);
+	for (let attempt = 0; attempt < 2; attempt++) {
+		await page.goto('/wp-login.php');
+		await page.locator('#loginform').evaluate(form => {
+			form.action = window.location.origin + '/wp-login.php';
+		});
+		await page.locator('input[name="redirect_to"]').evaluate(
+			(input, value) => { input.value = value; },
+			new URL('/wp-admin/', page.url()).href
+		);
+		await page.locator('#user_login').fill(process.env.CLEARA11Y_ADMIN_USER || 'admin');
+		await page.locator('#user_pass').fill(process.env.CLEARA11Y_ADMIN_PASSWORD || 'password');
+		await Promise.all([
+			page.waitForLoadState('domcontentloaded'),
+			page.getByRole('button', {name: 'Log In'}).click()
+		]);
+		if (/\/wp-admin\//.test(page.url())) {
+			return;
+		}
+	}
+	throw new Error('Could not log in to the disposable WordPress test site.');
 }
 
 async function waitForResults(page) {
 	await expect(page.locator('#cleara11y-issues-container'))
 		.not.toHaveAttribute('aria-busy', 'true');
+}
+
+async function createRulePageException(page, {ruleId, durationType, note, expiresAt = ''}) {
+	await page.goto('/wp-admin/admin.php?page=cleara11y-exceptions');
+	await page.getByRole('link', {name: 'Create Exception'}).click();
+	const dialog = page.getByRole('dialog', {name: 'Create Exception'});
+
+	await dialog.locator('#cleara11y-rule-search').fill(ruleId);
+	await dialog.locator('#cleara11y-rule-search').focus();
+	await dialog.locator('#cleara11y-rule-options button').filter({hasText: ruleId}).first().click();
+	await dialog.getByRole('button', {name: 'Next'}).click();
+	await dialog.getByRole('radio', {name: /Single Page/i}).check();
+	await dialog.locator('#cleara11y-page-search').fill('ClearA11y Issues Explorer Fixture');
+	await dialog.locator('#cleara11y-page-search').focus();
+	await dialog.locator('#cleara11y-page-options button')
+		.filter({hasText: 'ClearA11y Issues Explorer Fixture'})
+		.first()
+		.click();
+	await dialog.getByRole('button', {name: 'Next'}).click();
+	await dialog.locator(`input[name="duration_type"][value="${durationType}"]`).check();
+	if (expiresAt) {
+		await dialog.locator('#cleara11y-expires-at').fill(expiresAt);
+	}
+	await dialog.getByRole('button', {name: 'Next'}).click();
+	await dialog.locator('#cleara11y-reason-category').selectOption('accepted_risk');
+	await dialog.locator('#cleara11y-note').fill(note);
+	await dialog.getByRole('button', {name: 'Next'}).click();
+	await dialog.getByRole('button', {name: 'Create Exception'}).click();
+	await expect(dialog).toBeHidden();
+
+	return page.locator('#cleara11y-exceptions-table-body tr').filter({hasText: note}).first();
 }
 
 test.beforeEach(async ({page}) => {
@@ -347,6 +413,139 @@ test('page report finding opens a prefilled wizard and saves', async ({page}) =>
 			.first()
 	).toBeVisible();
 });
+
+test('exception lifecycle controls disable, enable, and revoke without losing audit state', async ({page}) => {
+	const note = 'Lifecycle controls E2E test.';
+	let exceptionRow = await createRulePageException(page, {
+		ruleId: 'button-name',
+		durationType: 'permanent',
+		note
+	});
+	await expect(exceptionRow).toBeVisible();
+
+	page.once('dialog', dialog => dialog.accept());
+	await exceptionRow.getByRole('button', {name: 'Disable'}).click();
+	await expect(exceptionRow).toBeHidden();
+
+	await page.locator('.nav-tab[data-tab="disabled"]').click();
+	exceptionRow = page.locator('#cleara11y-exceptions-table-body tr')
+		.filter({hasText: note})
+		.first();
+	await expect(exceptionRow).toBeVisible();
+	await exceptionRow.getByRole('button', {name: 'Enable'}).click();
+	await expect(exceptionRow).toBeHidden();
+
+	await page.locator('.nav-tab[data-tab="active"]').click();
+	exceptionRow = page.locator('#cleara11y-exceptions-table-body tr')
+		.filter({hasText: note})
+		.first();
+	await expect(exceptionRow).toBeVisible();
+	page.once('dialog', dialog => dialog.accept());
+	await exceptionRow.getByRole('button', {name: 'Revoke'}).click();
+	await expect(exceptionRow).toBeHidden();
+
+	await page.locator('.nav-tab[data-tab="revoked"]').click();
+	await expect(
+		page.locator('#cleara11y-exceptions-table-body tr')
+			.filter({hasText: note})
+			.first()
+	).toBeVisible();
+
+	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=active&ruleId=button-name&groupBy=none');
+	await waitForResults(page);
+	await expect(page.locator('[data-occurrence-row]').first()).toBeVisible();
+});
+
+test('legacy finding falls back to an explicit rule-on-page exception', async ({page}) => {
+	wp([
+		'eval',
+		`$GLOBALS['wpdb']->update(
+			$GLOBALS['wpdb']->prefix . 'cleara11y_issues',
+			[
+				'element_identity_v2' => null,
+				'violation_identity_v2' => null,
+				'identity_signature_version' => null,
+			],
+			['post_id' => ${fixturePostId}, 'rule_id' => 'button-name'],
+			['%s', '%s', '%d'],
+			['%d', '%s']
+		);`
+	]);
+
+	await page.goto('/wp-admin/admin.php?page=cleara11y-page-report&post_id=' + fixturePostId);
+	const issueCard = page.locator('.cleara11y-issue-card').filter({hasText: 'button-name'}).first();
+	await issueCard.getByRole('button', {name: 'Create exception…'}).click();
+
+	const dialog = page.getByRole('dialog', {name: 'Create Exception'});
+	await expect(dialog.getByRole('radio', {name: /Rule Only/i})).toBeChecked();
+	await expect(dialog.getByRole('radio', {name: /Rule on Element/i})).toBeDisabled();
+	await expect(dialog.locator('#cleara11y-occurrence-fallback-notice')).toBeVisible();
+	await dialog.getByRole('button', {name: 'Next'}).click();
+	await dialog.getByRole('button', {name: 'Next'}).click();
+	await dialog.getByRole('button', {name: 'Next'}).click();
+	await dialog.locator('#cleara11y-reason-category').selectOption('accepted_risk');
+	await dialog.locator('#cleara11y-note').fill('Legacy finding fallback E2E test.');
+	await dialog.getByRole('button', {name: 'Next'}).click();
+	await dialog.getByRole('button', {name: 'Create Exception'}).click();
+	await expect(dialog).toBeHidden();
+
+	await page.goto('/wp-admin/admin.php?page=cleara11y-exceptions');
+	const exceptionRow = page.locator('#cleara11y-exceptions-table-body tr')
+		.filter({hasText: 'Legacy finding fallback E2E test.'})
+		.first();
+	await expect(exceptionRow).toContainText('rule');
+	await expect(exceptionRow).toContainText('cleara11y-issues-explorer-fixture');
+});
+
+test('duration choices persist and date-based expiration is enforced', async ({page}) => {
+	const future = new Date(Date.now() + 24 * 60 * 60 * 1000)
+		.toISOString()
+		.slice(0, 16);
+	let exceptionRow = await createRulePageException(page, {
+		ruleId: 'color-contrast',
+		durationType: 'until_date',
+		note: 'Date expiration E2E test.',
+		expiresAt: future
+	});
+	await expect(exceptionRow).toBeVisible();
+	await expect(exceptionRow).toContainText('Until:');
+	const exceptionId = await exceptionRow.getByRole('button', {name: 'Revoke'}).getAttribute('data-id');
+	expect(exceptionId).toBeTruthy();
+
+	wp([
+		'eval',
+		`$GLOBALS['wpdb']->update(
+			$GLOBALS['wpdb']->prefix . 'cleara11y_exception_rules',
+			['expires_at' => '2000-01-01 00:00:00'],
+			['id' => '${exceptionId}'],
+			['%s'],
+			['%s']
+		);`
+	]);
+
+	await page.reload();
+	await page.locator('.nav-tab[data-tab="expired"]').click();
+	exceptionRow = page.locator('#cleara11y-exceptions-table-body tr')
+		.filter({hasText: 'Date expiration E2E test.'})
+		.first();
+	await expect(exceptionRow).toBeVisible();
+
+	exceptionRow = await createRulePageException(page, {
+		ruleId: 'image-alt',
+		durationType: 'until_content_changes',
+		note: 'Content change duration E2E test.'
+	});
+	await expect(exceptionRow).toBeVisible();
+	await expect(exceptionRow).toContainText('Until content changes');
+});
+
+test.fixme(
+	'content-change duration expires after the selected WordPress content changes',
+	async () => {
+		// The UI and persistence support this duration, but the scanner does not
+		// yet store a content revision or expire the exception when it changes.
+	}
+);
 
 test('narrow view presents occurrence detail as the primary content', async ({page}) => {
 	await page.setViewportSize({width: 600, height: 900});

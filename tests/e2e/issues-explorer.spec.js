@@ -242,12 +242,12 @@ test('reviewed exception wizard preserves occurrence context and updates the exp
 	const dialog = page.getByRole('dialog', {name: 'Create Exception'});
 	await expect(dialog).toBeVisible();
 	await expect(dialog.getByRole('radio', {name: /Rule on Element/i})).toBeChecked();
-	await expect(dialog.locator('#cleara11y-rule-ids')).toHaveValue('button-name');
+	await expect(dialog.locator('#cleara11y-selected-rules')).toContainText('button-name');
 	await expect(dialog.locator('#cleara11y-css-selector')).not.toHaveValue('');
 
 	await dialog.getByRole('button', {name: 'Next'}).click();
 	await expect(dialog.getByRole('radio', {name: /Single Page/i})).toBeChecked();
-	await expect(dialog.locator('#cleara11y-scope-url')).not.toHaveValue('');
+	await expect(dialog.locator('#cleara11y-selected-page')).toContainText('ClearA11y Issues Explorer Fixture');
 	await dialog.getByRole('radio', {name: /Content Types/i}).check();
 	await expect(dialog.locator('input[name="post_types"][value="page"]')).toBeChecked();
 	await dialog.getByRole('radio', {name: /Single Page/i}).check();
@@ -284,6 +284,68 @@ test('reviewed exception wizard preserves occurrence context and updates the exp
 	await expect(page.locator('[data-occurrence-row]').first()).toBeVisible();
 	await page.getByRole('button', {name: 'View details'}).first().click();
 	await expect(page.getByText('Current exception').first()).toBeVisible();
+});
+
+test('standalone wizard searches rules and pages and persists the exception', async ({page}) => {
+	await page.goto('/wp-admin/admin.php?page=cleara11y-exceptions');
+	await page.getByRole('link', {name: 'Create Exception'}).click();
+
+	const dialog = page.getByRole('dialog', {name: 'Create Exception'});
+	await expect(dialog.getByRole('radio', {name: /Rule Only/i})).toBeChecked();
+	await expect(dialog.getByRole('radio', {name: /Rule on Element/i})).toBeDisabled();
+
+	await dialog.locator('#cleara11y-rule-search').fill('image-alt');
+	await dialog.locator('#cleara11y-rule-search').focus();
+	await dialog.locator('#cleara11y-rule-options button').filter({hasText: 'image-alt'}).first().click();
+	await expect(dialog.locator('#cleara11y-selected-rules')).toContainText('image-alt');
+	await dialog.getByRole('button', {name: 'Next'}).click();
+
+	await dialog.getByRole('radio', {name: /Single Page/i}).check();
+	await dialog.locator('#cleara11y-page-search').fill('ClearA11y Issues Explorer Fixture');
+	await dialog.locator('#cleara11y-page-search').focus();
+	await dialog.locator('#cleara11y-page-options button').filter({hasText: 'ClearA11y Issues Explorer Fixture'}).first().click();
+	await expect(dialog.locator('#cleara11y-selected-page')).toContainText('ClearA11y Issues Explorer Fixture');
+	await dialog.getByRole('button', {name: 'Next'}).click();
+
+	await dialog.getByRole('radio', {name: /Permanent/i}).check();
+	await dialog.getByRole('button', {name: 'Next'}).click();
+	await dialog.locator('#cleara11y-reason-category').selectOption('accepted_risk');
+	await dialog.locator('#cleara11y-note').fill('Standalone searchable wizard persistence test.');
+	await dialog.getByRole('button', {name: 'Next'}).click();
+	await dialog.getByRole('button', {name: 'Create Exception'}).click();
+	await expect(dialog).toBeHidden();
+
+	const exceptionRow = page.locator('#cleara11y-exceptions-table-body tr')
+		.filter({hasText: 'image-alt'})
+		.filter({hasText: 'Standalone searchable wizard persistence test.'})
+		.first();
+	await expect(exceptionRow).toBeVisible();
+});
+
+test('page report finding opens a prefilled wizard and saves', async ({page}) => {
+	await page.goto('/wp-admin/admin.php?page=cleara11y-page-report&post_id=' + fixturePostId);
+	const issueCard = page.locator('.cleara11y-issue-card').filter({hasText: 'color-contrast'}).first();
+	await issueCard.getByRole('button', {name: 'Create exception…'}).click();
+
+	const dialog = page.getByRole('dialog', {name: 'Create Exception'});
+	await expect(dialog.locator('#cleara11y-selected-rules')).toContainText('color-contrast');
+	await dialog.getByRole('button', {name: 'Next'}).click();
+	await expect(dialog.locator('#cleara11y-selected-page')).toContainText('ClearA11y Issues Explorer Fixture');
+	await dialog.getByRole('button', {name: 'Next'}).click();
+	await dialog.getByRole('button', {name: 'Next'}).click();
+	await dialog.locator('#cleara11y-reason-category').selectOption('accepted_risk');
+	await dialog.locator('#cleara11y-note').fill('Created directly from a scan finding.');
+	await dialog.getByRole('button', {name: 'Next'}).click();
+	await dialog.getByRole('button', {name: 'Create Exception'}).click();
+	await expect(dialog).toBeHidden();
+
+	await page.goto('/wp-admin/admin.php?page=cleara11y-exceptions');
+	await expect(
+		page.locator('#cleara11y-exceptions-table-body tr')
+			.filter({hasText: 'color-contrast'})
+			.filter({hasText: 'Created directly from a scan finding.'})
+			.first()
+	).toBeVisible();
 });
 
 test('narrow view presents occurrence detail as the primary content', async ({page}) => {

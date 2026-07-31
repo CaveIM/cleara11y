@@ -756,10 +756,19 @@ class Issue_Repository {
 		if ('page' === $type) {
 			return $wpdb->get_results(
 				$wpdb->prepare(
-					"SELECT post_id AS id, MAX(COALESCE(NULLIF(post_title, ''), post_url)) AS label
-					FROM `{$items_table}`
-					WHERE post_title LIKE %s OR post_url LIKE %s
-					GROUP BY post_id ORDER BY label ASC LIMIT %d",
+					"SELECT current_item.post_id AS id,
+						COALESCE(NULLIF(current_item.post_title, ''), current_item.post_url) AS label,
+						current_item.post_url AS url,
+						current_item.post_type AS post_type
+					FROM `{$items_table}` current_item
+					INNER JOIN (
+						SELECT post_id, MAX(id) AS latest_id
+						FROM `{$items_table}`
+						WHERE post_id > 0
+						GROUP BY post_id
+					) latest ON latest.latest_id = current_item.id
+					WHERE current_item.post_title LIKE %s OR current_item.post_url LIKE %s
+					ORDER BY label ASC LIMIT %d",
 					$term,
 					$term,
 					$limit
@@ -816,6 +825,9 @@ class Issue_Repository {
 			'finding_type' => ('incomplete' === ($row['result_type'] ?? '') || 'review' === $row['rule_type']) ? 'review' : 'violation',
 			'status' => ! empty($row['is_exception']) ? 'exception' : 'active',
 			'resembles_exception' => ! empty($row['resembles_exception']),
+			'can_anchor_exception' => ! empty($row['violation_identity_v2'])
+				&& ! empty($row['element_identity_v2'])
+				&& ! empty($row['identity_signature_version']),
 			'message' => (string) ($row['message'] ?? ''),
 			'help_text' => (string) ($row['help_text'] ?? ''),
 			'selector' => $row['selector'] ?: null,

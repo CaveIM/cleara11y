@@ -393,11 +393,16 @@
 		}
 		window.cleara11yWizard.open({
 			violation_id: id,
-			target_type: 'rule_on_element',
+			target_type: item.can_anchor_exception ? 'rule_on_element' : 'rule',
 			rule_ids: [item.rule.id],
 			element_match: {css_selector: item.selector || ''},
 			scope: {scope_type: 'page', url: item.page.url},
-			context: {post_type: item.page.post_type || ''},
+			context: {
+				page_id: item.page.id,
+				page_title: item.page.title,
+				post_type: item.page.post_type || '',
+				occurrence_fallback: !item.can_anchor_exception
+			},
 			duration: {duration_type: 'permanent'},
 			note: item.message || ''
 		});

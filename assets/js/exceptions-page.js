@@ -81,7 +81,9 @@
 		initDOM();
 		initTabs();
 		initFilters();
-		loadRules();
+		if ($tbody.length) {
+			loadRules();
+		}
 
 		// Event listeners for row actions
 		$(document).on('click', '.cleara11y-view-exception', viewException);
@@ -93,6 +95,26 @@
 		$('#cleara11y-create-exception').on('click', function(e) {
 			e.preventDefault();
 			openCreateWizard();
+		});
+		$(document).on('click', '[data-cleara11y-create-exception]', function(e) {
+			e.preventDefault();
+			const button = this;
+			const canAnchor = button.dataset.canAnchor === '1';
+			openCreateWizard({
+				violation_id: Number(button.dataset.occurrenceId || 0),
+				target_type: canAnchor ? 'rule_on_element' : 'rule',
+				rule_ids: [button.dataset.ruleId],
+				element_match: {css_selector: button.dataset.selector || ''},
+				scope: {scope_type: 'page', url: button.dataset.pageUrl || ''},
+				context: {
+					page_id: Number(button.dataset.pageId || 0),
+					page_title: button.dataset.pageTitle || '',
+					post_type: button.dataset.postType || '',
+					occurrence_fallback: !canAnchor
+				},
+				duration: {duration_type: 'permanent'},
+				note: button.dataset.message || ''
+			});
 		});
 	});
 
@@ -560,6 +582,9 @@
 		resetWizard();
 		wizardState.editingId = editingId;
 		wizardState.data = $.extend(true, {}, wizardState.data, initialData || {});
+		if (!wizardState.data.target_type) {
+			wizardState.data.target_type = 'rule';
+		}
 		renderWizardModal();
 		hydrateWizard();
 		showWizardStep(1);
@@ -584,6 +609,13 @@
 	function hydrateWizard() {
 		const data = wizardState.data;
 		const contextPostType = data.context?.post_type || '';
+		const occurrenceSpecific = Boolean(data.violation_id) && !data.context?.occurrence_fallback;
+		$('input[name="target_type"][value="element"], input[name="target_type"][value="rule_on_element"]')
+			.prop('disabled', !occurrenceSpecific);
+		$('#cleara11y-occurrence-target-help').toggle(!occurrenceSpecific);
+		if (data.context?.occurrence_fallback) {
+			$('#cleara11y-occurrence-fallback-notice').prop('hidden', false);
+		}
 		if (
 			contextPostType
 			&& !$('input[name="post_types"]').filter(function() {
@@ -602,14 +634,14 @@
 		if (data.target_type) {
 			$('input[name="target_type"][value="' + data.target_type + '"]').prop('checked', true).trigger('change');
 		}
-		$('#cleara11y-rule-ids').val((data.rule_ids || []).join(', '));
+		renderSelectedRules();
 		if (data.element_match?.css_selector) {
 			$('input[name="element_match_type"][value="css_selector"]').prop('checked', true).trigger('change');
 			$('#cleara11y-css-selector').val(data.element_match.css_selector);
 		}
 		if (data.scope?.scope_type) {
 			$('input[name="scope_type"][value="' + data.scope.scope_type + '"]').prop('checked', true).trigger('change');
-			$('#cleara11y-scope-url').val(data.scope.url || '');
+			renderSelectedPage();
 			$('#cleara11y-scope-patterns').val((data.scope.patterns || []).join(', '));
 			(data.scope.post_types || []).forEach(type => {
 				$('input[name="post_types"][value="' + type + '"]').prop('checked', true);
@@ -728,11 +760,23 @@
 								</div>
 							</label>
 						</div>
+						<p id="cleara11y-occurrence-target-help" class="description">
+							Element-specific exceptions start from a detected finding. Use Create exception on a finding to select one.
+						</p>
+						<div id="cleara11y-occurrence-fallback-notice" class="notice notice-warning inline" hidden>
+							<p>This older finding does not have stable element identity. This exception will apply to the selected rule on this page.</p>
+						</div>
 
 						<div id="cleara11y-rule-ids-section" style="display: none; margin-top: 20px;">
-							<label for="cleara11y-rule-ids"><strong>Accessibility Rules:</strong></label>
-							<input type="text" id="cleara11y-rule-ids" class="regular-text" placeholder="e.g., color-contrast, image-alt">
-							<p class="description">Enter rule IDs separated by commas. Leave empty to match all rules.</p>
+							<label for="cleara11y-rule-search"><strong>Accessibility rules:</strong></label>
+							<div class="cleara11y-picker">
+								<input type="search" id="cleara11y-rule-search" role="combobox" aria-autocomplete="list"
+									aria-controls="cleara11y-rule-options" aria-expanded="false" autocomplete="off"
+									placeholder="Search rules by name or ID">
+								<ul id="cleara11y-rule-options" class="cleara11y-picker__options" role="listbox" hidden></ul>
+							</div>
+							<div id="cleara11y-selected-rules" class="cleara11y-picker__selected" aria-live="polite"></div>
+							<p class="description">Select one or more rules. Their technical IDs are shown for clarity.</p>
 						</div>
 
 						<div id="cleara11y-element-section" style="display: none; margin-top: 20px;">
@@ -797,8 +841,15 @@
 						</div>
 
 						<div id="cleara11y-scope-page-section" style="display: none; margin-top: 20px;">
-							<label for="cleara11y-scope-url"><strong>Page URL:</strong></label>
-							<input type="text" id="cleara11y-scope-url" class="large-text" placeholder="https://example.com/page">
+							<label for="cleara11y-page-search"><strong>Page or content:</strong></label>
+							<div class="cleara11y-picker">
+								<input type="search" id="cleara11y-page-search" role="combobox" aria-autocomplete="list"
+									aria-controls="cleara11y-page-options" aria-expanded="false" autocomplete="off"
+									placeholder="Search scanned pages, posts, or other content">
+								<ul id="cleara11y-page-options" class="cleara11y-picker__options" role="listbox" hidden></ul>
+							</div>
+							<div id="cleara11y-selected-page" class="cleara11y-picker__selected" aria-live="polite"></div>
+							<p class="description">The page URL is filled from the selected scanned content.</p>
 						</div>
 
 						<div id="cleara11y-scope-content-type-section" style="display: none; margin-top: 20px;">
@@ -973,8 +1024,26 @@
 			updateNextButtonState();
 		});
 
-		// Step 1: Rule IDs input
-		$('#cleara11y-rule-ids').on('input', updateNextButtonState);
+		setupWizardPicker('rule', $('#cleara11y-rule-search'), $('#cleara11y-rule-options'));
+		setupWizardPicker('page', $('#cleara11y-page-search'), $('#cleara11y-page-options'));
+		$('#cleara11y-selected-rules').on('click', '[data-remove-rule]', function() {
+			const ruleId = String($(this).data('removeRule'));
+			wizardState.data.rule_ids = (wizardState.data.rule_ids || []).filter(id => id !== ruleId);
+			renderSelectedRules();
+			updateNextButtonState();
+			$('#cleara11y-rule-search').trigger('focus');
+		});
+		$('#cleara11y-selected-page').on('click', '[data-remove-page]', function() {
+			wizardState.data.scope.url = '';
+			wizardState.data.context = $.extend({}, wizardState.data.context, {
+				page_id: 0,
+				page_title: '',
+				post_type: ''
+			});
+			renderSelectedPage();
+			updateNextButtonState();
+			$('#cleara11y-page-search').trigger('focus');
+		});
 
 		// Step 1: Element match changes
 		$('input[name="element_match_type"]').on('change', function() {
@@ -999,7 +1068,7 @@
 			}
 			updateNextButtonState();
 		});
-		$('#cleara11y-scope-url, #cleara11y-scope-patterns').on('input', updateNextButtonState);
+		$('#cleara11y-scope-patterns').on('input', updateNextButtonState);
 		$('input[name="post_types"]').on('change', updateNextButtonState);
 
 		// Step 3: Duration type changes
@@ -1012,6 +1081,138 @@
 		// Step 4: Reason changes
 		$('#cleara11y-reason-category').on('change', updateNextButtonState);
 		$('#cleara11y-note').on('input', updateNextButtonState);
+	}
+
+	function setupWizardPicker(type, $input, $list) {
+		let timer;
+		$input.on('focus', function() {
+			loadWizardOptions(type, $input, $list);
+		});
+		$input.on('input', function() {
+			window.clearTimeout(timer);
+			timer = window.setTimeout(function() {
+				loadWizardOptions(type, $input, $list);
+			}, 250);
+		});
+		$input.on('keydown', function(event) {
+			if (event.key === 'ArrowDown' && !$list.prop('hidden')) {
+				event.preventDefault();
+				$list.find('button').first().trigger('focus');
+			} else if (event.key === 'Escape') {
+				hideWizardOptions($input, $list);
+			}
+		});
+		$list.on('keydown', function(event) {
+			const buttons = $list.find('button').toArray();
+			const index = buttons.indexOf(document.activeElement);
+			if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+				event.preventDefault();
+				const next = event.key === 'ArrowDown'
+					? Math.min(buttons.length - 1, index + 1)
+					: Math.max(0, index - 1);
+				buttons[next]?.focus();
+			} else if (event.key === 'Escape') {
+				hideWizardOptions($input, $list);
+				$input.trigger('focus');
+			}
+		});
+		$list.on('click', 'button[data-option-id]', function() {
+			const option = this.dataset;
+			if (type === 'rule') {
+				const selected = new Set(wizardState.data.rule_ids || []);
+				selected.add(option.optionId);
+				wizardState.data.rule_ids = Array.from(selected);
+				renderSelectedRules();
+			} else {
+				wizardState.data.scope.url = option.optionUrl || '';
+				wizardState.data.context = $.extend({}, wizardState.data.context, {
+					page_id: Number(option.optionId || 0),
+					page_title: option.optionLabel || '',
+					post_type: option.optionPostType || ''
+				});
+				renderSelectedPage();
+			}
+			$input.val('');
+			hideWizardOptions($input, $list);
+			updateNextButtonState();
+			$input.trigger('focus');
+		});
+	}
+
+	function loadWizardOptions(type, $input, $list) {
+		const endpoint = cleara11yExceptions.apiUrl.replace(/exceptions\/?$/, '')
+			+ 'issues/filter-options?'
+			+ $.param({type: type, search: $input.val()});
+		$.ajax({
+			url: endpoint,
+			method: 'GET',
+			beforeSend: function(xhr) {
+				xhr.setRequestHeader('X-WP-Nonce', cleara11yExceptions.nonce);
+			},
+			success: function(response) {
+				const options = response.options || [];
+				if (!options.length) {
+					$list.html('<li class="description">No matches found.</li>');
+				} else {
+					$list.empty();
+					options.forEach(function(option) {
+						const $button = $('<button>', {
+							type: 'button',
+							'data-option-id': String(option.id),
+							'data-option-label': option.label,
+							'data-option-url': option.url || '',
+							'data-option-post-type': option.post_type || ''
+						});
+						$button.append($('<span>').text(option.label));
+						if (type === 'rule') {
+							$button.append($('<code>').text(option.id));
+						} else if (option.post_type) {
+							$button.append($('<small>').text(option.post_type));
+						}
+						$list.append($('<li>', {role: 'option'}).append($button));
+					});
+				}
+				$list.prop('hidden', false);
+				$input.attr('aria-expanded', 'true');
+			}
+		});
+	}
+
+	function hideWizardOptions($input, $list) {
+		$list.prop('hidden', true);
+		$input.attr('aria-expanded', 'false');
+	}
+
+	function renderSelectedRules() {
+		const $selected = $('#cleara11y-selected-rules').empty();
+		(wizardState.data.rule_ids || []).forEach(function(ruleId) {
+			const title = ruleTitles[ruleId] || ruleId;
+			const $item = $('<span>', {class: 'cleara11y-picker__selection'});
+			$item.append($('<span>').text(title + ' (' + ruleId + ')'));
+			$item.append($('<button>', {
+				type: 'button',
+				'data-remove-rule': ruleId,
+				'aria-label': 'Remove ' + ruleId
+			}).text('×'));
+			$selected.append($item);
+		});
+	}
+
+	function renderSelectedPage() {
+		const $selected = $('#cleara11y-selected-page').empty();
+		const url = wizardState.data.scope?.url || '';
+		if (!url) {
+			return;
+		}
+		const label = wizardState.data.context?.page_title || url;
+		const $item = $('<span>', {class: 'cleara11y-picker__selection'});
+		$item.append($('<span>').text(label));
+		$item.append($('<button>', {
+			type: 'button',
+			'data-remove-page': '1',
+			'aria-label': 'Remove selected page'
+		}).text('×'));
+		$selected.append($item);
 	}
 
 	function showWizardStep(step) {
@@ -1061,8 +1262,7 @@
 				if (!targetType) return false;
 
 				if (targetType === 'rule' || targetType === 'rule_on_element') {
-					const ruleIds = $('#cleara11y-rule-ids').val().trim();
-					if (!ruleIds) return false;
+					if (!(wizardState.data.rule_ids || []).length) return false;
 				}
 
 				if (targetType === 'element' || targetType === 'rule_on_element') {
@@ -1077,7 +1277,7 @@
 				const scopeType = $('input[name="scope_type"]:checked').val();
 				if (!scopeType) return false;
 
-				if (scopeType === 'page' && !$('#cleara11y-scope-url').val().trim()) return false;
+				if (scopeType === 'page' && !wizardState.data.scope?.url) return false;
 				if (scopeType === 'content_type' && !$('input[name="post_types"]:checked').length) return false;
 				if (scopeType === 'url_pattern' && !$('#cleara11y-scope-patterns').val().trim()) return false;
 				return true;
@@ -1102,7 +1302,6 @@
 		switch(step) {
 			case 1:
 				wizardState.data.target_type = $('input[name="target_type"]:checked').val();
-				wizardState.data.rule_ids = $('#cleara11y-rule-ids').val().split(',').map(s => s.trim()).filter(s => s);
 
 				const matchType = $('input[name="element_match_type"]:checked').val();
 				if (matchType === 'css_selector') {
@@ -1118,10 +1317,11 @@
 
 			case 2:
 				const scopeType = $('input[name="scope_type"]:checked').val();
+				const selectedPageUrl = wizardState.data.scope?.url || '';
 				wizardState.data.scope = { scope_type: scopeType };
 
 				if (scopeType === 'page') {
-					wizardState.data.scope.url = $('#cleara11y-scope-url').val().trim();
+					wizardState.data.scope.url = selectedPageUrl;
 				} else if (scopeType === 'content_type') {
 					wizardState.data.scope.post_types = $('input[name="post_types"]:checked').map(function() {
 						return $(this).val();
@@ -1256,13 +1456,22 @@
 				xhr.setRequestHeader('X-WP-Nonce', cleara11yExceptions.nonce);
 			},
 			success: function(response) {
+				const successMessage = wizardState.editingId ? 'Exception updated successfully.' : str('createSuccess');
 				closeWizard();
-				loadRules();
-				$('#cleara11y-create-exception').after(
+				if ($tbody.length) {
+					loadRules();
+				}
+				const $notice = $(
 					'<div class="notice notice-success is-dismissible" style="margin: 20px 0;">' +
-					'<p>' + esc_html(wizardState.editingId ? 'Exception updated successfully.' : str('createSuccess')) + '</p>' +
+					'<p>' + esc_html(successMessage) + '</p>' +
 					'</div>'
 				);
+				const $createLink = $('#cleara11y-create-exception');
+				if ($createLink.length) {
+					$createLink.after($notice);
+				} else {
+					$('.wrap h1').first().after($notice);
+				}
 				setTimeout(function() {
 					$('.notice.is-dismissible').fadeOut(function() {
 						$(this).remove();

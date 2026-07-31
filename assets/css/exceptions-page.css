@@ -421,6 +421,93 @@
 	color: #d63638;
 }
 
+.cleara11y-radio-card input[type="radio"]:disabled + .cleara11y-radio-card-content {
+	cursor: not-allowed;
+	opacity: 0.6;
+}
+
+.cleara11y-picker {
+	position: relative;
+}
+
+.cleara11y-picker input[type="search"] {
+	display: block;
+	width: 100%;
+}
+
+.cleara11y-picker__options {
+	position: absolute;
+	z-index: 10;
+	top: 100%;
+	right: 0;
+	left: 0;
+	max-height: 220px;
+	margin: 2px 0 0;
+	padding: 4px;
+	overflow-y: auto;
+	border: 1px solid #8c8f94;
+	border-radius: 4px;
+	background: #fff;
+	box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+.cleara11y-picker__options li {
+	margin: 0;
+}
+
+.cleara11y-picker__options button {
+	display: flex;
+	width: 100%;
+	padding: 8px 10px;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	border: 0;
+	background: transparent;
+	text-align: left;
+	cursor: pointer;
+}
+
+.cleara11y-picker__options button:hover,
+.cleara11y-picker__options button:focus {
+	background: #f0f6fc;
+	outline: 2px solid #2271b1;
+	outline-offset: -2px;
+}
+
+.cleara11y-picker__options code,
+.cleara11y-picker__options small {
+	flex: 0 0 auto;
+}
+
+.cleara11y-picker__selected {
+	display: flex;
+	margin-top: 8px;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.cleara11y-picker__selection {
+	display: inline-flex;
+	padding: 4px 6px 4px 10px;
+	align-items: center;
+	gap: 6px;
+	border: 1px solid #8c8f94;
+	border-radius: 4px;
+	background: #f6f7f7;
+}
+
+.cleara11y-picker__selection button {
+	min-width: 28px;
+	min-height: 28px;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	font-size: 20px;
+	line-height: 1;
+	cursor: pointer;
+}
+
 /* Wizard Review Section */
 .cleara11y-review-section {
 	padding: 15px;

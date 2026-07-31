@@ -198,6 +198,31 @@ class Page_Report {
 									</div>
 
 									<div class="cleara11y-issue-card-footer">
+										<?php if (current_user_can('manage_options')): ?>
+										<button
+											type="button"
+											class="button button-secondary"
+											data-cleara11y-create-exception
+											data-occurrence-id="<?php echo esc_attr($issue->id); ?>"
+											data-rule-id="<?php echo esc_attr($issue->rule_id); ?>"
+											data-selector="<?php echo esc_attr((string) $issue->selector); ?>"
+											data-page-id="<?php echo esc_attr($post_id); ?>"
+											data-page-title="<?php echo esc_attr($post->post_title); ?>"
+											data-page-url="<?php echo esc_url(get_permalink($post_id)); ?>"
+											data-post-type="<?php echo esc_attr($post->post_type); ?>"
+											data-message="<?php echo esc_attr((string) ($issue->message ?: $issue->help_text)); ?>"
+											data-can-anchor="<?php echo esc_attr(
+												! empty($issue->violation_identity_v2)
+												&& ! empty($issue->element_identity_v2)
+												&& ! empty($issue->identity_signature_version)
+													? '1'
+													: '0'
+											); ?>"
+										>
+											<?php esc_html_e('Create exception…', 'cleara11y'); ?>
+										</button>
+										<?php endif; ?>
+
 										<?php if ($issue->help_url): ?>
 										<a href="<?php echo esc_url($issue->help_url); ?>" target="_blank" rel="noopener" class="cleara11y-issue-help-link">
 											<span class="dashicons dashicons-info"></span>
@@ -299,5 +324,27 @@ class Page_Report {
 		}
 
 		wp_enqueue_style('cleara11y-page-report', CLEARA11Y_PLUGIN_URL . 'assets/css/page-report.css', [], CLEARA11Y_VERSION);
+		wp_enqueue_style(
+			'cleara11y-exceptions-page',
+			CLEARA11Y_PLUGIN_URL . 'assets/css/exceptions-page.css',
+			[],
+			CLEARA11Y_VERSION
+		);
+		wp_enqueue_script(
+			'cleara11y-exceptions-page',
+			CLEARA11Y_PLUGIN_URL . 'assets/js/exceptions-page.js',
+			['jquery', 'wp-api'],
+			CLEARA11Y_VERSION,
+			true
+		);
+		wp_localize_script(
+			'cleara11y-exceptions-page',
+			'cleara11yExceptions',
+			[
+				'apiUrl' => rest_url('cleara11y/v1/exceptions'),
+				'nonce' => wp_create_nonce('wp_rest'),
+				'strings' => Exceptions_Page::get_script_strings(),
+			]
+		);
 	}
 }

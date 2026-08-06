@@ -109,10 +109,15 @@
 
 		for (const entityType of entityTypes) {
 			const value = query[entityType.queryKey];
-			if (!value) continue;
-
 			const input = document.getElementById(entityType.inputId);
 			if (!input) continue;
+
+			if (!value) {
+				// No filter set - clear input and selectedId
+				input.value = '';
+				delete input.dataset.selectedId;
+				continue;
+			}
 
 			try {
 				// Fetch the options to find the label for this ID
@@ -464,6 +469,15 @@
 			let timer;
 			input.addEventListener('focus', () => loadOptions(type, input, list));
 			input.addEventListener('input', () => {
+				// Check if browser's X button was used to clear the input
+				if (input.dataset.selectedId && input.value === '') {
+					const key = type === 'page' ? 'pageId' : type === 'scan' ? 'scanId' : 'ruleId';
+					delete input.dataset.selectedId;
+					update({[key]: ''});
+					// Refresh dropdown to show all options
+					loadOptions(type, input, list);
+					return;
+				}
 				window.clearTimeout(timer);
 				timer = window.setTimeout(() => loadOptions(type, input, list), 250);
 			});

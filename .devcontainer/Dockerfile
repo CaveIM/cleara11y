@@ -17,6 +17,9 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 	&& node --version \
 	&& rm -rf /var/lib/apt/lists/*
 
+RUN npm install --global @openai/codex \
+	&& codex --version
+
 RUN curl -fsSL -o /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar \
 	&& chmod +x /usr/local/bin/wp \
 	&& wp --info --allow-root

@@ -3,7 +3,7 @@
 This devcontainer runs a disposable WordPress site for plugin development.
 
 - WordPress: http://localhost:8888
-- phpMyAdmin: http://localhost:8081
+- phpMyAdmin: http://localhost:8082
 - Admin user: `admin`
 - Admin password: `password`
 - Database user/password/name: `wordpress` / `wordpress` / `wordpress`
@@ -34,6 +34,12 @@ Node.js 20 and npm are installed for plugin build steps and OpenCode/Nifty plugi
 
 ```text
 /root/.npm
+```
+
+Codex CLI is installed globally. Its authentication and user configuration are persisted in a Docker volume mounted at:
+
+```text
+/root/.codex
 ```
 
 OpenCode is installed in the container. Its auth, sessions, state, config, and installed plugin data are persisted in Docker volumes mounted at:

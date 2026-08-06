@@ -137,6 +137,16 @@
 	outline: 2px solid #2271b1;
 }
 
+.cleara11y-entity-options button[aria-selected="true"] {
+	background: #e8f0f7;
+	font-weight: 600;
+}
+
+.cleara11y-entity-options button[aria-selected="true"]::after {
+	content: " ✓";
+	color: #2271b1;
+}
+
 .cleara11y-master-detail {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr);
@@ -162,8 +172,6 @@
 }
 
 .cleara11y-group-toggle {
-	display: flex;
-	justify-content: space-between;
 	width: 100%;
 	padding: 12px 16px;
 	border: 0;
@@ -181,6 +189,10 @@
 
 .cleara11y-group-toggle[aria-expanded="false"]::before {
 	content: "▸";
+}
+
+.cleara11y-group-toggle .count {
+	float: inline-end;
 }
 
 .cleara11y-result-list {

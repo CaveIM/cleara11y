@@ -94,7 +94,11 @@ class Issues_List_Page {
 					</label>
 					<button type="button" class="button" id="cleara11y-clear-filters"><?php esc_html_e('Clear filters', 'cleara11y'); ?></button>
 				</div>
-				<details class="cleara11y-more-filters">
+				<?php
+				// Check if any entity filters are active (ruleId, pageId, scanId)
+				$has_active_entity_filters = isset($_GET['ruleId']) || isset($_GET['pageId']) || isset($_GET['scanId']);
+				?>
+				<details class="cleara11y-more-filters"<?php echo $has_active_entity_filters ? ' open' : ''; ?>>
 					<summary><?php esc_html_e('More filters', 'cleara11y'); ?></summary>
 					<div class="cleara11y-more-filters__grid">
 						<?php self::render_entity_filter('rule', __('Rule', 'cleara11y')); ?>

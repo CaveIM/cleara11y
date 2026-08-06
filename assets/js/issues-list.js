@@ -61,6 +61,7 @@
 				occurrenceId: undefined, resultsPage: 1
 			};
 			commit();
+				clearEntityFilterInputs();
 		});
 		el['prev-page'].addEventListener('click', () => update({resultsPage: Math.max(1, query.resultsPage - 1)}));
 		el['next-page'].addEventListener('click', () => update({resultsPage: query.resultsPage + 1}));
@@ -94,6 +95,60 @@
 		el['search-issues'].value = query.search;
 		el['group-by'].value = query.groupBy;
 		el.sort.value = query.sort;
+
+		// Sync entity filters from URL parameters
+		syncEntityFilters();
+	}
+
+	async function syncEntityFilters() {
+		const entityTypes = [
+			{ type: 'rule', queryKey: 'ruleId', inputId: 'cleara11y-rule-filter' },
+			{ type: 'page', queryKey: 'pageId', inputId: 'cleara11y-page-filter' },
+			{ type: 'scan', queryKey: 'scanId', inputId: 'cleara11y-scan-filter' }
+		];
+
+		for (const entityType of entityTypes) {
+			const value = query[entityType.queryKey];
+			if (!value) continue;
+
+			const input = document.getElementById(entityType.inputId);
+			if (!input) continue;
+
+			try {
+				// Fetch the options to find the label for this ID
+				const response = await fetch(API_URL + 'issues/filter-options?' + new URLSearchParams({
+					type: entityType.type,
+					search: '' // Get all options to find the match
+				}), {
+					headers: {'X-WP-Nonce': NONCE}
+				});
+
+				if (!response.ok) continue;
+
+				const options = (await response.json()).options || [];
+				const matchedOption = options.find(opt => String(opt.id) === String(value));
+
+				if (matchedOption) {
+					input.value = matchedOption.label;
+					input.dataset.selectedId = value; // Store the ID for reference
+				}
+			} catch (error) {
+				console.error('Failed to sync entity filter:', entityType.type, error);
+			}
+		}
+	}
+
+	function clearEntityFilterInputs() {
+		const entityTypes = ['rule', 'page', 'scan'];
+		entityTypes.forEach(type => {
+			const inputId = type === 'rule' ? 'cleara11y-rule-filter' :
+				type === 'page' ? 'cleara11y-page-filter' : 'cleara11y-scan-filter';
+			const input = document.getElementById(inputId);
+			if (input) {
+				input.value = '';
+				delete input.dataset.selectedId;
+			}
+		});
 	}
 
 	async function load(options) {
@@ -205,7 +260,7 @@
 		const id = 'cleara11y-group-' + (query.groupBy === 'page' ? first.page.id : safeId(first.rule.id));
 		return `<section class="cleara11y-result-group">
 			<h3><button type="button" class="cleara11y-group-toggle" aria-expanded="true" aria-controls="${id}">
-				<span>${escapeHtml(label)}</span><span>${items.length} on this page</span>
+				<span>${escapeHtml(label)}</span><span class="count">${items.length} on this page</span>
 			</button></h3>
 			<div id="${id}" class="cleara11y-result-list">${items.map(renderRow).join('')}</div>
 		</section>`;
@@ -456,8 +511,18 @@
 		});
 		if (!response.ok) return;
 		const options = (await response.json()).options || [];
+
+		// Get the currently selected value for this type
+		const queryKey = type === 'page' ? 'pageId' : type === 'scan' ? 'scanId' : 'ruleId';
+		const selectedValue = query[queryKey];
+
 		list.innerHTML = options.length
-			? options.map(option => `<li role="option"><button type="button" data-option-id="${escapeHtml(option.id)}">${escapeHtml(option.label)}</button></li>`).join('')
+			? options.map(option => {
+				const isSelected = String(option.id) === String(selectedValue);
+				const selectedAttr = isSelected ? ' aria-selected="true"' : '';
+				const selectedClass = isSelected ? ' class="selected"' : '';
+				return `<li role="option"${selectedAttr}${selectedClass}><button type="button" data-option-id="${escapeHtml(option.id)}">${escapeHtml(option.label)}</button></li>`;
+			}).join('')
 			: '<li class="description">No matches</li>';
 		list.hidden = false;
 		input.setAttribute('aria-expanded', 'true');

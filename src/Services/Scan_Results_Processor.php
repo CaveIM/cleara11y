@@ -190,7 +190,7 @@ class Scan_Results_Processor {
 		$scan_item->critical_issues = $severity_counts['critical'];
 		$scan_item->moderate_issues = $severity_counts['moderate'];
 		$scan_item->minor_issues = $severity_counts['minor'];
-		$scan_item->scanned_at = \current_time('mysql');
+		$scan_item->scanned_at = \current_time('mysql', true);
 
 		// Add scoring data to scan item
 		$scan_item->rules_checked = $scoring_data['total_rules'];
@@ -324,7 +324,7 @@ class Scan_Results_Processor {
 		// Update scan item with error status
 		$scan_item->status = 'failed';
 		$scan_item->error_message = $error_message;
-		$scan_item->scanned_at = \current_time('mysql');
+		$scan_item->scanned_at = \current_time('mysql', true);
 
 		Scan_Item_Repository::update($scan_item);
 
@@ -342,7 +342,7 @@ class Scan_Results_Processor {
 
 			if ($total_items === ($completed_items + $failed_items)) {
 				$scan->status = 'completed';
-				$scan->completed_at = \current_time('mysql');
+				$scan->completed_at = \current_time('mysql', true);
 				Scan_Repository::update($scan);
 
 			}
@@ -402,7 +402,7 @@ class Scan_Results_Processor {
 		if ($total_items === ($completed_items + $failed_items)) {
 			$scan->status = 'completed';
 
-			$scan->completed_at = \current_time('mysql');
+			$scan->completed_at = \current_time('mysql', true);
 		}
 
 		Scan_Repository::update($scan);

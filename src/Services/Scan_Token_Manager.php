@@ -101,8 +101,8 @@ class Scan_Token_Manager {
 		$scan->status = 'in_progress';
 		$scan->total_items = 1;
 		$scan->scanned_items = 0;
-		$scan->started_at = \current_time('mysql');
-		$scan->created_at = \current_time('mysql');
+		$scan->started_at = \current_time('mysql', true);
+		$scan->created_at = \current_time('mysql', true);
 
 		$scan_id = Scan_Repository::insert($scan);
 
@@ -128,7 +128,7 @@ class Scan_Token_Manager {
 		$scan_item->post_url = \get_permalink($post_id);
 		$scan_item->status = 'in_progress';
 		$scan_item->scan_method = 'client';
-		$scan_item->created_at = \current_time('mysql');
+		$scan_item->created_at = \current_time('mysql', true);
 
 		$scan_item_id = Scan_Item_Repository::insert($scan_item);
 
@@ -238,7 +238,7 @@ class Scan_Token_Manager {
 		$scan->status = 'pending';
 		$scan->total_items = count($post_ids);
 		$scan->scanned_items = 0;
-		$scan->created_at = \current_time('mysql');
+		$scan->created_at = \current_time('mysql', true);
 
 		$scan_id = Scan_Repository::insert($scan);
 
@@ -269,7 +269,7 @@ class Scan_Token_Manager {
 			$scan_item->post_url = \get_permalink($post_id);
 			$scan_item->status = 'pending';
 			$scan_item->scan_method = 'client';
-			$scan_item->created_at = \current_time('mysql');
+			$scan_item->created_at = \current_time('mysql', true);
 
 			$scan_item_id = Scan_Item_Repository::insert($scan_item);
 

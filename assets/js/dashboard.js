@@ -1348,7 +1348,7 @@
 							: `<span class="cleara11y-no-issues">None</span>`
 						}
 					</td>
-					<td>${this.formatDate(scan.created_at)}</td>
+					<td>${this.escapeHtml(scan.created_at_display || '')}</td>
 					<td>
 						<a class="button button-small" href="${scan.detail_url}">
 							View Details

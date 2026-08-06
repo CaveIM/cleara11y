@@ -74,7 +74,7 @@ class Scan_Orchestrator {
 		$scan->total_items = count($post_ids);
 		$scan->scanned_items = 0;
 		$scan->started_at = null;
-		$scan->created_at = \current_time('mysql');
+		$scan->created_at = \current_time('mysql', true);
 
 		$scan_id = Scan_Repository::insert($scan);
 
@@ -112,7 +112,7 @@ class Scan_Orchestrator {
 		// Update status to in_progress
 		if ($scan->status === 'pending') {
 			$scan->status = 'in_progress';
-			$scan->started_at = \current_time('mysql');
+			$scan->started_at = \current_time('mysql', true);
 			Scan_Repository::update($scan);
 		}
 
@@ -126,7 +126,7 @@ class Scan_Orchestrator {
 		if ($pending_count === 0 && $in_progress_count === 0) {
 			// Mark scan as complete
 			$scan->status = 'completed';
-			$scan->completed_at = \current_time('mysql');
+			$scan->completed_at = \current_time('mysql', true);
 			Scan_Repository::update($scan);
 
 			\do_action('cleara11y_scan_completed', $scan);
@@ -243,20 +243,72 @@ class Scan_Orchestrator {
 	public static function cancel_scan(int $scan_id): bool {
 		$scan = Scan_Repository::get_by_id($scan_id);
 
-		if (!$scan || in_array($scan->status, ['completed', 'failed'], true)) {
+		if (!$scan || ! in_array($scan->status, ['pending', 'in_progress'], true)) {
 			return false;
 		}
 
 		$scan->status = 'cancelled';
-		$scan->completed_at = \current_time('mysql');
+		$scan->completed_at = \current_time('mysql', true);
+		$reason = __('Scan cancelled by an administrator.', 'cleara11y');
+		global $wpdb;
+		$wpdb->query('START TRANSACTION');
 
-		// Mark all pending items as cancelled
-		$pending_items = Scan_Item_Repository::get_by_scan_id($scan_id, ['status' => 'pending']);
-		foreach ($pending_items as $item) {
-			Scan_Item_Repository::update_status($item->id, 'cancelled');
+		if (false === Job_Repository::cancel_by_scan_id($scan_id, $reason)) {
+			$wpdb->query('ROLLBACK');
+			return false;
 		}
 
-		return Scan_Repository::update($scan);
+		if (false === Scan_Item_Repository::cancel_incomplete_by_scan_id($scan_id, $reason)) {
+			$wpdb->query('ROLLBACK');
+			return false;
+		}
+
+		if (! Scan_Repository::update($scan)) {
+			$wpdb->query('ROLLBACK');
+			return false;
+		}
+
+		$wpdb->query('COMMIT');
+		return true;
+	}
+
+	/**
+	 * Reset active jobs and in-progress items for scans that can be resumed.
+	 *
+	 * @return array{jobs: int, items: int, scans: int} Reset counts.
+	 */
+	public static function reset_stuck_scans(): array {
+		$scans = Scan_Repository::get_all(
+			[
+				'status' => null,
+				'limit' => 100,
+			]
+		);
+		$counts = [
+			'jobs' => 0,
+			'items' => 0,
+			'scans' => 0,
+		];
+
+		foreach ($scans as $scan) {
+			if (! in_array($scan->status, ['pending', 'in_progress'], true)) {
+				continue;
+			}
+
+			$jobs = Job_Repository::reset_active_by_scan_id($scan->id);
+			$items = Scan_Item_Repository::reset_in_progress_by_scan_id($scan->id);
+			if (false === $jobs || false === $items) {
+				continue;
+			}
+
+			$counts['jobs'] += $jobs;
+			$counts['items'] += $items;
+			if ($jobs > 0 || $items > 0) {
+				$counts['scans']++;
+			}
+		}
+
+		return $counts;
 	}
 
 	/**
@@ -385,7 +437,7 @@ class Scan_Orchestrator {
 			$job->status = 'pending';
 			$job->priority = 10;
 			$job->attempts = 0;
-			$job->created_at = \current_time('mysql');
+			$job->created_at = \current_time('mysql', true);
 
 			$job_id = Job_Repository::insert($job);
 

@@ -234,7 +234,7 @@ class Scan_Item {
 		$item->minor_issues = (int) $row->minor_issues;
 		$item->error_message = $row->error_message ?? null;
 		$item->scanned_at = $row->scanned_at ?? null;
-		$item->created_at = $row->created_at ?? current_time('mysql');
+		$item->created_at = $row->created_at ?? current_time('mysql', true);
 
 		// Scoring fields
 		$item->rules_checked = isset($row->rules_checked) ? (int) $row->rules_checked : 0;

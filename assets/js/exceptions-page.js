@@ -1085,7 +1085,13 @@
 
 	function setupWizardPicker(type, $input, $list) {
 		let timer;
+		let request = null;
+		let suppressNextFocusLoad = false;
 		$input.on('focus', function() {
+			if (suppressNextFocusLoad) {
+				suppressNextFocusLoad = false;
+				return;
+			}
 			loadWizardOptions(type, $input, $list);
 		});
 		$input.on('input', function() {
@@ -1118,6 +1124,11 @@
 		});
 		$list.on('click', 'button[data-option-id]', function() {
 			const option = this.dataset;
+			window.clearTimeout(timer);
+			if (request) {
+				request.abort();
+				request = null;
+			}
 			if (type === 'rule') {
 				const selected = new Set(wizardState.data.rule_ids || []);
 				selected.add(option.optionId);
@@ -1135,47 +1146,54 @@
 			$input.val('');
 			hideWizardOptions($input, $list);
 			updateNextButtonState();
+			suppressNextFocusLoad = true;
 			$input.trigger('focus');
 		});
-	}
 
-	function loadWizardOptions(type, $input, $list) {
-		const endpoint = cleara11yExceptions.apiUrl.replace(/exceptions\/?$/, '')
-			+ 'issues/filter-options?'
-			+ $.param({type: type, search: $input.val()});
-		$.ajax({
-			url: endpoint,
-			method: 'GET',
-			beforeSend: function(xhr) {
-				xhr.setRequestHeader('X-WP-Nonce', cleara11yExceptions.nonce);
-			},
-			success: function(response) {
-				const options = response.options || [];
-				if (!options.length) {
-					$list.html('<li class="description">No matches found.</li>');
-				} else {
-					$list.empty();
-					options.forEach(function(option) {
-						const $button = $('<button>', {
-							type: 'button',
-							'data-option-id': String(option.id),
-							'data-option-label': option.label,
-							'data-option-url': option.url || '',
-							'data-option-post-type': option.post_type || ''
-						});
-						$button.append($('<span>').text(option.label));
-						if (type === 'rule') {
-							$button.append($('<code>').text(option.id));
-						} else if (option.post_type) {
-							$button.append($('<small>').text(option.post_type));
-						}
-						$list.append($('<li>', {role: 'option'}).append($button));
-					});
-				}
-				$list.prop('hidden', false);
-				$input.attr('aria-expanded', 'true');
+		function loadWizardOptions(type, $input, $list) {
+			const endpoint = cleara11yExceptions.apiUrl.replace(/exceptions\/?$/, '')
+				+ 'issues/filter-options?'
+				+ $.param({type: type, search: $input.val()});
+			if (request) {
+				request.abort();
 			}
-		});
+			request = $.ajax({
+				url: endpoint,
+				method: 'GET',
+				beforeSend: function(xhr) {
+					xhr.setRequestHeader('X-WP-Nonce', cleara11yExceptions.nonce);
+				},
+				success: function(response) {
+					const options = response.options || [];
+					if (!options.length) {
+						$list.html('<li class="description">No matches found.</li>');
+					} else {
+						$list.empty();
+						options.forEach(function(option) {
+							const $button = $('<button>', {
+								type: 'button',
+								'data-option-id': String(option.id),
+								'data-option-label': option.label,
+								'data-option-url': option.url || '',
+								'data-option-post-type': option.post_type || ''
+							});
+							$button.append($('<span>').text(option.label));
+							if (type === 'rule') {
+								$button.append($('<code>').text(option.id));
+							} else if (option.post_type) {
+								$button.append($('<small>').text(option.post_type));
+							}
+							$list.append($('<li>', {role: 'option'}).append($button));
+						});
+					}
+					$list.prop('hidden', false);
+					$input.attr('aria-expanded', 'true');
+				},
+				complete: function() {
+					request = null;
+				}
+			});
+		}
 	}
 
 	function hideWizardOptions($input, $list) {

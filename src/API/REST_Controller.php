@@ -964,7 +964,7 @@ class REST_Controller {
 		$scan->scan_name = $params['scan_name'] ?? null;
 		$scan->status = 'pending';
 		$scan->total_items = 0;
-		$scan->created_at = current_time('mysql');
+		$scan->created_at = current_time('mysql', true);
 
 		$scan_id = Scan_Repository::insert($scan);
 
@@ -1268,7 +1268,7 @@ class REST_Controller {
 		$scan->status = 'pending';
 		$scan->total_items = count($post_ids);
 		$scan->scanned_items = 0;
-		$scan->created_at = current_time('mysql');
+		$scan->created_at = current_time('mysql', true);
 
 		$scan_id = Scan_Repository::insert($scan);
 
@@ -1294,7 +1294,7 @@ class REST_Controller {
 			$scan_item->post_url = get_permalink($post_id);
 			$scan_item->status = 'pending';
 			$scan_item->scan_method = 'client';
-			$scan_item->created_at = current_time('mysql');
+			$scan_item->created_at = current_time('mysql', true);
 
 			Scan_Item_Repository::insert($scan_item);
 		}
@@ -1376,7 +1376,7 @@ class REST_Controller {
 					'scan_id' => $scan_id,
 					'status' => 'pending',
 					'priority' => $priority,
-					'created_at' => current_time('mysql'),
+					'created_at' => current_time('mysql', true),
 				],
 				['%d', '%s', '%d', '%d', '%s', '%d', '%s']
 			);
@@ -1394,7 +1394,7 @@ class REST_Controller {
 				$scans_table,
 				[
 					'status' => 'in_progress',
-					'started_at' => current_time('mysql'),
+					'started_at' => current_time('mysql', true),
 				],
 				['id' => $scan_id],
 				['%s', '%s'],
@@ -1604,18 +1604,11 @@ class REST_Controller {
 			);
 		}
 
-		// Update scan status to cancelled
-		Scan_Repository::update_status($scan_id, 'cancelled');
-
-		// Also cancel all pending items
-		global $wpdb;
-		$table = \ClearA11y\Database\Schema::get_table_name('scan_items');
-		$wpdb->query(
-			$wpdb->prepare(
-				"UPDATE `{$table}` SET status = 'cancelled' WHERE scan_id = %d AND status = 'pending'",
-				$scan_id
-			)
-		);
+		if (! \ClearA11y\Services\Scan_Orchestrator::cancel_scan($scan_id)) {
+			return rest_ensure_response(
+				new \WP_Error('cancel_failed', 'Scan could not be cancelled.', ['status' => 500])
+			);
+		}
 
 		return rest_ensure_response([
 			'message' => 'Scan cancelled successfully.',
@@ -2511,7 +2504,7 @@ class REST_Controller {
 				$scans_table,
 				[
 					'status' => 'completed',
-					'completed_at' => current_time('mysql'),
+					'completed_at' => current_time('mysql', true),
 				],
 				[
 					'id' => $scan_id,
@@ -2573,7 +2566,7 @@ class REST_Controller {
 					'moderate_issues' => (int) $counts['moderate_issues'],
 					'minor_issues' => (int) $counts['minor_issues'],
 					'status' => ($finished >= $total) ? 'completed' : 'in_progress',
-					'completed_at' => ($finished >= $total) ? current_time('mysql') : null,
+					'completed_at' => ($finished >= $total) ? current_time('mysql', true) : null,
 				],
 				['id' => $scan_id],
 				['%d', '%d', '%d', '%d', '%d', '%s', '%s'],
@@ -2790,6 +2783,7 @@ class REST_Controller {
 				'status' => $scan->status,
 				'total_issues' => (int) $scan->total_issues,
 				'created_at' => $scan->created_at,
+				'created_at_display' => get_date_from_gmt($scan->created_at, 'M j, Y'),
 				'detail_url' => $detail_url,
 			];
 		}, $scans);

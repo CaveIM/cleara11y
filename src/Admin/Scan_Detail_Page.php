@@ -68,7 +68,11 @@ class Scan_Detail_Page {
 					<?php esc_html_e('View issues', 'cleara11y'); ?>
 				</a>
 			<?php endif; ?>
+			<?php if (in_array($scan->status, ['pending', 'in_progress'], true)) : ?>
+				<?php Scans_Page::render_cancel_form($scan, 'page-title-action'); ?>
+			<?php endif; ?>
 			<hr class="wp-header-end">
+			<?php Scans_Page::render_action_notice(); ?>
 
 			<?php self::render_summary($scan); ?>
 			<?php self::render_items_table($scan, $items, $page, $total_pages, $total_items); ?>

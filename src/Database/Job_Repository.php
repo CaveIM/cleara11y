@@ -55,7 +55,7 @@ class Job_Repository {
 			'last_started_at' => $job->last_started_at,
 			'last_finished_at' => $job->last_finished_at,
 			'result_json' => $job->result_json,
-			'created_at' => $job->created_at ?? current_time('mysql'),
+			'created_at' => $job->created_at ?: current_time('mysql', true),
 		];
 
 		$result = $wpdb->insert(
@@ -176,7 +176,7 @@ class Job_Repository {
 		global $wpdb;
 
 		$table = self::get_table();
-		$expires_at = date('Y-m-d H:i:s', time() + $lease_seconds);
+		$expires_at = gmdate('Y-m-d H:i:s', time() + $lease_seconds);
 
 		// Find pending or expired jobs, ordered by priority
 		$jobs = $wpdb->get_results(
@@ -187,7 +187,7 @@ class Job_Repository {
 				ORDER BY priority DESC, id ASC
 				LIMIT %d",
 				$site_id,
-				current_time('mysql'),
+				current_time('mysql', true),
 				$limit
 			)
 		);
@@ -204,8 +204,6 @@ class Job_Repository {
 
 			// Lease the job
 			$job->lease($lease_token, $lease_seconds);
-			$job->attempts++; // Increment attempts on lease
-
 			// Update in database
 			$updated = $wpdb->update(
 				$table,
@@ -214,7 +212,7 @@ class Job_Repository {
 					'lease_token' => $lease_token,
 					'lease_expires_at' => $expires_at,
 					'attempts' => $job->attempts,
-					'last_started_at' => current_time('mysql'),
+					'last_started_at' => current_time('mysql', true),
 				],
 				['id' => $job->id],
 				['%s', '%s', '%s', '%d', '%s'],
@@ -249,7 +247,7 @@ class Job_Repository {
 		global $wpdb;
 
 		$table = self::get_table();
-		$new_expires = date('Y-m-d H:i:s', time() + $lease_seconds);
+		$new_expires = gmdate('Y-m-d H:i:s', time() + $lease_seconds);
 
 		// Verify lease token and update expiration
 		$updated = $wpdb->update(
@@ -297,7 +295,7 @@ class Job_Repository {
 			'status' => $status,
 			'lease_token' => null,
 			'lease_expires_at' => null,
-			'last_finished_at' => current_time('mysql'),
+			'last_finished_at' => current_time('mysql', true),
 		];
 
 		$data_format = ['%s', '%s', '%s', '%s'];
@@ -477,12 +475,15 @@ class Job_Repository {
 
 		// Also handle explicitly expired jobs
 		$updated_expired = $wpdb->query(
-			"UPDATE `{$table}`
-			SET status = 'pending',
-				lease_token = NULL,
-				lease_expires_at = NULL
-			WHERE status = 'active'
-			AND lease_expires_at < '" . current_time('mysql') . "'"
+			$wpdb->prepare(
+				"UPDATE `{$table}`
+				SET status = 'pending',
+					lease_token = NULL,
+					lease_expires_at = NULL
+				WHERE status = 'active'
+				AND lease_expires_at < %s",
+				current_time('mysql', true)
+			)
 		);
 
 		$total = (int) $updated + (int) $updated_expired;
@@ -491,6 +492,50 @@ class Job_Repository {
 		}
 
 		return $total;
+	}
+
+	/**
+	 * Reset active jobs for one scan so they can be leased again.
+	 *
+	 * @param int $scan_id Scan ID.
+	 * @return int|false Number of reset jobs, or false on failure.
+	 */
+	public static function reset_active_by_scan_id(int $scan_id): int|false {
+		global $wpdb;
+
+		return $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE `" . self::get_table() . "`
+				SET status = 'pending', lease_token = NULL, lease_expires_at = NULL,
+					last_error = %s
+				WHERE scan_id = %d AND status = 'active'",
+				__('Reset by an administrator after the worker stopped responding.', 'cleara11y'),
+				$scan_id
+			)
+		);
+	}
+
+	/**
+	 * Cancel unfinished jobs for a scan and invalidate their leases.
+	 *
+	 * @param int    $scan_id Scan ID.
+	 * @param string $reason  Cancellation reason.
+	 * @return int|false Number of cancelled jobs, or false on failure.
+	 */
+	public static function cancel_by_scan_id(int $scan_id, string $reason): int|false {
+		global $wpdb;
+
+		return $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE `" . self::get_table() . "`
+				SET status = 'cancelled', lease_token = NULL, lease_expires_at = NULL,
+					last_finished_at = %s, last_error = %s
+				WHERE scan_id = %d AND status IN ('pending', 'active')",
+				current_time('mysql', true),
+				$reason,
+				$scan_id
+			)
+		);
 	}
 
 	/**

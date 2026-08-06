@@ -168,7 +168,7 @@ class PHP_Bulk_Scanner {
 			$scan_item->critical_issues = 0;
 			$scan_item->moderate_issues = 0;
 			$scan_item->minor_issues = 0;
-			$scan_item->scanned_at = current_time('mysql');
+			$scan_item->scanned_at = current_time('mysql', true);
 
 			foreach ($issues as $issue) {
 				if ($issue->severity === 'critical') {

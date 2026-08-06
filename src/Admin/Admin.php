@@ -52,6 +52,37 @@ class Admin {
 		add_action('wp_ajax_cleara11y_save_scan_result', [$this, 'ajax_save_scan_result']);
 		add_action('wp_ajax_cleara11y_advance_scan', [$this, 'ajax_advance_scan']);
 		add_action('wp_ajax_cleara11y_stop_scan', [$this, 'ajax_stop_scan']);
+		add_action('admin_post_cleara11y_cancel_scan', [$this, 'handle_cancel_scan']);
+	}
+
+	/**
+	 * Cancel an active scan from an admin screen.
+	 *
+	 * @return void
+	 */
+	public function handle_cancel_scan(): void {
+		if (! current_user_can('manage_options')) {
+			wp_die(esc_html__('You do not have permission to cancel scans.', 'cleara11y'));
+		}
+
+		$scan_id = isset($_POST['scan_id']) ? absint(wp_unslash($_POST['scan_id'])) : 0;
+		if (!$scan_id) {
+			wp_die(esc_html__('Invalid scan ID.', 'cleara11y'));
+		}
+
+		check_admin_referer('cleara11y_cancel_scan_' . $scan_id);
+		$cancelled = \ClearA11y\Services\Scan_Orchestrator::cancel_scan($scan_id);
+		$redirect = wp_get_referer() ?: admin_url('admin.php?page=cleara11y-scans');
+		$redirect = add_query_arg(
+			[
+				'cleara11y_scan_notice' => $cancelled ? 'cancelled' : 'cancel_failed',
+				'cancelled_scan_id' => $scan_id,
+			],
+			$redirect
+		);
+
+		wp_safe_redirect($redirect);
+		exit;
 	}
 
 	/**
@@ -564,19 +595,17 @@ class Admin {
 
 		// Check if reset form was submitted
 		if (isset($_POST['cleara11y_reset_stuck']) && check_admin_referer('cleara11y_reset_stuck')) {
-			global $wpdb;
-			$items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
-			$scans_table = \ClearA11y\Database\Schema::get_table_name('scans');
-
-			$updated_items = $wpdb->query(
-				"UPDATE `{$items_table}` SET status = 'failed' WHERE status = 'in_progress'"
-			);
-			$updated_scans = $wpdb->query(
-				"UPDATE `{$scans_table}` SET status = 'failed' WHERE status = 'in_progress'"
-			);
+			$reset = \ClearA11y\Services\Scan_Orchestrator::reset_stuck_scans();
 
 			echo '<div class="notice notice-success is-dismissible"><p>';
-			echo sprintf('Reset %d stuck scan items and %d stuck scans.', $updated_items, $updated_scans);
+			echo esc_html(
+				sprintf(
+					__('Reset %1$d jobs and %2$d scan items across %3$d resumable scans.', 'cleara11y'),
+					$reset['jobs'],
+					$reset['items'],
+					$reset['scans']
+				)
+			);
 			echo '</p></div>';
 		}
 
@@ -630,7 +659,7 @@ class Admin {
 			</table>
 
 			<h2>Reset Stuck Scans</h2>
-			<p>Use this tool to reset scans that are stuck in "in_progress" status. This can happen if a scan was interrupted.</p>
+			<p>Use this tool to release active job leases and return interrupted work to the pending queue.</p>
 			<form method="post">
 				<?php wp_nonce_field('cleara11y_reset_stuck'); ?>
 				<input type="submit" name="cleara11y_reset_stuck" class="button button-primary" value="Reset Stuck Scans">

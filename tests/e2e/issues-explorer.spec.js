@@ -364,6 +364,8 @@ test('standalone wizard searches rules and pages and persists the exception', as
 	await dialog.locator('#cleara11y-rule-search').focus();
 	await dialog.locator('#cleara11y-rule-options button').filter({hasText: 'image-alt'}).first().click();
 	await expect(dialog.locator('#cleara11y-selected-rules')).toContainText('image-alt');
+	await page.waitForTimeout(300);
+	await expect(dialog.locator('#cleara11y-rule-options')).toBeHidden();
 	await dialog.getByRole('button', {name: 'Next'}).click();
 
 	await dialog.getByRole('radio', {name: /Single Page/i}).check();
@@ -371,6 +373,8 @@ test('standalone wizard searches rules and pages and persists the exception', as
 	await dialog.locator('#cleara11y-page-search').focus();
 	await dialog.locator('#cleara11y-page-options button').filter({hasText: 'ClearA11y Issues Explorer Fixture'}).first().click();
 	await expect(dialog.locator('#cleara11y-selected-page')).toContainText('ClearA11y Issues Explorer Fixture');
+	await page.waitForTimeout(300);
+	await expect(dialog.locator('#cleara11y-page-options')).toBeHidden();
 	await dialog.getByRole('button', {name: 'Next'}).click();
 
 	await dialog.getByRole('radio', {name: /Permanent/i}).check();
@@ -386,6 +390,51 @@ test('standalone wizard searches rules and pages and persists the exception', as
 		.filter({hasText: 'Standalone searchable wizard persistence test.'})
 		.first();
 	await expect(exceptionRow).toBeVisible();
+});
+
+test('scan list can cancel unfinished work and keeps the scan record', async ({page}) => {
+	const scanId = Number(wp([
+		'eval',
+		`
+			$scan = new \\ClearA11y\\Models\\Scan();
+			$scan->scan_name = 'Cancellation interface fixture';
+			$scan->status = 'in_progress';
+			$scan->total_items = 1;
+			$scan->started_at = current_time('mysql', true);
+			$scan->created_at = current_time('mysql', true);
+			$scan_id = \\ClearA11y\\Database\\Scan_Repository::insert($scan);
+			$item = new \\ClearA11y\\Models\\Scan_Item();
+			$item->scan_id = $scan_id;
+			$item->post_id = 1;
+			$item->post_url = home_url('/cancellation-interface-fixture/');
+			$item->post_title = 'Cancellation interface fixture';
+			$item->status = 'pending';
+			$item->scan_method = 'client';
+			$item->created_at = current_time('mysql', true);
+			\\ClearA11y\\Database\\Scan_Item_Repository::insert($item);
+			echo $scan_id;
+		`
+	]));
+
+	try {
+		await page.goto('/wp-admin/admin.php?page=cleara11y-scans');
+		const row = page.locator('tbody tr').filter({hasText: 'Cancellation interface fixture'}).first();
+		await expect(row).toBeVisible();
+		page.once('dialog', dialog => dialog.accept());
+		await row.getByRole('button', {name: 'Cancel scan'}).click();
+		await expect(page.getByText(`Scan #${scanId} was cancelled.`)).toBeVisible();
+		await expect(row).toContainText('Cancelled');
+
+		const state = JSON.parse(wp([
+			'eval',
+			`$scan = \\ClearA11y\\Database\\Scan_Repository::get_by_id(${scanId});
+			$item = \\ClearA11y\\Database\\Scan_Item_Repository::get_by_scan_id(${scanId})[0] ?? null;
+			echo wp_json_encode(['scan' => $scan->status, 'item' => $item?->status]);`
+		]));
+		expect(state).toEqual({scan: 'cancelled', item: 'cancelled'});
+	} finally {
+		wp(['eval', `\\ClearA11y\\Database\\Job_Repository::delete_by_scan_id(${scanId}); \\ClearA11y\\Database\\Scan_Repository::delete(${scanId});`]);
+	}
 });
 
 test('page report finding opens a prefilled wizard and saves', async ({page}) => {

@@ -331,7 +331,7 @@ class Metabox {
 		$scan->status = 'pending';
 		$scan->total_items = 1;
 		$scan->scanned_items = 0;
-		$scan->created_at = current_time('mysql');
+		$scan->created_at = current_time('mysql', true);
 
 		$scan_id = \ClearA11y\Database\Scan_Repository::insert($scan);
 
@@ -349,7 +349,7 @@ class Metabox {
 		$scan_item->post_url = get_permalink($post_id);
 		$scan_item->status = 'pending';
 		$scan_item->scan_method = 'client';
-		$scan_item->created_at = current_time('mysql');
+		$scan_item->created_at = current_time('mysql', true);
 
 		$scan_item_id = \ClearA11y\Database\Scan_Item_Repository::insert($scan_item);
 
@@ -372,7 +372,7 @@ class Metabox {
 				'scan_id' => $scan_id,
 				'status' => 'pending',
 				'priority' => 50, // Higher priority for individual scans
-				'created_at' => current_time('mysql'),
+				'created_at' => current_time('mysql', true),
 			],
 			['%d', '%s', '%d', '%d', '%s', '%d', '%s']
 		);
@@ -387,7 +387,7 @@ class Metabox {
 			\ClearA11y\Database\Schema::get_table_name('scans'),
 			[
 				'status' => 'in_progress',
-				'started_at' => current_time('mysql'),
+				'started_at' => current_time('mysql', true),
 			],
 			['id' => $scan_id],
 			['%s', '%s'],

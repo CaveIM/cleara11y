@@ -164,7 +164,7 @@ class Job {
 		$job->last_started_at = $row->last_started_at ?? null;
 		$job->last_finished_at = $row->last_finished_at ?? null;
 		$job->result_json = $row->result_json ?? null;
-		$job->created_at = $row->created_at ?? current_time('mysql');
+		$job->created_at = $row->created_at ?? current_time('mysql', true);
 		$job->updated_at = $row->updated_at ?? null;
 
 		return $job;
@@ -239,8 +239,8 @@ class Job {
 	public function lease(string $lease_token, int $lease_seconds = 180): void {
 		$this->status = 'active';
 		$this->lease_token = $lease_token;
-		$this->lease_expires_at = date('Y-m-d H:i:s', time() + $lease_seconds);
-		$this->last_started_at = current_time('mysql');
+		$this->lease_expires_at = gmdate('Y-m-d H:i:s', time() + $lease_seconds);
+		$this->last_started_at = current_time('mysql', true);
 		$this->attempts++;
 	}
 
@@ -251,7 +251,7 @@ class Job {
 	 * @return void
 	 */
 	public function extend_lease(int $lease_seconds = 180): void {
-		$this->lease_expires_at = date('Y-m-d H:i:s', time() + $lease_seconds);
+		$this->lease_expires_at = gmdate('Y-m-d H:i:s', time() + $lease_seconds);
 	}
 
 	/**
@@ -264,7 +264,7 @@ class Job {
 		$this->status = 'done';
 		$this->lease_token = null;
 		$this->lease_expires_at = null;
-		$this->last_finished_at = current_time('mysql');
+		$this->last_finished_at = current_time('mysql', true);
 		$this->result_json = $result_json;
 		$this->last_error = null;
 	}
@@ -279,7 +279,7 @@ class Job {
 		$this->status = 'failed';
 		$this->lease_token = null;
 		$this->lease_expires_at = null;
-		$this->last_finished_at = current_time('mysql');
+		$this->last_finished_at = current_time('mysql', true);
 		$this->last_error = $error;
 	}
 

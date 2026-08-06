@@ -156,7 +156,7 @@ class Dashboard_Page {
 												<span class="cleara11y-no-issues"><?php esc_html_e('None', 'cleara11y'); ?></span>
 											<?php endif; ?>
 										</td>
-										<td><?php echo esc_html(date('M j, Y', strtotime($scan->created_at))); ?></td>
+										<td><?php echo esc_html(get_date_from_gmt($scan->created_at, 'M j, Y')); ?></td>
 										<td>
 										<a class="button button-small" href="<?php echo esc_url(Scans_Page::get_detail_url($scan->id)); ?>">
 											<?php esc_html_e('View Details', 'cleara11y'); ?>

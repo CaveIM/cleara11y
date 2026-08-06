@@ -148,7 +148,7 @@ class Scan {
 		$scan->minor_issues = (int) $row->minor_issues;
 		$scan->started_at = $row->started_at ?? null;
 		$scan->completed_at = $row->completed_at ?? null;
-		$scan->created_at = $row->created_at ?? current_time('mysql');
+		$scan->created_at = $row->created_at ?? current_time('mysql', true);
 		$scan->updated_at = $row->updated_at ?? null;
 
 		return $scan;

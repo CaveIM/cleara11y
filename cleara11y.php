@@ -594,7 +594,7 @@ class ClearA11y_Plugin {
 		$scan->status = 'pending';
 		$scan->total_items = count($posts);
 		$scan->started_at = null; // Will be set when jobs are created
-		$scan->created_at = current_time('mysql');
+		$scan->created_at = current_time('mysql', true);
 
 		$scan_id = \ClearA11y\Database\Scan_Repository::insert($scan);
 
@@ -630,7 +630,7 @@ class ClearA11y_Plugin {
 			$scan_item->post_url = $url;
 			$scan_item->status = 'pending';
 			$scan_item->scan_method = 'client';
-			$scan_item->created_at = current_time('mysql');
+			$scan_item->created_at = current_time('mysql', true);
 
 			$scan_item_id = \ClearA11y\Database\Scan_Item_Repository::insert($scan_item);
 
@@ -664,7 +664,7 @@ class ClearA11y_Plugin {
 					'scan_id' => $scan_id,
 					'status' => 'pending',
 					'priority' => 10, // Lower priority for automated scans
-					'created_at' => current_time('mysql'),
+					'created_at' => current_time('mysql', true),
 				],
 				['%d', '%s', '%d', '%d', '%s', '%d', '%s']
 			);
@@ -689,7 +689,7 @@ class ClearA11y_Plugin {
 		// Update scan status to in_progress using existing repository
 		$scan->id = $scan_id;
 		$scan->status = 'in_progress';
-		$scan->started_at = current_time('mysql');
+		$scan->started_at = current_time('mysql', true);
 
 		$update_result = \ClearA11y\Database\Scan_Repository::update($scan);
 

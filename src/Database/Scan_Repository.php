@@ -52,7 +52,7 @@ class Scan_Repository {
 			'minor_issues' => $scan->minor_issues,
 			'started_at' => $scan->started_at,
 			'completed_at' => $scan->completed_at,
-			'created_at' => $scan->created_at ?? current_time('mysql'),
+			'created_at' => $scan->created_at ?: current_time('mysql', true),
 		];
 
 		$result = $wpdb->insert(

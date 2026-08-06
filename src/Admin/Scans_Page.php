@@ -49,6 +49,7 @@ class Scans_Page {
 		<div class="wrap cleara11y-scans-wrap">
 			<h1 class="wp-heading-inline"><?php esc_html_e('Scans', 'cleara11y'); ?></h1>
 			<hr class="wp-header-end">
+			<?php self::render_action_notice(); ?>
 
 			<form method="get" class="cleara11y-scans-filters" style="margin: 20px 0; padding: 15px; background: #fff; border: 1px solid #c3c4c7; box-shadow: 0 1px 1px rgba(0,0,0,.04);">
 				<input type="hidden" name="page" value="cleara11y-scans">
@@ -194,6 +195,9 @@ class Scans_Page {
 					<?php if ($scan->total_issues > 0) : ?>
 						<span class="view-issues"> | <a href="<?php echo esc_url(Issues_List_Page::get_url(['scanId' => $scan->id, 'groupBy' => 'rule'])); ?>"><?php esc_html_e('View issues', 'cleara11y'); ?></a></span>
 					<?php endif; ?>
+					<?php if (in_array($scan->status, ['pending', 'in_progress'], true)) : ?>
+						<span aria-hidden="true"> | </span><?php self::render_cancel_form($scan); ?>
+					<?php endif; ?>
 				</div>
 			</td>
 			<td><?php echo esc_html(self::format_label($scan->scan_type)); ?></td>
@@ -203,6 +207,55 @@ class Scans_Page {
 			<td><?php echo esc_html(self::format_date($scan->created_at)); ?></td>
 			<td><?php echo esc_html($scan->completed_at ? self::format_date($scan->completed_at) : '-'); ?></td>
 		</tr>
+		<?php
+	}
+
+	/**
+	 * Render a nonce-protected scan cancellation form.
+	 *
+	 * @param Scan   $scan         Scan record.
+	 * @param string $button_class Button CSS classes.
+	 * @return void
+	 */
+	public static function render_cancel_form(Scan $scan, string $button_class = 'button-link-delete'): void {
+		if (! in_array($scan->status, ['pending', 'in_progress'], true)) {
+			return;
+		}
+
+		$confirm = __('Cancel this scan? Completed results will be kept, but unfinished jobs will be stopped.', 'cleara11y');
+		?>
+		<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display: inline;" onsubmit="return window.confirm(<?php echo esc_attr(wp_json_encode($confirm)); ?>);">
+			<input type="hidden" name="action" value="cleara11y_cancel_scan">
+			<input type="hidden" name="scan_id" value="<?php echo esc_attr((string) $scan->id); ?>">
+			<?php wp_nonce_field('cleara11y_cancel_scan_' . $scan->id); ?>
+			<button type="submit" class="<?php echo esc_attr($button_class); ?>">
+				<?php esc_html_e('Cancel scan', 'cleara11y'); ?>
+			</button>
+		</form>
+		<?php
+	}
+
+	/**
+	 * Render the result of an admin scan action.
+	 *
+	 * @return void
+	 */
+	public static function render_action_notice(): void {
+		$notice = isset($_GET['cleara11y_scan_notice']) ? sanitize_key(wp_unslash($_GET['cleara11y_scan_notice'])) : '';
+		$scan_id = isset($_GET['cancelled_scan_id']) ? absint(wp_unslash($_GET['cancelled_scan_id'])) : 0;
+		if (! $notice || ! $scan_id) {
+			return;
+		}
+
+		if ('cancelled' === $notice) {
+			$message = sprintf(__('Scan #%d was cancelled. Completed results were kept.', 'cleara11y'), $scan_id);
+			$class = 'notice notice-success is-dismissible';
+		} else {
+			$message = sprintf(__('Scan #%d could not be cancelled.', 'cleara11y'), $scan_id);
+			$class = 'notice notice-error';
+		}
+		?>
+		<div class="<?php echo esc_attr($class); ?>"><p><?php echo esc_html($message); ?></p></div>
 		<?php
 	}
 
@@ -315,7 +368,7 @@ class Scans_Page {
 			return '-';
 		}
 
-		return date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($date));
+		return get_date_from_gmt($date, get_option('date_format') . ' ' . get_option('time_format'));
 	}
 
 	/**

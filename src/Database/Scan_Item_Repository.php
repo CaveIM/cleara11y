@@ -49,7 +49,7 @@ class Scan_Item_Repository {
 			'minor_issues' => $item->minor_issues,
 			'error_message' => $item->error_message,
 			'scanned_at' => $item->scanned_at,
-			'created_at' => $item->created_at ?? current_time('mysql'),
+			'created_at' => $item->created_at ?: current_time('mysql', true),
 			// Scoring fields
 			'rules_checked' => $item->rules_checked ?? 0,
 			'rules_passed' => $item->rules_passed ?? 0,
@@ -298,6 +298,47 @@ class Scan_Item_Repository {
 	}
 
 	/**
+	 * Reset in-progress items for one scan so they can be retried.
+	 *
+	 * @param int $scan_id Scan ID.
+	 * @return int|false Number of reset items, or false on failure.
+	 */
+	public static function reset_in_progress_by_scan_id(int $scan_id): int|false {
+		global $wpdb;
+
+		return $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE `" . self::get_table() . "`
+				SET status = 'pending', error_message = %s
+				WHERE scan_id = %d AND status = 'in_progress'",
+				__('Reset by an administrator after the worker stopped responding.', 'cleara11y'),
+				$scan_id
+			)
+		);
+	}
+
+	/**
+	 * Cancel unfinished items for one scan.
+	 *
+	 * @param int    $scan_id Scan ID.
+	 * @param string $reason  Cancellation reason.
+	 * @return int|false Number of cancelled items, or false on failure.
+	 */
+	public static function cancel_incomplete_by_scan_id(int $scan_id, string $reason): int|false {
+		global $wpdb;
+
+		return $wpdb->query(
+			$wpdb->prepare(
+				"UPDATE `" . self::get_table() . "`
+				SET status = 'cancelled', error_message = %s
+				WHERE scan_id = %d AND status IN ('pending', 'in_progress')",
+				$reason,
+				$scan_id
+			)
+		);
+	}
+
+	/**
 	 * Get count of scan items by status for a scan.
 	 *
 	 * @param int         $scan_id Scan ID.
@@ -371,7 +412,7 @@ class Scan_Item_Repository {
 			$item->post_url = get_permalink($post_id);
 			$item->status = 'pending';
 			$item->scan_method = 'client';
-			$item->created_at = current_time('mysql');
+			$item->created_at = current_time('mysql', true);
 
 			self::insert($item);
 		}

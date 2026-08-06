@@ -83,9 +83,14 @@
 ## Nifty Workflow
 
 - Use Nifty tools, not shell commands, for Nifty operations.
+- This repository maps to the Nifty project **ClearA11y Plugin Dev** (`CPD`), project ID `9CF4AkWeGBWgW!`. Do not use the separate **ClearA11y App Dev** project for repository work.
 - Use workflow alias `plugin` for this project.
-- The plugin workflow states are `Ideas`, `Shaped`, `Planned`, `Not Now`, `To Do`, `In Progress`, `Review`, `Dogfood`, `Ready to Release`, and `Released`.
-- Add Nifty task comments for meaningful progress, blockers, verification results, and completion notes when working from a Nifty task.
+- The active plugin task statuses and their Nifty IDs are: `Ideas` (`bQAQj_2iRN`), `Not Now` (`FbdrX4LJVJ`), `To Do` (`_riaUPCsmeY!8p`), `In Progress` (`ICPyBpnOt5_KQ`), `Review` (`9hzvPgdAjo`), `Ready to Release` (`t75qKmRIPq`), and `Released` (`SENHfW6!dW`).
+- Move a task to the appropriate status as work progresses when working from a Nifty task. Re-query the project statuses before a move if Nifty rejects a stored ID or the workflow appears to have changed.
+- Keep the Nifty task updated while working: add comments for meaningful progress, implementation decisions, blockers, verification results, and completion notes.
+- Attach or link relevant evidence to the Nifty task when it helps review or documents the outcome, including before/after screenshots for UI changes, scan/report examples, and other useful artifacts. Do not post secrets, nonces, tokens, cookies, raw sensitive content, or disposable-site credentials.
+- When commits exist for the work, post their commit hashes and concise summaries to the Nifty task. Do not create commits solely to satisfy this documentation step; the repository rule requiring explicit user authorization to commit still applies.
+- Before completing or handing off a Nifty task, leave a final comment summarizing what changed, what verification was run, any remaining risks or follow-up work, and relevant screenshots or commit references.
 - Do not create unresolved open questions in Nifty task descriptions. Ask the user first.
 
 ## Files To Treat Carefully

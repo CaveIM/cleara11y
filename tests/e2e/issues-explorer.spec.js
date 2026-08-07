@@ -251,31 +251,37 @@ test('URL filters, grouping, and occurrence history are keyboard operable', asyn
 	await expect(page.getByRole('button', {name: 'View details'}).first()).toBeFocused();
 	await expect(page.locator('#cleara11y-detail-panel')).toBeHidden();
 
-	const group = page.locator('.cleara11y-group-toggle').first();
-	await group.click();
-	await expect(group).toHaveAttribute('aria-expanded', 'false');
-	await group.click();
-	await expect(group).toHaveAttribute('aria-expanded', 'true');
+	await expect(page.locator('.cleara11y-group-toggle')).toHaveCount(0);
+	await expect(page.locator('.cleara11y-secondary-groups').first()).toBeVisible();
 });
 
 test('group-aware rows remove repeated context and expose contextual actions', async ({page}) => {
 	await page.goto(`/wp-admin/admin.php?page=cleara11y-issues&pageId=${fixturePostId}&groupBy=page`);
 	await waitForResults(page);
 	const pageGroup = page.locator('.cleara11y-result-group').first();
-	await expect(pageGroup.locator('.cleara11y-group-toggle')).toContainText('ClearA11y Issues Explorer Fixture');
+	await expect(pageGroup.locator('.cleara11y-group-header h3')).toContainText('ClearA11y Issues Explorer Fixture');
 	await expect(pageGroup.locator('.cleara11y-group-header__path')).toContainText('/cleara11y-issues-explorer-fixture/');
-	await expect(pageGroup.getByRole('link', {name: 'View'})).toBeVisible();
+	await expect(pageGroup.getByRole('link', {name: 'View', exact: true})).toBeVisible();
 	await expect(pageGroup.getByRole('link', {name: 'Edit'})).toBeVisible();
 	await expect(pageGroup.locator('.count')).toHaveCount(0);
 
-	const pageRow = pageGroup.locator('[data-occurrence-row]').first();
-	await expect(pageRow.getByRole('button', {name: /View details for/})).toBeVisible();
+	const pageSecondaryGroup = pageGroup.locator('.cleara11y-secondary-group').first();
+	await expect(pageSecondaryGroup.locator('.cleara11y-secondary-header h4')).toBeVisible();
+	await expect(pageSecondaryGroup.locator('.cleara11y-secondary-header code')).toHaveCount(0);
+	await expect(pageSecondaryGroup.getByRole('link', {name: /View issue reference for/})).toBeVisible();
+	const pageRow = pageSecondaryGroup.locator('[data-occurrence-row]').first();
+	await expect(pageRow).toHaveAttribute('role', 'button');
+	await expect(pageRow).toHaveAttribute('aria-label', /View details for/);
 	await expect(pageRow.locator('.cleara11y-badge')).toHaveCount(0);
 	await expect(pageRow.locator('.screen-reader-text')).toContainText(/severity/i);
-	const selector = pageRow.locator('.cleara11y-selector');
+	const selector = pageRow.locator('.cleara11y-occurrence-identifier');
 	await expect(selector).toHaveAttribute('data-tooltip', (await selector.textContent()).trim());
 	await expect(pageRow.locator('.cleara11y-result-row__meta')).toHaveCount(0);
 	await expect(pageRow).not.toContainText('ClearA11y Issues Explorer Fixture');
+	const pageDividerGroup = pageGroup.locator('.cleara11y-secondary-group:not(:last-child)').first();
+	if (await pageDividerGroup.count()) {
+		expect(await pageDividerGroup.evaluate(node => getComputedStyle(node, '::after').left)).toBe('4px');
+	}
 	await page.locator('#cleara11y-include-exceptions').check();
 	await waitForResults(page);
 	await expect(page).toHaveURL(/includeExceptions=1/);
@@ -306,20 +312,53 @@ test('group-aware rows remove repeated context and expose contextual actions', a
 
 	await page.locator('#cleara11y-group-by').selectOption('rule');
 	await waitForResults(page);
-	const ruleGroup = page.locator('.cleara11y-result-group').filter({hasText: 'button-name'}).first();
-	await expect(ruleGroup.locator('.cleara11y-group-header__rule-id')).toHaveText('button-name');
-	const ruleRow = ruleGroup.locator('[data-occurrence-row]').first();
-	await expect(ruleRow.getByRole('button', {name: /View details for/})).toContainText('ClearA11y Issues Explorer Fixture');
-	await expect(ruleRow.locator('.cleara11y-result-row__meta')).toContainText('/cleara11y-issues-explorer-fixture/');
-	await expect(ruleRow.locator('.cleara11y-result-row__meta .cleara11y-truncated-value')).toHaveAttribute('tabindex', '0');
+	const ruleGroup = page.locator('.cleara11y-result-group').filter({
+		has: page.locator('.cleara11y-group-header h3', {hasText: 'Buttons must have discernible text'})
+	}).first();
+	await expect(ruleGroup.locator('.cleara11y-group-header__rule-id')).toHaveCount(0);
+	const ruleSecondaryGroup = ruleGroup.locator('.cleara11y-secondary-group').filter({hasText: 'ClearA11y Issues Explorer Fixture'}).first();
+	await expect(ruleSecondaryGroup.locator('.cleara11y-secondary-header h4')).toHaveText('ClearA11y Issues Explorer Fixture');
+	const secondaryPath = ruleSecondaryGroup.locator('.cleara11y-secondary-header .cleara11y-truncated-value');
+	await expect(secondaryPath).toContainText('/cleara11y-issues-explorer-fixture/');
+	await expect(secondaryPath).not.toHaveClass(/is-truncated/);
+	await expect(secondaryPath.locator('.cleara11y-truncated-value__text')).toHaveCSS('mask-image', 'none');
+	await expect(ruleSecondaryGroup.getByRole('link', {name: 'View', exact: true})).toBeVisible();
+	await expect(ruleSecondaryGroup.getByRole('link', {name: 'Edit'})).toBeVisible();
+	const ruleDividerLeft = await ruleSecondaryGroup.evaluate(node => {
+		const temporarySibling = node.cloneNode(false);
+		node.parentNode.append(temporarySibling);
+		const left = getComputedStyle(node, '::after').left;
+		temporarySibling.remove();
+		return left;
+	});
+	expect(ruleDividerLeft).toBe('0px');
+	const ruleRow = ruleSecondaryGroup.locator('[data-occurrence-row]').first();
+	const shortIdentifier = ruleRow;
+	await expect(shortIdentifier).not.toContainText('ClearA11y Issues Explorer Fixture');
+	const shortCode = shortIdentifier.locator('.cleara11y-selector');
+	await expect(shortCode).toHaveCSS('border-top-style', 'none');
+	await expect(shortCode).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+	await expect(shortCode).toHaveCSS('color', 'rgb(51, 51, 51)');
+	await expect(shortCode).toHaveCSS('text-decoration-line', 'none');
+	await expect(shortCode).not.toHaveClass(/is-truncated/);
+	await shortCode.hover();
+	expect(await shortCode.evaluate(node => getComputedStyle(node, '::after').display)).toBe('none');
 	await expect(ruleRow).not.toContainText('Element must have text that is visible to screen readers');
+	const confirmedRow = page.locator('[data-occurrence-row]:not(:has(.is-unconfirmed)):not(:has(.is-exception))').first();
+	const unconfirmedRow = page.locator('[data-occurrence-row]:has(.is-unconfirmed)').first();
+	if (await confirmedRow.count() && await unconfirmedRow.count()) {
+		const confirmedBox = await confirmedRow.boundingBox();
+		const unconfirmedBox = await unconfirmedRow.boundingBox();
+		expect(Math.abs(confirmedBox.height - unconfirmedBox.height)).toBeLessThan(1);
+	}
 
-	await ruleRow.click({position: {x: 8, y: 20}});
+	await shortCode.click();
 	await expect(page.locator('#cleara11y-detail-panel')).toHaveClass(/is-open/);
 	await page.getByRole('button', {name: /Close details/}).click();
 	await expect(page.locator('#cleara11y-detail-panel')).toBeHidden();
+	await expect(ruleRow).toBeFocused();
 
-	await ruleGroup.getByRole('link', {name: 'Issue reference'}).click();
+	await ruleGroup.getByRole('link', {name: 'View issue reference for button-name'}).click();
 	await expect(page).toHaveURL(/page=cleara11y-issue-reference.*ruleId=button-name/);
 	await expect(page.locator('#cleara11y-issue-search')).toHaveValue('button-name');
 	await expect(page.locator('.cleara11y-reference-item')).toHaveCount(1);
@@ -412,7 +451,11 @@ test('issue inspector becomes a full-width non-modal drawer on narrow screens', 
 	await expect(drawer).toHaveClass(/is-open/);
 	const drawerBounds = await drawer.boundingBox();
 	expect(drawerBounds.width).toBeCloseTo(500, 2);
-	await drawer.getByRole('button', {name: /Close details/}).focus();
+	const closeButton = drawer.getByRole('button', {name: /Close details/});
+	const closeBounds = await closeButton.boundingBox();
+	expect(closeBounds.x).toBeGreaterThan(drawerBounds.x + drawerBounds.width / 2);
+	await expect(drawer.getByRole('button', {name: 'Copy link'})).toHaveCount(0);
+	await page.locator('body').focus();
 	await page.keyboard.press('Escape');
 	await expect(drawer).toBeHidden();
 	await expect(details).toBeFocused();

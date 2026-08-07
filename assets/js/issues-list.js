@@ -17,6 +17,7 @@
 	let activeDetailTab = 'overview';
 	let detailCloseTimer = null;
 	let searchTimer = null;
+	let truncationTimer = null;
 
 	const el = {};
 	const byId = id => document.getElementById(id);
@@ -41,6 +42,10 @@
 		setupEntityFilters();
 		syncControls();
 		load();
+		window.addEventListener('resize', () => {
+			window.clearTimeout(truncationTimer);
+			truncationTimer = window.setTimeout(syncTruncatedValues, 100);
+		});
 		window.addEventListener('popstate', () => {
 			const previousQuery = query;
 			const nextQuery = Query.parse(window.location.href);
@@ -82,13 +87,13 @@
 		el['prev-page'].addEventListener('click', () => update({resultsPage: Math.max(1, query.resultsPage - 1)}));
 		el['next-page'].addEventListener('click', () => update({resultsPage: query.resultsPage + 1}));
 		el['issues-container'].addEventListener('click', handleResultsClick);
+		el['issues-container'].addEventListener('keydown', handleResultsKeydown);
 		el['detail-content'].addEventListener('click', handleDetailClick);
 		el['detail-content'].addEventListener('keydown', handleDetailKeydown);
 		document.addEventListener('keydown', event => {
 			if (
 				event.key === 'Escape'
 				&& el['detail-panel'].classList.contains('is-open')
-				&& el['detail-panel'].contains(document.activeElement)
 				&& !document.getElementById('cleara11y-wizard-modal')
 			) {
 				event.preventDefault();
@@ -315,33 +320,97 @@
 		el['next-page'].disabled = pagination.page >= pagination.total_pages;
 		el['page-info'].textContent = `Page ${pagination.page} of ${pagination.total_pages}`;
 		el['results-announcer'].textContent = `${data.summary.total_occurrences} issue occurrences found.`;
+		syncTruncatedValues();
 		syncSelectedRow();
+	}
+
+	function syncTruncatedValues() {
+		el['issues-container'].querySelectorAll('.cleara11y-truncated-value').forEach(value => {
+			const text = value.querySelector('.cleara11y-truncated-value__text');
+			const isTruncated = text && text.scrollWidth > text.clientWidth + 1;
+			value.classList.toggle('is-truncated', Boolean(isTruncated));
+		});
 	}
 
 	function renderGroup(items) {
 		const first = items[0];
 		const pageGroup = query.groupBy === 'page';
 		const label = pageGroup ? first.page.title : first.rule.title;
-		const id = 'cleara11y-group-' + (pageGroup ? first.page.id : safeId(first.rule.id));
 		const metadata = pageGroup
 			? pathname(first.page.url)
 			: first.rule.id;
 		const actions = pageGroup
-			? `<a class="button button-small" href="${escapeHtml(first.page.url)}" target="_blank" rel="noopener noreferrer">View</a>` +
-				(first.page.edit_url ? `<a class="button button-small" href="${escapeHtml(first.page.edit_url)}">Edit</a>` : '')
-			: `<a class="button button-small" href="${escapeHtml(first.rule.reference_url)}">Issue reference</a>`;
-		return `<section class="cleara11y-result-group">
+			? pageActions(first.page)
+			: ruleActions(first.rule);
+		const secondaryGroups = new Map();
+		items.forEach(item => {
+			const key = pageGroup ? item.rule.id : String(item.page.id);
+			if (!secondaryGroups.has(key)) secondaryGroups.set(key, []);
+			secondaryGroups.get(key).push(item);
+		});
+		const severityClass = pageGroup ? '' : ` severity-${escapeHtml(first.severity)}`;
+		return `<section class="cleara11y-result-group${severityClass}">
 			<header class="cleara11y-group-header">
 				<div class="cleara11y-group-header__identity">
-					<h3><button type="button" class="cleara11y-group-toggle" aria-expanded="true" aria-controls="${id}">${escapeHtml(label)}</button></h3>
+					<div class="cleara11y-group-header__title-line">
+						<h3>${escapeHtml(label)}</h3>
+					</div>
 					${pageGroup
 						? `<span class="cleara11y-group-header__path">${escapeHtml(metadata)}</span>`
-						: `<code class="cleara11y-group-header__rule-id">${escapeHtml(metadata)}</code>`}
+						: ''}
 				</div>
 				<div class="cleara11y-group-header__actions">${actions}</div>
 			</header>
-			<div id="${id}" class="cleara11y-result-list">${items.map(item => renderRow(item, query.groupBy)).join('')}</div>
+			<div class="cleara11y-secondary-groups">${Array.from(secondaryGroups.values()).map(group => renderSecondaryGroup(group, pageGroup)).join('')}</div>
 		</section>`;
+	}
+
+	function renderSecondaryGroup(items, pageGroup) {
+		const first = items[0];
+		const label = pageGroup ? first.rule.title : first.page.title;
+		const actions = pageGroup ? ruleActions(first.rule) : pageActions(first.page);
+		const severityClass = pageGroup ? ` severity-${escapeHtml(first.severity)}` : '';
+		return `<section class="cleara11y-secondary-group${severityClass}">
+			<header class="cleara11y-secondary-header">
+				<div class="cleara11y-secondary-header__identity">
+					<h4>${escapeHtml(label)}</h4>
+					${pageGroup ? '' : truncatedValue(pathname(first.page.url), 'Page path')}
+				</div>
+				<div class="cleara11y-secondary-header__actions">${actions}</div>
+			</header>
+			<div class="cleara11y-result-list">${items.map(renderOccurrenceRow).join('')}</div>
+		</section>`;
+	}
+
+	function pageActions(page) {
+		return `<a class="button button-small" href="${escapeHtml(page.url)}" target="_blank" rel="noopener noreferrer">View</a>` +
+			(page.edit_url ? `<a class="button button-small" href="${escapeHtml(page.edit_url)}">Edit</a>` : '');
+	}
+
+	function ruleActions(rule) {
+		return `<a class="button button-small" href="${escapeHtml(rule.reference_url)}" aria-label="${escapeAttribute('View issue reference for ' + rule.id)}">Issue reference</a>`;
+	}
+
+	function renderOccurrenceRow(item) {
+		const accessibleLabel = `View details for ${item.rule.title} on ${item.page.title}`;
+		const identifier = item.selector || `Occurrence #${item.id}`;
+		const identifierLabel = item.selector ? 'Affected element selector' : 'Occurrence identifier';
+		return `<div class="cleara11y-result-row cleara11y-occurrence-row" data-occurrence-row="${item.id}" tabindex="0" role="button"
+			aria-label="${escapeAttribute(accessibleLabel + '. ' + identifierLabel + ': ' + identifier)}" aria-controls="cleara11y-detail-panel" aria-expanded="false">
+			<div class="cleara11y-result-row__main">
+				<span class="screen-reader-text">${escapeHtml(capitalize(item.severity))} severity.</span>
+				<code class="cleara11y-selector cleara11y-occurrence-identifier cleara11y-truncated-value" data-tooltip="${escapeAttribute(identifier)}"><span class="cleara11y-truncated-value__text">${escapeHtml(identifier)}</span></code>
+				${renderStateBadges(item)}
+			</div>
+		</div>`;
+	}
+
+	function renderStateBadges(item) {
+		return (item.finding_type === 'review'
+			? '<span class="cleara11y-status-text is-unconfirmed">Unconfirmed</span>'
+			: '') + (item.status === 'exception'
+			? '<span class="cleara11y-status-text is-exception">Exception</span>'
+			: '');
 	}
 
 	function renderRow(item, grouping) {
@@ -352,11 +421,7 @@
 		const pageMetadata = grouping === 'none'
 			? `<p class="cleara11y-result-row__meta"><strong>${escapeHtml(item.page.title)}</strong>${truncatedValue(pagePath, 'Page path')}</p>`
 			: (pagePrimary ? `<p class="cleara11y-result-row__meta">${truncatedValue(pagePath, 'Page path')}</p>` : '');
-		const stateBadges = (item.finding_type === 'review'
-			? '<span class="cleara11y-status-text is-unconfirmed">Unconfirmed</span>'
-			: '') + (item.status === 'exception'
-			? '<span class="cleara11y-status-text is-exception">Exception</span>'
-			: '');
+		const stateBadges = renderStateBadges(item);
 		const identifier = item.selector || `Occurrence #${item.id}`;
 		const identifierLabel = item.selector ? 'Affected element selector' : 'Occurrence identifier';
 		return `<article class="cleara11y-result-row severity-${escapeHtml(item.severity)}" data-occurrence-row="${item.id}">
@@ -383,32 +448,34 @@
 			el['clear-filters'].click();
 			return;
 		}
-		const toggle = event.target.closest('.cleara11y-group-toggle');
-		if (toggle) {
-			const expanded = toggle.getAttribute('aria-expanded') === 'true';
-			toggle.setAttribute('aria-expanded', String(!expanded));
-			byId(toggle.getAttribute('aria-controls')).hidden = expanded;
-			return;
-		}
 		const button = event.target.closest('.cleara11y-view-occurrence');
 		if (button) {
 			openOccurrence(Number(button.dataset.occurrenceId), button);
 			return;
 		}
 		const row = event.target.closest('[data-occurrence-row]');
-		const interactive = row ? event.target.closest('a, button, input, select, textarea, code, [tabindex]') : null;
-		const rowInteractive = interactive && row.contains(interactive);
+		const interactive = row ? event.target.closest('a, button, input, select, textarea, [tabindex]') : null;
+		const rowInteractive = interactive && interactive !== row && row.contains(interactive);
 		const selectedText = window.getSelection ? window.getSelection().toString() : '';
 		if (row && !rowInteractive && !selectedText) {
-			const control = row.querySelector('.cleara11y-view-occurrence');
+			const control = row.matches('[role="button"]') ? row : row.querySelector('.cleara11y-view-occurrence');
+			control?.focus();
 			openOccurrence(Number(row.dataset.occurrenceRow), control);
 		}
+	}
+
+	function handleResultsKeydown(event) {
+		const row = event.target.closest('.cleara11y-occurrence-row[role="button"]');
+		if (!row || event.target !== row || !['Enter', ' '].includes(event.key)) return;
+		event.preventDefault();
+		openOccurrence(Number(row.dataset.occurrenceRow), row);
 	}
 
 	function syncSelectedRow() {
 		document.querySelectorAll('[data-occurrence-row]').forEach(row => {
 			const selected = String(row.dataset.occurrenceRow) === String(query.occurrenceId || '');
 			row.classList.toggle('is-selected', selected);
+			if (row.matches('[role="button"]')) row.setAttribute('aria-expanded', String(selected));
 			row.querySelector('.cleara11y-view-occurrence')?.setAttribute('aria-expanded', String(selected));
 		});
 	}
@@ -443,10 +510,7 @@
 		const evidence = parseEvidence(item.node_evidence);
 		el['detail-content'].innerHTML = `
 			<div class="cleara11y-detail__header">
-				<div class="cleara11y-detail__toolbar">
-					<button type="button" class="button-link" data-close-detail>← Close details</button>
-					<button type="button" class="button" data-copy-occurrence>Copy link</button>
-				</div>
+				<button type="button" class="cleara11y-detail__close" data-close-detail aria-label="Close details"><span aria-hidden="true">×</span></button>
 				<header>
 					<h2 id="cleara11y-detail-title" tabindex="-1">${escapeHtml(item.rule.title)}</h2>
 					<p><code>${escapeHtml(item.rule.id)}</code>
@@ -541,7 +605,7 @@
 		else detailCloseTimer = window.setTimeout(finishClose, 200);
 		if (!restoreFocus) return;
 		const currentControl = openingOccurrenceId
-			? document.querySelector(`.cleara11y-view-occurrence[data-occurrence-id="${openingOccurrenceId}"]`)
+			? document.querySelector(`[data-occurrence-row="${openingOccurrenceId}"][role="button"], .cleara11y-view-occurrence[data-occurrence-id="${openingOccurrenceId}"]`)
 			: null;
 		if (currentControl) currentControl.focus();
 		else if (openingControl && document.contains(openingControl)) openingControl.focus();
@@ -555,10 +619,6 @@
 		}
 		if (event.target.closest('[data-close-detail]')) {
 			requestCloseDetail();
-			return;
-		}
-		if (event.target.closest('[data-copy-occurrence]')) {
-			copyCurrentUrl();
 			return;
 		}
 		const quick = event.target.closest('[data-temporary-exception]');
@@ -760,15 +820,6 @@
 		el['issues-container'].querySelector('[data-retry-results]').addEventListener('click', () => load());
 	}
 
-	async function copyCurrentUrl() {
-		try {
-			await navigator.clipboard.writeText(window.location.href);
-			el['results-announcer'].textContent = 'Link copied.';
-		} catch (error) {
-			window.prompt('Copy this link:', window.location.href);
-		}
-	}
-
 	async function responseMessage(response) {
 		try {
 			const body = await response.json();
@@ -798,7 +849,6 @@
 
 	const capitalize = value => value ? value.charAt(0).toUpperCase() + value.slice(1) : '';
 	const plural = (count, noun) => count === 1 ? noun : noun + 's';
-	const safeId = value => String(value).replace(/[^a-zA-Z0-9_-]/g, '-');
 
 	if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
 	else init();

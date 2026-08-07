@@ -57,9 +57,9 @@ class Issues_List_Page {
 					<label>
 						<span><?php esc_html_e('Status', 'cleara11y'); ?></span>
 						<select id="cleara11y-filter-status">
-							<option value="active"><?php esc_html_e('Active', 'cleara11y'); ?></option>
-							<option value="exception"><?php esc_html_e('Exceptions', 'cleara11y'); ?></option>
-							<option value="all"><?php esc_html_e('All workflow states', 'cleara11y'); ?></option>
+							<option value=""><?php esc_html_e('All active', 'cleara11y'); ?></option>
+							<option value="violation"><?php esc_html_e('Confirmed', 'cleara11y'); ?></option>
+							<option value="review"><?php esc_html_e('Unconfirmed', 'cleara11y'); ?></option>
 						</select>
 					</label>
 					<label>
@@ -96,11 +96,19 @@ class Issues_List_Page {
 				</div>
 				<?php
 				// Check if any entity filters are active (ruleId, pageId, scanId)
-				$has_active_entity_filters = isset($_GET['ruleId']) || isset($_GET['pageId']) || isset($_GET['scanId']);
+				$has_active_entity_filters = isset($_GET['ruleId'])
+					|| isset($_GET['pageId'])
+					|| isset($_GET['scanId'])
+					|| isset($_GET['findingType'])
+					|| isset($_GET['includeExceptions']);
 				?>
 				<details class="cleara11y-more-filters"<?php echo $has_active_entity_filters ? ' open' : ''; ?>>
 					<summary><?php esc_html_e('More filters', 'cleara11y'); ?></summary>
 					<div class="cleara11y-more-filters__grid">
+						<label id="cleara11y-include-exceptions-control" class="cleara11y-checkbox-control">
+							<input type="checkbox" id="cleara11y-include-exceptions" value="1">
+							<span><?php esc_html_e('Show issues bypassed with exceptions', 'cleara11y'); ?></span>
+						</label>
 						<?php self::render_entity_filter('rule', __('Rule', 'cleara11y')); ?>
 						<?php self::render_entity_filter('page', __('Page', 'cleara11y')); ?>
 						<?php self::render_entity_filter('scan', __('Scan', 'cleara11y')); ?>

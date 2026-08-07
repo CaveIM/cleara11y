@@ -128,11 +128,11 @@ class Issue_Reference_Page {
 			</div>
 
 			<!-- Detail Modal -->
-			<div id="cleara11y-detail-modal" class="cleara11y-modal" style="display: none;">
+			<div id="cleara11y-detail-modal" class="cleara11y-modal" role="dialog" aria-modal="true" aria-labelledby="cleara11y-modal-title" style="display: none;">
 				<div class="cleara11y-modal-content">
 					<div class="cleara11y-modal-header">
-						<h2 id="cleara11y-modal-title"></h2>
-						<button class="cleara11y-modal-close" aria-label="<?php esc_attr_e('Close modal', 'cleara11y'); ?>">&times;</button>
+						<h2 id="cleara11y-modal-title" tabindex="-1"></h2>
+						<button type="button" class="cleara11y-modal-close" aria-label="<?php esc_attr_e('Close modal', 'cleara11y'); ?>">&times;</button>
 					</div>
 					<div class="cleara11y-modal-body" id="cleara11y-modal-body">
 					</div>

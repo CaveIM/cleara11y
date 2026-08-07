@@ -482,6 +482,7 @@ class Issue_Repository {
 			[
 				'status' => 'active',
 				'severity' => '',
+				'finding_type' => '',
 				'rule_id' => '',
 				'post_id' => 0,
 				'scan_id' => 0,
@@ -566,6 +567,12 @@ class Issue_Repository {
 		if (! empty($args['severity'])) {
 			$where[] = 'i.severity = %s';
 			$params[] = $args['severity'];
+		}
+		if ('review' === $args['finding_type']) {
+			$where[] = "(i.result_type = 'incomplete' OR i.rule_type = 'review')";
+		} elseif ('violation' === $args['finding_type']) {
+			$where[] = "(COALESCE(i.result_type, 'violation') <> 'incomplete'
+				AND COALESCE(i.rule_type, '') <> 'review')";
 		}
 		if (! empty($args['rule_id'])) {
 			$where[] = 'i.rule_id = %s';
@@ -798,6 +805,18 @@ class Issue_Repository {
 	 * @return array Normalized row.
 	 */
 	private static function normalize_explorer_row(array $row): array {
+		$edit_url = null;
+		if (! empty($row['post_id']) && get_post((int) $row['post_id']) && current_user_can('edit_post', (int) $row['post_id'])) {
+			$edit_url = get_edit_post_link((int) $row['post_id'], 'raw') ?: null;
+		}
+		$reference_url = add_query_arg(
+			[
+				'page' => 'cleara11y-issue-reference',
+				'ruleId' => (string) $row['rule_id'],
+			],
+			admin_url('admin.php')
+		);
+
 		return [
 			'id' => (int) $row['id'],
 			'rule' => [
@@ -806,11 +825,13 @@ class Issue_Repository {
 				'description' => (string) ($row['message'] ?? ''),
 				'help_url' => $row['help_url'] ?: null,
 				'wcag_criterion' => $row['wcag_criterion'] ?: null,
+				'reference_url' => $reference_url,
 			],
 			'page' => [
 				'id' => (int) $row['post_id'],
 				'title' => (string) ($row['post_title'] ?: __('Untitled', 'cleara11y')),
 				'url' => (string) $row['post_url'],
+				'edit_url' => $edit_url,
 				'post_type' => (string) ($row['post_type'] ?? ''),
 			],
 			'scan' => [

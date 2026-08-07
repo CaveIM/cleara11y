@@ -13,6 +13,9 @@
 	let lastResult = null;
 	let openingControl = null;
 	let openingOccurrenceId = null;
+	let activeOccurrence = null;
+	let activeDetailTab = 'overview';
+	let detailCloseTimer = null;
 	let searchTimer = null;
 
 	const el = {};
@@ -22,12 +25,13 @@
 		node.textContent = value === null || value === undefined ? '' : String(value);
 		return node.innerHTML;
 	};
+	const escapeAttribute = value => escapeHtml(value).replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 	const formatDate = value => value ? new Date(value.replace(' ', 'T') + (value.includes('Z') ? '' : 'Z')).toLocaleString() : '';
 
 	function init() {
 		[
 			'explorer-title', 'explorer-summary', 'breadcrumb-current', 'snapshot-banner',
-			'filter-status', 'filter-severity', 'search-issues', 'group-by',
+			'filter-status', 'filter-severity', 'include-exceptions', 'include-exceptions-control', 'search-issues', 'group-by',
 			'sort', 'clear-filters', 'issues-container', 'results-region',
 			'results-announcer', 'pagination', 'prev-page', 'next-page', 'page-info',
 			'detail-panel', 'detail-content'
@@ -38,16 +42,28 @@
 		syncControls();
 		load();
 		window.addEventListener('popstate', () => {
-			const previousOccurrence = query.occurrenceId;
-			query = Query.parse(window.location.href);
+			const previousQuery = query;
+			const nextQuery = Query.parse(window.location.href);
+			query = nextQuery;
 			syncControls();
-			load({restoreFocus: previousOccurrence && !query.occurrenceId});
+			if (lastResult && sameResultQuery(previousQuery, nextQuery)) {
+				renderContext(lastResult);
+				if (query.occurrenceId) loadDetail(query.occurrenceId);
+				else closeDetail(Boolean(previousQuery.occurrenceId));
+				return;
+			}
+			load({restoreFocus: previousQuery.occurrenceId && !query.occurrenceId});
 		});
+		document.addEventListener('cleara11y:exception-saved', handleExceptionSaved);
 	}
 
 	function bindControls() {
-		el['filter-status'].addEventListener('change', event => update({status: event.target.value}));
+		el['filter-status'].addEventListener('change', event => update({findingType: event.target.value}));
 		el['filter-severity'].addEventListener('change', event => update({severity: event.target.value}));
+		el['include-exceptions'].addEventListener('change', event => update({
+			includeExceptions: event.target.checked,
+			status: event.target.checked ? 'all' : 'active'
+		}));
 		el['group-by'].addEventListener('change', event => update({groupBy: event.target.value}));
 		el.sort.addEventListener('change', event => update({sort: event.target.value}));
 		el['search-issues'].addEventListener('input', event => {
@@ -56,7 +72,7 @@
 		});
 		el['clear-filters'].addEventListener('click', () => {
 			query = {
-				status: 'active', severity: '', ruleId: '', pageId: undefined,
+				status: 'active', findingType: '', includeExceptions: false, severity: '', ruleId: '', pageId: undefined,
 				scanId: undefined, search: '', groupBy: 'page', sort: 'severity',
 				occurrenceId: undefined, resultsPage: 1
 			};
@@ -67,13 +83,30 @@
 		el['next-page'].addEventListener('click', () => update({resultsPage: query.resultsPage + 1}));
 		el['issues-container'].addEventListener('click', handleResultsClick);
 		el['detail-content'].addEventListener('click', handleDetailClick);
+		el['detail-content'].addEventListener('keydown', handleDetailKeydown);
+		document.addEventListener('keydown', event => {
+			if (
+				event.key === 'Escape'
+				&& el['detail-panel'].classList.contains('is-open')
+				&& el['detail-panel'].contains(document.activeElement)
+				&& !document.getElementById('cleara11y-wizard-modal')
+			) {
+				event.preventDefault();
+				requestCloseDetail();
+			}
+		});
 	}
 
 	function update(changes, replace) {
+		const hadOpenDetail = Boolean(query.occurrenceId);
 		query = Object.assign({}, query, changes);
 		if (!Object.prototype.hasOwnProperty.call(changes, 'resultsPage')) query.resultsPage = 1;
 		if (!Object.prototype.hasOwnProperty.call(changes, 'occurrenceId')) query.occurrenceId = undefined;
-		if (query.scanId) query.status = 'all';
+		if (query.scanId) {
+			query.status = 'all';
+			query.includeExceptions = true;
+		}
+		if (hadOpenDetail && !query.occurrenceId) closeDetail(false);
 		commit(replace);
 	}
 
@@ -88,9 +121,30 @@
 		load();
 	}
 
+	function openOccurrence(id, control) {
+		openingControl = control || openingControl;
+		openingOccurrenceId = String(id);
+		const replace = Boolean(query.occurrenceId);
+		query = Object.assign({}, query, {occurrenceId: Number(id)});
+		const url = Query.toUrl(query, window.location.href);
+		window.history[replace ? 'replaceState' : 'pushState']({
+			cleara11yExplorer: true,
+			scrollY: window.scrollY
+		}, '', url);
+		renderContext(lastResult);
+		syncSelectedRow();
+		loadDetail(id);
+	}
+
+	function sameResultQuery(first, second) {
+		return ['status', 'findingType', 'includeExceptions', 'severity', 'ruleId', 'pageId', 'scanId', 'search', 'groupBy', 'sort', 'resultsPage']
+			.every(key => String(first[key] ?? '') === String(second[key] ?? ''));
+	}
+
 	function syncControls() {
-		el['filter-status'].value = query.status;
-		el['filter-status'].disabled = Boolean(query.scanId);
+		el['filter-status'].value = query.findingType;
+		el['include-exceptions'].checked = Boolean(query.includeExceptions);
+		el['include-exceptions-control'].hidden = Boolean(query.scanId);
 		el['filter-severity'].value = query.severity;
 		el['search-issues'].value = query.search;
 		el['group-by'].value = query.groupBy;
@@ -162,7 +216,7 @@
 		requestController = new AbortController();
 		setLoading();
 		try {
-			const response = await fetch(API_URL + 'issues/occurrences?' + Query.apiParams(query), {
+			const response = await fetch(API_URL + 'issues/occurrences?' + Query.apiParams(query, cleara11yData.perPage), {
 				headers: {'X-WP-Nonce': NONCE},
 				signal: requestController.signal
 			});
@@ -204,10 +258,14 @@
 			title = 'Issues on ' + context.page.label;
 		} else if (query.severity) {
 			title = capitalize(query.severity) + ' accessibility issues';
+		} else if (query.findingType === 'violation') {
+			title = query.includeExceptions ? 'Confirmed issues including exceptions' : 'Confirmed active issues';
+		} else if (query.findingType === 'review') {
+			title = query.includeExceptions ? 'Unconfirmed issues including exceptions' : 'Unconfirmed active issues';
 		} else if (query.status === 'exception') {
 			title = 'Accessibility exceptions';
-		} else if (query.status === 'all') {
-			title = 'All accessibility issues';
+		} else if (query.includeExceptions) {
+			title = 'Accessibility issues including exceptions';
 		}
 		el['explorer-title'].textContent = title;
 		el['breadcrumb-current'].textContent = query.occurrenceId ? title + ' / Occurrence' : title;
@@ -234,14 +292,14 @@
 		const items = data.items || [];
 		el['issues-container'].removeAttribute('aria-busy');
 		if (!items.length) {
-			const filtered = Boolean(query.search || query.severity || query.ruleId || query.pageId || query.status === 'exception');
+			const filtered = Boolean(query.search || query.severity || query.findingType || query.ruleId || query.pageId || query.status === 'exception');
 			const text = query.scanId
 				? cleara11yData.strings.noScanIssues
 				: (filtered ? cleara11yData.strings.noFilteredIssues : cleara11yData.strings.noIssues);
 			el['issues-container'].innerHTML = `<div class="cleara11y-empty-state"><h3>${escapeHtml(text)}</h3>` +
 				(filtered ? '<button type="button" class="button" data-clear-results>Clear filters</button>' : '') + '</div>';
 		} else if (query.groupBy === 'none') {
-			el['issues-container'].innerHTML = `<div class="cleara11y-result-list">${items.map(renderRow).join('')}</div>`;
+			el['issues-container'].innerHTML = `<div class="cleara11y-result-list">${items.map(item => renderRow(item, 'none')).join('')}</div>`;
 		} else {
 			const groups = new Map();
 			items.forEach(item => {
@@ -257,35 +315,66 @@
 		el['next-page'].disabled = pagination.page >= pagination.total_pages;
 		el['page-info'].textContent = `Page ${pagination.page} of ${pagination.total_pages}`;
 		el['results-announcer'].textContent = `${data.summary.total_occurrences} issue occurrences found.`;
+		syncSelectedRow();
 	}
 
 	function renderGroup(items) {
 		const first = items[0];
-		const label = query.groupBy === 'page' ? first.page.title : first.rule.title;
-		const id = 'cleara11y-group-' + (query.groupBy === 'page' ? first.page.id : safeId(first.rule.id));
+		const pageGroup = query.groupBy === 'page';
+		const label = pageGroup ? first.page.title : first.rule.title;
+		const id = 'cleara11y-group-' + (pageGroup ? first.page.id : safeId(first.rule.id));
+		const metadata = pageGroup
+			? pathname(first.page.url)
+			: first.rule.id;
+		const actions = pageGroup
+			? `<a class="button button-small" href="${escapeHtml(first.page.url)}" target="_blank" rel="noopener noreferrer">View</a>` +
+				(first.page.edit_url ? `<a class="button button-small" href="${escapeHtml(first.page.edit_url)}">Edit</a>` : '')
+			: `<a class="button button-small" href="${escapeHtml(first.rule.reference_url)}">Issue reference</a>`;
 		return `<section class="cleara11y-result-group">
-			<h3><button type="button" class="cleara11y-group-toggle" aria-expanded="true" aria-controls="${id}">
-				<span>${escapeHtml(label)}</span><span class="count">${items.length} on this page</span>
-			</button></h3>
-			<div id="${id}" class="cleara11y-result-list">${items.map(renderRow).join('')}</div>
+			<header class="cleara11y-group-header">
+				<div class="cleara11y-group-header__identity">
+					<h3><button type="button" class="cleara11y-group-toggle" aria-expanded="true" aria-controls="${id}">${escapeHtml(label)}</button></h3>
+					${pageGroup
+						? `<span class="cleara11y-group-header__path">${escapeHtml(metadata)}</span>`
+						: `<code class="cleara11y-group-header__rule-id">${escapeHtml(metadata)}</code>`}
+				</div>
+				<div class="cleara11y-group-header__actions">${actions}</div>
+			</header>
+			<div id="${id}" class="cleara11y-result-list">${items.map(item => renderRow(item, query.groupBy)).join('')}</div>
 		</section>`;
 	}
 
-	function renderRow(item) {
+	function renderRow(item, grouping) {
+		const pagePrimary = grouping === 'rule';
+		const primaryTitle = pagePrimary ? item.page.title : item.rule.title;
+		const accessibleLabel = `View details for ${item.rule.title} on ${item.page.title}`;
+		const pagePath = pathname(item.page.url);
+		const pageMetadata = grouping === 'none'
+			? `<p class="cleara11y-result-row__meta"><strong>${escapeHtml(item.page.title)}</strong>${truncatedValue(pagePath, 'Page path')}</p>`
+			: (pagePrimary ? `<p class="cleara11y-result-row__meta">${truncatedValue(pagePath, 'Page path')}</p>` : '');
+		const stateBadges = (item.finding_type === 'review'
+			? '<span class="cleara11y-status-text is-unconfirmed">Unconfirmed</span>'
+			: '') + (item.status === 'exception'
+			? '<span class="cleara11y-status-text is-exception">Exception</span>'
+			: '');
+		const identifier = item.selector || `Occurrence #${item.id}`;
+		const identifierLabel = item.selector ? 'Affected element selector' : 'Occurrence identifier';
 		return `<article class="cleara11y-result-row severity-${escapeHtml(item.severity)}" data-occurrence-row="${item.id}">
 			<div class="cleara11y-result-row__main">
+				<span class="screen-reader-text">${escapeHtml(capitalize(item.severity))} severity.</span>
 				<div class="cleara11y-result-row__heading">
-					<h4>${escapeHtml(item.rule.title)}</h4>
-					<span class="cleara11y-badge severity-${escapeHtml(item.severity)}">${escapeHtml(capitalize(item.severity))}</span>
-					<span class="cleara11y-status-text">${item.status === 'exception' ? 'Exception' : (item.finding_type === 'review' ? 'Needs review' : 'Confirmed')}</span>
+					<h4><button type="button" class="button-link cleara11y-view-occurrence" data-occurrence-id="${item.id}"
+						aria-label="${escapeAttribute(accessibleLabel)}" aria-controls="cleara11y-detail-panel" aria-expanded="false">${escapeHtml(primaryTitle)}</button></h4>
+					${stateBadges}
 				</div>
-				<p>${escapeHtml(item.message || item.help_text)}</p>
-				<p class="cleara11y-result-row__meta"><strong>${escapeHtml(item.page.title)}</strong>
-					<span>${escapeHtml(pathname(item.page.url))}</span></p>
-				${item.selector ? `<code class="cleara11y-selector" tabindex="0" aria-label="Affected element selector">${escapeHtml(item.selector)}</code>` : ''}
+				${pageMetadata}
+				<code class="cleara11y-selector cleara11y-truncated-value" tabindex="0" aria-label="${escapeAttribute(identifierLabel + ': ' + identifier)}" data-tooltip="${escapeAttribute(identifier)}"><span class="cleara11y-truncated-value__text">${escapeHtml(identifier)}</span></code>
 			</div>
-			<button type="button" class="button cleara11y-view-occurrence" data-occurrence-id="${item.id}">View details</button>
 		</article>`;
+	}
+
+	function truncatedValue(value, label) {
+		return `<span class="cleara11y-truncated-value" tabindex="0" aria-label="${escapeAttribute(label + ': ' + value)}" data-tooltip="${escapeAttribute(value)}"><span class="cleara11y-truncated-value__text">${escapeHtml(value)}</span></span>`;
 	}
 
 	function handleResultsClick(event) {
@@ -303,27 +392,44 @@
 		}
 		const button = event.target.closest('.cleara11y-view-occurrence');
 		if (button) {
-			openingControl = button;
-			openingOccurrenceId = button.dataset.occurrenceId;
-			update({occurrenceId: Number(button.dataset.occurrenceId)}, false);
+			openOccurrence(Number(button.dataset.occurrenceId), button);
+			return;
 		}
+		const row = event.target.closest('[data-occurrence-row]');
+		const interactive = row ? event.target.closest('a, button, input, select, textarea, code, [tabindex]') : null;
+		const rowInteractive = interactive && row.contains(interactive);
+		const selectedText = window.getSelection ? window.getSelection().toString() : '';
+		if (row && !rowInteractive && !selectedText) {
+			const control = row.querySelector('.cleara11y-view-occurrence');
+			openOccurrence(Number(row.dataset.occurrenceRow), control);
+		}
+	}
+
+	function syncSelectedRow() {
+		document.querySelectorAll('[data-occurrence-row]').forEach(row => {
+			const selected = String(row.dataset.occurrenceRow) === String(query.occurrenceId || '');
+			row.classList.toggle('is-selected', selected);
+			row.querySelector('.cleara11y-view-occurrence')?.setAttribute('aria-expanded', String(selected));
+		});
 	}
 
 	async function loadDetail(id) {
 		if (detailController) detailController.abort();
 		detailController = new AbortController();
+		window.clearTimeout(detailCloseTimer);
+		if (!el['detail-panel'].classList.contains('is-open')) activeDetailTab = 'overview';
 		el['detail-panel'].hidden = false;
+		window.requestAnimationFrame(() => el['detail-panel'].classList.add('is-open'));
 		el['detail-content'].innerHTML = '<div class="cleara11y-loading-state" role="status">Loading occurrence details…</div>';
+		activeOccurrence = null;
 		try {
 			const response = await fetch(API_URL + 'issues/occurrences/' + id, {
 				headers: {'X-WP-Nonce': NONCE},
 				signal: detailController.signal
 			});
 			if (!response.ok) throw new Error(await responseMessage(response));
-			renderDetail((await response.json()).occurrence);
-			if (window.matchMedia('(max-width: 782px)').matches) {
-				el['detail-panel'].scrollIntoView({block: 'start'});
-			}
+			activeOccurrence = (await response.json()).occurrence;
+			renderDetail(activeOccurrence);
 			byId('cleara11y-detail-title')?.focus();
 		} catch (error) {
 			if (error.name !== 'AbortError') {
@@ -336,53 +442,71 @@
 	function renderDetail(item) {
 		const evidence = parseEvidence(item.node_evidence);
 		el['detail-content'].innerHTML = `
-			<div class="cleara11y-detail__toolbar">
-				<button type="button" class="button-link" data-close-detail>← Back to results</button>
-				<button type="button" class="button" data-copy-occurrence>Copy link</button>
+			<div class="cleara11y-detail__header">
+				<div class="cleara11y-detail__toolbar">
+					<button type="button" class="button-link" data-close-detail>← Close details</button>
+					<button type="button" class="button" data-copy-occurrence>Copy link</button>
+				</div>
+				<header>
+					<h2 id="cleara11y-detail-title" tabindex="-1">${escapeHtml(item.rule.title)}</h2>
+					<p><code>${escapeHtml(item.rule.id)}</code>
+						<span class="cleara11y-badge severity-${escapeHtml(item.severity)}">${escapeHtml(capitalize(item.severity))}</span>
+						<span class="cleara11y-status-text">${item.finding_type === 'review' ? 'Unconfirmed' : 'Confirmed'}</span>
+						${item.status === 'exception' ? '<span class="cleara11y-status-text is-exception">Current exception</span>' : ''}</p>
+					${item.finding_type === 'review' ? '<p class="cleara11y-review-note"><strong>Unconfirmed — manual review required.</strong> The scanner found evidence of a possible failure but could not classify it with full certainty.</p>' : ''}
+				</header>
+				<div class="cleara11y-detail__tabs" role="tablist" aria-label="Issue detail sections">
+					<button type="button" role="tab" id="cleara11y-detail-tab-overview" aria-controls="cleara11y-detail-panel-overview" data-detail-tab="overview">Overview</button>
+					<button type="button" role="tab" id="cleara11y-detail-tab-evidence" aria-controls="cleara11y-detail-panel-evidence" data-detail-tab="evidence">Evidence</button>
+					<button type="button" role="tab" id="cleara11y-detail-tab-guidance" aria-controls="cleara11y-detail-panel-guidance" data-detail-tab="guidance">Guidance</button>
+					<button type="button" role="tab" id="cleara11y-detail-tab-exception" aria-controls="cleara11y-detail-panel-exception" data-detail-tab="exception">Exception</button>
+				</div>
 			</div>
-			<header>
-				<h2 id="cleara11y-detail-title" tabindex="-1">${escapeHtml(item.rule.title)}</h2>
-				<p><code>${escapeHtml(item.rule.id)}</code>
-					<span class="cleara11y-badge severity-${escapeHtml(item.severity)}">${escapeHtml(capitalize(item.severity))}</span>
-					<span class="cleara11y-status-text">${item.status === 'exception' ? 'Current exception' : (item.finding_type === 'review' ? 'Needs review' : 'Confirmed issue')}</span></p>
-				${item.finding_type === 'review' ? '<p class="cleara11y-review-note"><strong>Manual review recommended.</strong> The scanner found evidence of a possible failure but could not classify it with full certainty.</p>' : ''}
-			</header>
-			<section><h3>Location</h3>
-				<p><strong>${escapeHtml(item.page.title)}</strong><br><span class="cleara11y-break-word">${escapeHtml(item.page.url)}</span></p>
-				<p class="cleara11y-detail__actions">
-					<a class="button" href="${escapeHtml(item.page.url)}" target="_blank" rel="noopener noreferrer">Open page</a>
-					${item.inspect_url ? `<a class="button" href="${escapeHtml(item.inspect_url)}" target="_blank" rel="noopener noreferrer">Inspect current page</a>` : ''}
-				</p>
-				${detailValue('CSS selector', item.selector, true)}
-				${detailValue('XPath', item.xpath, true)}
-			</section>
-			<section><h3>Scan evidence</h3>
-				<p class="cleara11y-evidence-note">${item.finding_type === 'review' ? 'This evidence was flagged for review by the scanning engine.' : 'This section contains deterministic evidence captured during the scan.'}</p>
-				${detailValue('Failure', item.message)}
-				${detailValue('Affected HTML', item.html, true, 'pre')}
-				${detailValue('Accessible name', item.accessible_name)}
-				${detailValue('Relevant text', item.inner_text_snippet)}
-				${evidence ? detailValue('Additional captured evidence', evidence, true, 'pre') : '<p class="description">No additional node evidence was captured.</p>'}
-			</section>
-			<section><h3>Remediation reference</h3>
-				<p>${escapeHtml(item.help_text || 'No additional remediation guidance was captured.')}</p>
-				<p class="description">Guidance is contextual and should be verified against the component and codebase.</p>
-				${item.rule.wcag_criterion ? `<p><strong>WCAG:</strong> ${escapeHtml(item.rule.wcag_criterion)}</p>` : ''}
-				${item.rule.help_url ? `<p><a href="${escapeHtml(item.rule.help_url)}" target="_blank" rel="noopener noreferrer">Learn more about this rule</a></p>` : ''}
-			</section>
-			<section><h3>Observation</h3>
-				<dl><dt>Occurrence ID</dt><dd>${item.id}</dd>
-					<dt>Scan</dt><dd><a data-scan-explorer-url href="${escapeHtml(explorerUrl({scanId: item.scan.id, groupBy: 'rule'}))}">${escapeHtml(item.scan.name)}</a> (${escapeHtml(item.scan.status)})</dd>
-					<dt>Captured</dt><dd>${escapeHtml(formatDate(item.scan.scanned_at) || 'Unavailable')}</dd></dl>
-			</section>
-			<section><h3>Exception workflow</h3>
-				${item.status === 'exception'
-					? '<p>This observation currently matches an active exception.</p>'
-					: `<div class="cleara11y-detail__actions">
-						<button type="button" class="button" data-structured-exception data-occurrence-id="${item.id}">Create exception…</button>
-						<button type="button" class="button" data-temporary-exception data-occurrence-id="${item.id}">Snooze until next scan</button>
-					</div>`}
-			</section>`;
+			<div role="tabpanel" id="cleara11y-detail-panel-overview" aria-labelledby="cleara11y-detail-tab-overview" data-detail-panel="overview">
+				<section><h3>Location</h3>
+					<p><strong>${escapeHtml(item.page.title)}</strong><br><span class="cleara11y-break-word">${escapeHtml(item.page.url)}</span></p>
+					<p class="cleara11y-detail__actions">
+						<a class="button" href="${escapeHtml(item.page.url)}" target="_blank" rel="noopener noreferrer">Open page</a>
+						${item.inspect_url ? `<a class="button" href="${escapeHtml(item.inspect_url)}" target="_blank" rel="noopener noreferrer">Inspect current page</a>` : ''}
+					</p>
+					${detailValue('CSS selector', item.selector, true)}
+					${detailValue('XPath', item.xpath, true)}
+				</section>
+				<section><h3>Observation</h3>
+					<dl><dt>Occurrence ID</dt><dd>${item.id}</dd>
+						<dt>Scan</dt><dd><a data-scan-explorer-url href="${escapeHtml(explorerUrl({scanId: item.scan.id, groupBy: 'rule'}))}">${escapeHtml(item.scan.name)}</a> (${escapeHtml(item.scan.status)})</dd>
+						<dt>Captured</dt><dd>${escapeHtml(formatDate(item.scan.scanned_at) || 'Unavailable')}</dd></dl>
+				</section>
+			</div>
+			<div role="tabpanel" id="cleara11y-detail-panel-evidence" aria-labelledby="cleara11y-detail-tab-evidence" data-detail-panel="evidence" hidden>
+				<section><h3>Scan evidence</h3>
+					<p class="cleara11y-evidence-note">${item.finding_type === 'review' ? 'This evidence was flagged for review by the scanning engine.' : 'This section contains deterministic evidence captured during the scan.'}</p>
+					${detailValue('Failure', item.message)}
+					${detailValue('Affected HTML', item.html, true, 'pre')}
+					${detailValue('Accessible name', item.accessible_name)}
+					${detailValue('Relevant text', item.inner_text_snippet)}
+					${evidence ? detailValue('Additional captured evidence', evidence, true, 'pre') : '<p class="description">No additional node evidence was captured.</p>'}
+				</section>
+			</div>
+			<div role="tabpanel" id="cleara11y-detail-panel-guidance" aria-labelledby="cleara11y-detail-tab-guidance" data-detail-panel="guidance" hidden>
+				<section><h3>Remediation reference</h3>
+					<p>${escapeHtml(item.help_text || 'No additional remediation guidance was captured.')}</p>
+					<p class="description">Guidance is contextual and should be verified against the component and codebase.</p>
+					${item.rule.wcag_criterion ? `<p><strong>WCAG:</strong> ${escapeHtml(item.rule.wcag_criterion)}</p>` : ''}
+					${item.rule.help_url ? `<p><a href="${escapeHtml(item.rule.help_url)}" target="_blank" rel="noopener noreferrer">Learn more about this rule</a></p>` : ''}
+				</section>
+			</div>
+			<div role="tabpanel" id="cleara11y-detail-panel-exception" aria-labelledby="cleara11y-detail-tab-exception" data-detail-panel="exception" hidden>
+				<section><h3>Exception workflow</h3>
+					${item.status === 'exception'
+						? '<p>This observation currently matches an active exception.</p>'
+						: `<div class="cleara11y-detail__actions">
+							<button type="button" class="button" data-structured-exception data-occurrence-id="${item.id}">Create exception…</button>
+							<button type="button" class="button" data-temporary-exception data-occurrence-id="${item.id}">Snooze until next scan</button>
+						</div>`}
+				</section>
+			</div>`;
+		activateDetailTab(activeDetailTab);
 	}
 
 	function detailValue(label, value, code, tag) {
@@ -403,8 +527,18 @@
 	}
 
 	function closeDetail(restoreFocus) {
-		el['detail-panel'].hidden = true;
-		el['detail-content'].innerHTML = '';
+		if (detailController) detailController.abort();
+		activeOccurrence = null;
+		el['detail-panel'].classList.remove('is-open');
+		syncSelectedRow();
+		window.clearTimeout(detailCloseTimer);
+		const finishClose = () => {
+			if (el['detail-panel'].classList.contains('is-open')) return;
+			el['detail-panel'].hidden = true;
+			el['detail-content'].innerHTML = '';
+		};
+		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) finishClose();
+		else detailCloseTimer = window.setTimeout(finishClose, 200);
 		if (!restoreFocus) return;
 		const currentControl = openingOccurrenceId
 			? document.querySelector(`.cleara11y-view-occurrence[data-occurrence-id="${openingOccurrenceId}"]`)
@@ -414,9 +548,13 @@
 	}
 
 	function handleDetailClick(event) {
+		const tab = event.target.closest('[data-detail-tab]');
+		if (tab) {
+			activateDetailTab(tab.dataset.detailTab, true);
+			return;
+		}
 		if (event.target.closest('[data-close-detail]')) {
-			if (window.history.state && window.history.state.cleara11yExplorer) window.history.back();
-			else update({occurrenceId: undefined}, true);
+			requestCloseDetail();
 			return;
 		}
 		if (event.target.closest('[data-copy-occurrence]')) {
@@ -429,6 +567,63 @@
 		if (structured) openStructuredException(Number(structured.dataset.occurrenceId));
 	}
 
+	function handleDetailKeydown(event) {
+		const tab = event.target.closest('[role="tab"]');
+		if (!tab || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+		const tabs = Array.from(el['detail-content'].querySelectorAll('[role="tab"]'));
+		const current = tabs.indexOf(tab);
+		let next = current;
+		if (event.key === 'ArrowLeft') next = (current - 1 + tabs.length) % tabs.length;
+		if (event.key === 'ArrowRight') next = (current + 1) % tabs.length;
+		if (event.key === 'Home') next = 0;
+		if (event.key === 'End') next = tabs.length - 1;
+		event.preventDefault();
+		activateDetailTab(tabs[next].dataset.detailTab, true);
+	}
+
+	function activateDetailTab(tabName, moveFocus = false) {
+		const tabs = Array.from(el['detail-content'].querySelectorAll('[data-detail-tab]'));
+		const panels = Array.from(el['detail-content'].querySelectorAll('[data-detail-panel]'));
+		if (!tabs.length || !panels.some(panel => panel.dataset.detailPanel === tabName)) return;
+		activeDetailTab = tabName;
+		tabs.forEach(tab => {
+			const selected = tab.dataset.detailTab === tabName;
+			tab.setAttribute('aria-selected', String(selected));
+			tab.tabIndex = selected ? 0 : -1;
+			if (selected && moveFocus) tab.focus();
+		});
+		panels.forEach(panel => { panel.hidden = panel.dataset.detailPanel !== tabName; });
+		el['detail-panel'].scrollTop = 0;
+	}
+
+	function requestCloseDetail() {
+		if (window.history.state && window.history.state.cleara11yExplorer) {
+			window.history.back();
+			return;
+		}
+		query = Object.assign({}, query, {occurrenceId: undefined});
+		const url = Query.toUrl(query, window.location.href);
+		window.history.replaceState(window.history.state, '', url);
+		renderContext(lastResult);
+		closeDetail(true);
+	}
+
+	function clearOccurrenceAndReload() {
+		query = Object.assign({}, query, {occurrenceId: undefined});
+		const url = Query.toUrl(query, window.location.href);
+		window.history.replaceState({cleara11yExplorer: true, scrollY: window.scrollY}, '', url);
+		renderContext(lastResult);
+		closeDetail(false);
+		el['results-region'].focus();
+		load();
+	}
+
+	function handleExceptionSaved(event) {
+		const violationId = Number(event.detail?.violationId || 0);
+		if (!violationId || violationId !== Number(query.occurrenceId || 0)) return;
+		clearOccurrenceAndReload();
+	}
+
 	async function createTemporaryException(id, button) {
 		button.disabled = true;
 		try {
@@ -438,7 +633,7 @@
 				body: JSON.stringify({violation_id: id})
 			});
 			if (!response.ok) throw new Error(await responseMessage(response));
-			await load();
+			clearOccurrenceAndReload();
 		} catch (error) {
 			window.alert(error.message);
 			button.disabled = false;
@@ -446,7 +641,9 @@
 	}
 
 	function openStructuredException(id) {
-		const item = lastResult?.items?.find(candidate => candidate.id === id);
+		const item = Number(activeOccurrence?.id) === Number(id)
+			? activeOccurrence
+			: lastResult?.items?.find(candidate => candidate.id === id);
 		if (!item || !window.cleara11yWizard) {
 			window.alert('The exception wizard is unavailable. Open the Exceptions screen to create an exception.');
 			return;
@@ -461,6 +658,7 @@
 				page_id: item.page.id,
 				page_title: item.page.title,
 				post_type: item.page.post_type || '',
+				rule_title: item.rule.title || item.rule.id,
 				occurrence_fallback: !item.can_anchor_exception
 			},
 			duration: {duration_type: 'permanent'},

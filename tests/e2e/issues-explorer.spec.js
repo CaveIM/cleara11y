@@ -179,21 +179,15 @@ async function waitForResults(page) {
 }
 
 async function createRulePageException(page, {ruleId, durationType, note, expiresAt = ''}) {
-	await page.goto('/wp-admin/admin.php?page=cleara11y-exceptions');
-	await page.getByRole('link', {name: 'Create Exception'}).click();
+	await page.goto('/wp-admin/admin.php?page=cleara11y-page-report&post_id=' + fixturePostId);
+	const issueCard = page.locator('.cleara11y-issue-card').filter({hasText: ruleId}).first();
+	await issueCard.getByRole('button', {name: 'Create exception…'}).click();
 	const dialog = page.getByRole('dialog', {name: 'Create Exception'});
 
-	await dialog.locator('#cleara11y-rule-search').fill(ruleId);
-	await dialog.locator('#cleara11y-rule-search').focus();
-	await dialog.locator('#cleara11y-rule-options button').filter({hasText: ruleId}).first().click();
+	await expect(dialog.locator('#cleara11y-finding-rule-id')).toHaveText(ruleId);
+	await dialog.locator('input[name="target_type"][value="rule"]').check();
 	await dialog.getByRole('button', {name: 'Next'}).click();
-	await dialog.getByRole('radio', {name: /Single Page/i}).check();
-	await dialog.locator('#cleara11y-page-search').fill('ClearA11y Issues Explorer Fixture');
-	await dialog.locator('#cleara11y-page-search').focus();
-	await dialog.locator('#cleara11y-page-options button')
-		.filter({hasText: 'ClearA11y Issues Explorer Fixture'})
-		.first()
-		.click();
+	await expect(dialog.locator('#cleara11y-selected-page')).toContainText('ClearA11y Issues Explorer Fixture');
 	await dialog.getByRole('button', {name: 'Next'}).click();
 	await dialog.locator(`input[name="duration_type"][value="${durationType}"]`).check();
 	if (expiresAt) {
@@ -206,6 +200,7 @@ async function createRulePageException(page, {ruleId, durationType, note, expire
 	await dialog.getByRole('button', {name: 'Create Exception'}).click();
 	await expect(dialog).toBeHidden();
 
+	await page.goto('/wp-admin/admin.php?page=cleara11y-exceptions');
 	return page.locator('#cleara11y-exceptions-table-body tr').filter({hasText: note}).first();
 }
 
@@ -238,20 +233,128 @@ test('URL filters, grouping, and occurrence history are keyboard operable', asyn
 	}
 
 	const details = page.getByRole('button', {name: 'View details'}).first();
+	const resultsRegion = page.locator('#cleara11y-results-region');
+	const resultsBefore = await resultsRegion.boundingBox();
 	await details.focus();
 	await page.keyboard.press('Enter');
 	await expect(page).toHaveURL(/occurrenceId=\d+/);
 	await expect(page.getByRole('heading', {name: 'Location'})).toBeVisible();
+	await expect(page.locator('#cleara11y-detail-panel')).toHaveClass(/is-open/);
+	await expect(details).toHaveAttribute('aria-expanded', 'true');
+	await expect(page.locator('#cleara11y-issues-container')).not.toHaveAttribute('aria-busy', 'true');
+	const resultsAfter = await resultsRegion.boundingBox();
+	expect(resultsAfter.width).toBe(resultsBefore.width);
+	expect(resultsAfter.x).toBe(resultsBefore.x);
 
 	await page.goBack();
 	await expect(page).not.toHaveURL(/occurrenceId=/);
 	await expect(page.getByRole('button', {name: 'View details'}).first()).toBeFocused();
+	await expect(page.locator('#cleara11y-detail-panel')).toBeHidden();
 
 	const group = page.locator('.cleara11y-group-toggle').first();
 	await group.click();
 	await expect(group).toHaveAttribute('aria-expanded', 'false');
 	await group.click();
 	await expect(group).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('group-aware rows remove repeated context and expose contextual actions', async ({page}) => {
+	await page.goto(`/wp-admin/admin.php?page=cleara11y-issues&pageId=${fixturePostId}&groupBy=page`);
+	await waitForResults(page);
+	const pageGroup = page.locator('.cleara11y-result-group').first();
+	await expect(pageGroup.locator('.cleara11y-group-toggle')).toContainText('ClearA11y Issues Explorer Fixture');
+	await expect(pageGroup.locator('.cleara11y-group-header__path')).toContainText('/cleara11y-issues-explorer-fixture/');
+	await expect(pageGroup.getByRole('link', {name: 'View'})).toBeVisible();
+	await expect(pageGroup.getByRole('link', {name: 'Edit'})).toBeVisible();
+	await expect(pageGroup.locator('.count')).toHaveCount(0);
+
+	const pageRow = pageGroup.locator('[data-occurrence-row]').first();
+	await expect(pageRow.getByRole('button', {name: /View details for/})).toBeVisible();
+	await expect(pageRow.locator('.cleara11y-badge')).toHaveCount(0);
+	await expect(pageRow.locator('.screen-reader-text')).toContainText(/severity/i);
+	const selector = pageRow.locator('.cleara11y-selector');
+	await expect(selector).toHaveAttribute('data-tooltip', (await selector.textContent()).trim());
+	await expect(pageRow.locator('.cleara11y-result-row__meta')).toHaveCount(0);
+	await expect(pageRow).not.toContainText('ClearA11y Issues Explorer Fixture');
+	await page.locator('#cleara11y-include-exceptions').check();
+	await waitForResults(page);
+	await expect(page).toHaveURL(/includeExceptions=1/);
+	await page.locator('#cleara11y-include-exceptions').uncheck();
+	await waitForResults(page);
+
+	await page.locator('#cleara11y-filter-status').selectOption('review');
+	await waitForResults(page);
+	await expect(page).toHaveURL(/findingType=review/);
+	await expect(page.locator('[data-occurrence-row]').first()).toBeVisible();
+	await expect(page.locator('[data-occurrence-row] .is-unconfirmed')).toHaveCount(
+		await page.locator('[data-occurrence-row]').count()
+	);
+
+	await page.locator('#cleara11y-filter-status').selectOption('violation');
+	await waitForResults(page);
+	await expect(page).toHaveURL(/findingType=violation/);
+	await expect(page.locator('[data-occurrence-row]').first()).toBeVisible();
+	await expect(page.locator('[data-occurrence-row] .is-unconfirmed')).toHaveCount(0);
+
+	await page.locator('#cleara11y-filter-status').selectOption('');
+	await page.locator('#cleara11y-group-by').selectOption('none');
+	await waitForResults(page);
+	const ungroupedRow = page.locator('[data-occurrence-row]').first();
+	await expect(ungroupedRow.locator('.cleara11y-result-row__meta')).toContainText('ClearA11y Issues Explorer Fixture');
+	await expect(ungroupedRow.locator('.cleara11y-selector')).toBeVisible();
+	await expect(ungroupedRow.locator('.cleara11y-result-row__meta .cleara11y-truncated-value')).toHaveAttribute('data-tooltip', /cleara11y-issues-explorer-fixture/);
+
+	await page.locator('#cleara11y-group-by').selectOption('rule');
+	await waitForResults(page);
+	const ruleGroup = page.locator('.cleara11y-result-group').filter({hasText: 'button-name'}).first();
+	await expect(ruleGroup.locator('.cleara11y-group-header__rule-id')).toHaveText('button-name');
+	const ruleRow = ruleGroup.locator('[data-occurrence-row]').first();
+	await expect(ruleRow.getByRole('button', {name: /View details for/})).toContainText('ClearA11y Issues Explorer Fixture');
+	await expect(ruleRow.locator('.cleara11y-result-row__meta')).toContainText('/cleara11y-issues-explorer-fixture/');
+	await expect(ruleRow.locator('.cleara11y-result-row__meta .cleara11y-truncated-value')).toHaveAttribute('tabindex', '0');
+	await expect(ruleRow).not.toContainText('Element must have text that is visible to screen readers');
+
+	await ruleRow.click({position: {x: 8, y: 20}});
+	await expect(page.locator('#cleara11y-detail-panel')).toHaveClass(/is-open/);
+	await page.getByRole('button', {name: /Close details/}).click();
+	await expect(page.locator('#cleara11y-detail-panel')).toBeHidden();
+
+	await ruleGroup.getByRole('link', {name: 'Issue reference'}).click();
+	await expect(page).toHaveURL(/page=cleara11y-issue-reference.*ruleId=button-name/);
+	await expect(page.locator('#cleara11y-issue-search')).toHaveValue('button-name');
+	await expect(page.locator('.cleara11y-reference-item')).toHaveCount(1);
+	await expect(page.locator('#cleara11y-detail-modal')).toBeVisible();
+	await expect(page.locator('#cleara11y-modal-title')).toBeFocused();
+});
+
+test('Issues per page Screen Option controls the explorer request', async ({page}) => {
+	const previous = JSON.parse(wp([
+		'eval',
+		`$user = get_user_by('login', 'admin');
+		echo wp_json_encode([
+			'exists' => metadata_exists('user', $user->ID, 'cleara11y_issues_per_page'),
+			'value' => get_user_meta($user->ID, 'cleara11y_issues_per_page', true),
+		]);`
+	]));
+
+	try {
+		wp(['user', 'meta', 'update', 'admin', 'cleara11y_issues_per_page', '7']);
+		const responsePromise = page.waitForResponse(response =>
+			response.url().includes('/cleara11y/v1/issues/occurrences')
+			&& response.request().method() === 'GET'
+		);
+		await page.goto('/wp-admin/admin.php?page=cleara11y-issues');
+		const response = await responsePromise;
+		expect(new URL(response.url()).searchParams.get('per_page')).toBe('7');
+		await page.locator('#show-settings-link').click();
+		await expect(page.locator('#cleara11y_issues_per_page')).toHaveValue('7');
+	} finally {
+		if (previous.exists) {
+			wp(['user', 'meta', 'update', 'admin', 'cleara11y_issues_per_page', String(previous.value)]);
+		} else {
+			wp(['user', 'meta', 'delete', 'admin', 'cleara11y_issues_per_page']);
+		}
+	}
 });
 
 test('direct scan and occurrence URLs render snapshot and safe evidence', async ({page}) => {
@@ -267,9 +370,11 @@ test('direct scan and occurrence URLs render snapshot and safe evidence', async 
 	const scanUrl = await scanLink.getAttribute('href');
 	await page.goto(scanUrl);
 	await expect(page.locator('#cleara11y-snapshot-banner')).toBeVisible();
+	await expect(page.locator('#cleara11y-include-exceptions-control')).toBeHidden();
 	await page.getByRole('button', {name: 'View details'}).first().click();
 	const url = page.url();
 	await page.goto(url);
+	await page.getByRole('tab', {name: 'Evidence'}).click();
 	await expect(page.getByRole('heading', {name: 'Scan evidence'})).toBeVisible();
 	await expect(page.locator('.cleara11y-detail pre').first()).toBeVisible();
 	await expect(page.locator('.cleara11y-detail script')).toHaveCount(0);
@@ -285,14 +390,39 @@ test('explorer has no automated accessibility violations in list and detail stat
 	if (!await page.locator('[data-occurrence-row]').count()) return;
 	await page.getByRole('button', {name: 'View details'}).first().click();
 	await expect(page.getByRole('heading', {name: 'Location'})).toBeVisible();
+	const overviewTab = page.getByRole('tab', {name: 'Overview'});
+	const evidenceTab = page.getByRole('tab', {name: 'Evidence'});
+	await expect(overviewTab).toHaveAttribute('aria-selected', 'true');
+	await overviewTab.focus();
+	await page.keyboard.press('ArrowRight');
+	await expect(evidenceTab).toBeFocused();
+	await expect(evidenceTab).toHaveAttribute('aria-selected', 'true');
+	await expect(page.getByRole('heading', {name: 'Scan evidence'})).toBeVisible();
 	result = await page.evaluate(() => axe.run('#cleara11y-issues-explorer'));
 	expect(result.violations, JSON.stringify(result.violations, null, 2)).toEqual([]);
+});
+
+test('issue inspector becomes a full-width non-modal drawer on narrow screens', async ({page}) => {
+	await page.setViewportSize({width: 500, height: 700});
+	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=active');
+	await waitForResults(page);
+	const details = page.getByRole('button', {name: 'View details'}).first();
+	await details.click();
+	const drawer = page.locator('#cleara11y-detail-panel');
+	await expect(drawer).toHaveClass(/is-open/);
+	const drawerBounds = await drawer.boundingBox();
+	expect(drawerBounds.width).toBeCloseTo(500, 2);
+	await drawer.getByRole('button', {name: /Close details/}).focus();
+	await page.keyboard.press('Escape');
+	await expect(drawer).toBeHidden();
+	await expect(details).toBeFocused();
 });
 
 test('reviewed exception wizard preserves occurrence context and updates the explorer', async ({page}) => {
 	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=active&ruleId=button-name&groupBy=none');
 	await waitForResults(page);
 	await page.getByRole('button', {name: 'View details'}).first().click();
+	await page.getByRole('tab', {name: 'Exception'}).click();
 	await page.getByRole('button', {name: 'Snooze until next scan'}).click();
 	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=exception&ruleId=button-name&groupBy=none');
 	await waitForResults(page);
@@ -303,13 +433,14 @@ test('reviewed exception wizard preserves occurrence context and updates the exp
 	await waitForResults(page);
 	await expect(page.locator('[data-occurrence-row]').first()).toBeVisible();
 	await page.getByRole('button', {name: 'View details'}).first().click();
+	await page.getByRole('tab', {name: 'Exception'}).click();
 	await page.getByRole('button', {name: 'Create exception…'}).click();
 
 	const dialog = page.getByRole('dialog', {name: 'Create Exception'});
 	await expect(dialog).toBeVisible();
-	await expect(dialog.getByRole('radio', {name: /Rule on Element/i})).toBeChecked();
-	await expect(dialog.locator('#cleara11y-selected-rules')).toContainText('button-name');
-	await expect(dialog.locator('#cleara11y-css-selector')).not.toHaveValue('');
+	await expect(dialog.locator('input[name="target_type"][value="rule_on_element"]')).toBeChecked();
+	await expect(dialog.locator('#cleara11y-finding-rule-id')).toHaveText('button-name');
+	await expect(dialog.locator('#cleara11y-finding-selector')).not.toHaveText('Unavailable');
 
 	await dialog.getByRole('button', {name: 'Next'}).click();
 	await expect(dialog.getByRole('radio', {name: /Single Page/i})).toBeChecked();
@@ -352,44 +483,117 @@ test('reviewed exception wizard preserves occurrence context and updates the exp
 	await expect(page.getByText('Current exception').first()).toBeVisible();
 });
 
-test('standalone wizard searches rules and pages and persists the exception', async ({page}) => {
+test('exceptions management directs new exception creation to detected issues', async ({page}) => {
 	await page.goto('/wp-admin/admin.php?page=cleara11y-exceptions');
-	await page.getByRole('link', {name: 'Create Exception'}).click();
+	await expect(page.getByRole('link', {name: 'Create Exception'})).toHaveCount(0);
+	const reviewIssues = page.getByRole('link', {name: 'Review Issues'});
+	await expect(reviewIssues).toBeVisible();
+	await expect(page.getByText(/Create exceptions from a detected finding/)).toBeVisible();
+	await reviewIssues.click();
+	await expect(page).toHaveURL(/page=cleara11y-issues/);
+});
+
+test('reviewed exception API requires a source occurrence', async ({page}) => {
+	await page.goto('/wp-admin/admin.php?page=cleara11y-issues');
+	await waitForResults(page);
+	const result = await page.evaluate(async () => {
+		const response = await fetch(cleara11yData.apiUrl + 'exceptions/preview', {
+			method: 'POST',
+			headers: {'X-WP-Nonce': cleara11yData.nonce, 'Content-Type': 'application/json'},
+			body: JSON.stringify({
+				target_type: 'rule',
+				rule_ids: ['image-alt'],
+				scope: {scope_type: 'site'},
+				duration: {duration_type: 'permanent'},
+				reason_category: 'accepted_risk',
+				note: 'Missing occurrence validation test.'
+			})
+		});
+		return {status: response.status, body: await response.json()};
+	});
+	expect(result.status).toBe(400);
+	expect(result.body.code).toBe('exception_occurrence_required');
+});
+
+test('reviewed exception API derives rule and page from the source occurrence', async ({page}) => {
+	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=active&ruleId=image-alt&groupBy=none');
+	await waitForResults(page);
+	const violationId = Number(await page.locator('[data-occurrence-row]').first().getAttribute('data-occurrence-row'));
+	const result = await page.evaluate(async id => {
+		const response = await fetch(cleara11yData.apiUrl + 'exceptions', {
+			method: 'POST',
+			headers: {'X-WP-Nonce': cleara11yData.nonce, 'Content-Type': 'application/json'},
+			body: JSON.stringify({
+				violation_id: id,
+				target_type: 'rule',
+				rule_ids: ['client-supplied-rule'],
+				scope: {scope_type: 'page', url: 'https://invalid.example/client-page/'},
+				duration: {duration_type: 'permanent'},
+				reason_category: 'accepted_risk',
+				note: 'Server-owned occurrence context test.'
+			})
+		});
+		return {status: response.status, body: await response.json()};
+	}, violationId);
+	expect(result.status).toBe(200);
+	expect(result.body.rule.rule_ids).toEqual(['image-alt']);
+	expect(result.body.rule.scope.url).toContain('cleara11y-issues-explorer-fixture');
+
+	await page.evaluate(async exceptionId => {
+		await fetch(cleara11yData.apiUrl + 'exceptions/' + encodeURIComponent(exceptionId), {
+			method: 'DELETE',
+			headers: {'X-WP-Nonce': cleara11yData.nonce}
+		});
+	}, result.body.id);
+});
+
+test('exception wizard navigation, focus containment, and compact layout remain usable', async ({page}) => {
+	await page.setViewportSize({width: 1280, height: 900});
+	await page.goto('/wp-admin/admin.php?page=cleara11y-page-report&post_id=' + fixturePostId);
+	const createButton = page.locator('.cleara11y-issue-card').filter({hasText: 'image-alt'}).first()
+		.getByRole('button', {name: 'Create exception…'});
+	await createButton.click();
 
 	const dialog = page.getByRole('dialog', {name: 'Create Exception'});
-	await expect(dialog.getByRole('radio', {name: /Rule Only/i})).toBeChecked();
-	await expect(dialog.getByRole('radio', {name: /Rule on Element/i})).toBeDisabled();
+	const closeButton = dialog.locator('.cleara11y-modal-close--icon');
+	const cancelButton = dialog.locator('#cleara11y-wizard-cancel');
+	const backButton = dialog.getByRole('button', {name: 'Back'});
 
-	await dialog.locator('#cleara11y-rule-search').fill('image-alt');
-	await dialog.locator('#cleara11y-rule-search').focus();
-	await dialog.locator('#cleara11y-rule-options button').filter({hasText: 'image-alt'}).first().click();
-	await expect(dialog.locator('#cleara11y-selected-rules')).toContainText('image-alt');
-	await page.waitForTimeout(300);
-	await expect(dialog.locator('#cleara11y-rule-options')).toBeHidden();
+	await expect(dialog.locator('.cleara11y-progress-step[aria-current="step"]')).toContainText('Target');
+	await expect(dialog.locator('.cleara11y-wizard-step-count')).toContainText('Step 1 of 5');
+	await expect(backButton).toBeHidden();
+	expect(await cancelButton.evaluate(button => button.scrollWidth <= button.clientWidth)).toBe(true);
+
+	await closeButton.focus();
+	await page.keyboard.press('Shift+Tab');
+	await expect(dialog.getByRole('button', {name: 'Next'})).toBeFocused();
+	await page.keyboard.press('Tab');
+	await expect(closeButton).toBeFocused();
+
+	await expect(dialog).toHaveCSS('transition-property', 'height');
+	await expect(dialog.locator('#cleara11y-finding-rule-id')).toHaveText('image-alt');
+	await expect(dialog.locator('#cleara11y-rule-search')).toHaveCount(0);
+
+	await page.setViewportSize({width: 500, height: 500});
 	await dialog.getByRole('button', {name: 'Next'}).click();
 
-	await dialog.getByRole('radio', {name: /Single Page/i}).check();
-	await dialog.locator('#cleara11y-page-search').fill('ClearA11y Issues Explorer Fixture');
-	await dialog.locator('#cleara11y-page-search').focus();
-	await dialog.locator('#cleara11y-page-options button').filter({hasText: 'ClearA11y Issues Explorer Fixture'}).first().click();
-	await expect(dialog.locator('#cleara11y-selected-page')).toContainText('ClearA11y Issues Explorer Fixture');
-	await page.waitForTimeout(300);
-	await expect(dialog.locator('#cleara11y-page-options')).toBeHidden();
-	await dialog.getByRole('button', {name: 'Next'}).click();
+	await expect(backButton).toBeVisible();
+	await expect(dialog.locator('.cleara11y-progress-step[aria-current="step"]')).toContainText('Scope');
+	await expect(dialog.locator('.cleara11y-wizard-step[data-step="2"] h3')).toBeFocused();
 
-	await dialog.getByRole('radio', {name: /Permanent/i}).check();
-	await dialog.getByRole('button', {name: 'Next'}).click();
-	await dialog.locator('#cleara11y-reason-category').selectOption('accepted_risk');
-	await dialog.locator('#cleara11y-note').fill('Standalone searchable wizard persistence test.');
-	await dialog.getByRole('button', {name: 'Next'}).click();
-	await dialog.getByRole('button', {name: 'Create Exception'}).click();
+	await backButton.click();
+	await expect(dialog.locator('.cleara11y-progress-step[aria-current="step"]')).toContainText('Target');
+	await expect(dialog.locator('input[name="target_type"][value="rule_on_element"]')).toBeChecked();
+
+	const dialogBounds = await dialog.boundingBox();
+	expect(dialogBounds).not.toBeNull();
+	expect(dialogBounds.y).toBeGreaterThanOrEqual(0);
+	expect(dialogBounds.y + dialogBounds.height).toBeLessThanOrEqual(500);
+	await expect(cancelButton).toBeVisible();
+
+	await page.keyboard.press('Escape');
 	await expect(dialog).toBeHidden();
-
-	const exceptionRow = page.locator('#cleara11y-exceptions-table-body tr')
-		.filter({hasText: 'image-alt'})
-		.filter({hasText: 'Standalone searchable wizard persistence test.'})
-		.first();
-	await expect(exceptionRow).toBeVisible();
+	await expect(createButton).toBeFocused();
 });
 
 test('scan list can cancel unfinished work and keeps the scan record', async ({page}) => {
@@ -443,7 +647,7 @@ test('page report finding opens a prefilled wizard and saves', async ({page}) =>
 	await issueCard.getByRole('button', {name: 'Create exception…'}).click();
 
 	const dialog = page.getByRole('dialog', {name: 'Create Exception'});
-	await expect(dialog.locator('#cleara11y-selected-rules')).toContainText('color-contrast');
+	await expect(dialog.locator('#cleara11y-finding-rule-id')).toHaveText('color-contrast');
 	await dialog.getByRole('button', {name: 'Next'}).click();
 	await expect(dialog.locator('#cleara11y-selected-page')).toContainText('ClearA11y Issues Explorer Fixture');
 	await dialog.getByRole('button', {name: 'Next'}).click();
@@ -526,8 +730,8 @@ test('legacy finding falls back to an explicit rule-on-page exception', async ({
 	await issueCard.getByRole('button', {name: 'Create exception…'}).click();
 
 	const dialog = page.getByRole('dialog', {name: 'Create Exception'});
-	await expect(dialog.getByRole('radio', {name: /Rule Only/i})).toBeChecked();
-	await expect(dialog.getByRole('radio', {name: /Rule on Element/i})).toBeDisabled();
+	await expect(dialog.locator('input[name="target_type"][value="rule"]')).toBeChecked();
+	await expect(dialog.locator('input[name="target_type"][value="rule_on_element"]')).toBeDisabled();
 	await expect(dialog.locator('#cleara11y-occurrence-fallback-notice')).toBeVisible();
 	await dialog.getByRole('button', {name: 'Next'}).click();
 	await dialog.getByRole('button', {name: 'Next'}).click();
@@ -596,7 +800,7 @@ test.fixme(
 	}
 );
 
-test('narrow view presents occurrence detail as the primary content', async ({page}) => {
+test('narrow view overlays occurrence detail without removing the results', async ({page}) => {
 	await page.setViewportSize({width: 600, height: 900});
 	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=active');
 	await waitForResults(page);
@@ -604,7 +808,7 @@ test('narrow view presents occurrence detail as the primary content', async ({pa
 		throw new Error('The self-contained occurrence fixture was not returned.');
 	}
 	await page.getByRole('button', {name: 'View details'}).first().click();
-	await expect(page.locator('#cleara11y-results-region')).toBeHidden();
+	await expect(page.locator('#cleara11y-results-region')).toBeVisible();
 	await expect(page.locator('#cleara11y-detail-panel')).toBeVisible();
 });
 

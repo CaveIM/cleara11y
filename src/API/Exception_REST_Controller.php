@@ -318,15 +318,17 @@ class Exception_REST_Controller {
 	 * @return \WP_REST_Response|\WP_Error
 	 */
 	public function create_exception_rule(\WP_REST_Request $request) {
-		$params = $this->validate_exception_params((array) $request->get_json_params());
+		$request_params = (array) $request->get_json_params();
+		if (empty($request_params['violation_id'])) {
+			return new \WP_Error(
+				'exception_occurrence_required',
+				'Choose a current issue occurrence for this exception.',
+				['status' => 400]
+			);
+		}
+		$params = $this->validate_exception_params($request_params);
 		if (is_wp_error($params)) {
 			return $params;
-		}
-
-		// Check for guardrails
-		$warning = $this->check_guardrails($params);
-		if (is_wp_error($warning)) {
-			return $warning;
 		}
 
 		// Generate UUID
@@ -351,6 +353,13 @@ class Exception_REST_Controller {
 		if (is_wp_error($anchor_result)) {
 			return $anchor_result;
 		}
+
+		$warning = $this->check_guardrails([
+			'scope' => $rule->scope,
+			'duration' => $rule->duration,
+			'rule_ids' => $rule->rule_ids,
+			'violation_id' => $params['violation_id'],
+		]);
 
 		// Set expiration if needed
 		if (isset($params['duration']['duration_type'])) {
@@ -697,7 +706,15 @@ class Exception_REST_Controller {
 	 * @return \WP_REST_Response|\WP_Error
 	 */
 	public function preview_impact(\WP_REST_Request $request) {
-		$params = $this->validate_exception_params((array) $request->get_json_params());
+		$request_params = (array) $request->get_json_params();
+		if (empty($request_params['violation_id'])) {
+			return new \WP_Error(
+				'exception_occurrence_required',
+				'Choose a current issue occurrence for this exception.',
+				['status' => 400]
+			);
+		}
+		$params = $this->validate_exception_params($request_params);
 		if (is_wp_error($params)) {
 			return $params;
 		}
@@ -875,7 +892,7 @@ class Exception_REST_Controller {
 				)
 			)
 		);
-		if ('rule' === $target_type && empty($rule_ids)) {
+		if ('rule' === $target_type && empty($rule_ids) && empty($params['violation_id'])) {
 			return new \WP_Error('exception_rule_required', 'Select at least one accessibility rule.', ['status' => 400]);
 		}
 
@@ -941,11 +958,6 @@ class Exception_REST_Controller {
 	 * @return true|\WP_Error
 	 */
 	private function anchor_occurrence_rule(Exception_Rule $rule, int $violation_id) {
-		if ('rule' === $rule->target_type) {
-			$rule->legacy_reanchor_status = 'not_required';
-			return true;
-		}
-
 		$violation = Issue_Repository::get_by_id($violation_id);
 		if (! $violation) {
 			return new \WP_Error(
@@ -955,9 +967,11 @@ class Exception_REST_Controller {
 			);
 		}
 
-		$identity_error = $this->validate_occurrence_identity($violation);
-		if (is_wp_error($identity_error)) {
-			return $identity_error;
+		if ('rule' !== $rule->target_type) {
+			$identity_error = $this->validate_occurrence_identity($violation);
+			if (is_wp_error($identity_error)) {
+				return $identity_error;
+			}
 		}
 
 		global $wpdb;
@@ -971,14 +985,19 @@ class Exception_REST_Controller {
 			return new \WP_Error('scan_item_not_found', 'Scan item not found.', ['status' => 404]);
 		}
 
-		$rule->rule_ids = 'rule_on_element' === $rule->target_type ? [$violation->rule_id] : [];
-		$rule->element_match = [
-			'css_selector' => (string) $violation->selector,
-		];
-		$rule->violation_identity_v2 = $violation->violation_identity_v2;
-		$rule->element_identity_v2 = $violation->element_identity_v2;
-		$rule->identity_signature_version = $violation->identity_signature_version;
-		$rule->legacy_reanchor_status = 'anchored';
+		$rule->rule_ids = 'element' === $rule->target_type ? [] : [$violation->rule_id];
+		if ('rule' === $rule->target_type) {
+			$rule->element_match = [];
+			$rule->legacy_reanchor_status = 'not_required';
+		} else {
+			$rule->element_match = [
+				'css_selector' => (string) $violation->selector,
+			];
+			$rule->violation_identity_v2 = $violation->violation_identity_v2;
+			$rule->element_identity_v2 = $violation->element_identity_v2;
+			$rule->identity_signature_version = $violation->identity_signature_version;
+			$rule->legacy_reanchor_status = 'anchored';
+		}
 		if ('page' === ($rule->scope['scope_type'] ?? '')) {
 			$rule->scope['url'] = (string) $scan_item->post_url;
 		}
@@ -1040,16 +1059,23 @@ class Exception_REST_Controller {
 			$warnings[] = 'This is a permanent exception. Consider using a temporary exception if the issue might be fixed later.';
 		}
 
-		// Check for critical issues
-		if (!empty($params['rule_ids'])) {
+		// Check for critical issues using the server-owned source rule when available.
+		$guardrail_rule_ids = $params['rule_ids'] ?? [];
+		if (! empty($params['violation_id'])) {
+			$violation = Issue_Repository::get_by_id((int) $params['violation_id']);
+			if ($violation) {
+				$guardrail_rule_ids = [$violation->rule_id];
+			}
+		}
+		if (! empty($guardrail_rule_ids)) {
 			global $wpdb;
 			$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
 
-			$placeholders = implode(',', array_fill(0, count($params['rule_ids']), '%s'));
+			$placeholders = implode(',', array_fill(0, count($guardrail_rule_ids), '%s'));
 			$has_critical = $wpdb->get_var(
 				$wpdb->prepare(
 					"SELECT COUNT(*) FROM `{$issues_table}` WHERE rule_id IN ({$placeholders}) AND severity = 'critical' LIMIT 1",
-					...$params['rule_ids']
+					...$guardrail_rule_ids
 				)
 			);
 

@@ -205,6 +205,7 @@ class Page_Report {
 											data-cleara11y-create-exception
 											data-occurrence-id="<?php echo esc_attr($issue->id); ?>"
 											data-rule-id="<?php echo esc_attr($issue->rule_id); ?>"
+											data-rule-title="<?php echo esc_attr($issue->rule_id); ?>"
 											data-selector="<?php echo esc_attr((string) $issue->selector); ?>"
 											data-page-id="<?php echo esc_attr($post_id); ?>"
 											data-page-title="<?php echo esc_attr($post->post_title); ?>"

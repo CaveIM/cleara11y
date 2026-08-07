@@ -16,6 +16,8 @@ document.addEventListener('DOMContentLoaded', function() {
 		state: {
 			allRules: [],
 			filteredRules: [],
+			requestedRuleId: '',
+			lastFocusedElement: null,
 			filters: {
 				severity: '',
 				category: '',
@@ -25,6 +27,7 @@ document.addEventListener('DOMContentLoaded', function() {
 		},
 
 		init() {
+			this.state.requestedRuleId = new URL(window.location.href).searchParams.get('ruleId') || '';
 			this.cacheElements();
 			this.bindEvents();
 			this.loadAxeRules();
@@ -77,6 +80,7 @@ document.addEventListener('DOMContentLoaded', function() {
 				this.elements.searchInput.addEventListener('input', (e) => {
 					clearTimeout(searchTimeout);
 					searchTimeout = setTimeout(() => {
+						this.state.requestedRuleId = '';
 						this.state.filters.search = e.target.value.toLowerCase();
 						this.applyFilters();
 					}, 300);
@@ -123,9 +127,17 @@ document.addEventListener('DOMContentLoaded', function() {
 
 				// Process and normalize rules
 				this.state.allRules = this.processRules(rules);
+				const requestedRule = this.state.allRules.find(rule => rule.ruleId === this.state.requestedRuleId);
+				if (requestedRule) {
+					this.state.filters.search = requestedRule.ruleId.toLowerCase();
+					this.elements.searchInput.value = requestedRule.ruleId;
+				}
 
 				// Apply initial filters
 				this.applyFilters();
+				if (requestedRule) {
+					this.showRuleDetails(requestedRule.ruleId);
+				}
 
 			} catch (error) {
 				console.error('Error loading axe rules:', error);
@@ -196,6 +208,9 @@ document.addEventListener('DOMContentLoaded', function() {
 			const { severity, category, wcag, search } = this.state.filters;
 
 			this.state.filteredRules = this.state.allRules.filter(rule => {
+				if (this.state.requestedRuleId && rule.ruleId !== this.state.requestedRuleId) {
+					return false;
+				}
 				// Filter by normalized severity (not raw impact)
 				if (severity && rule.severity !== severity) {
 					return false;
@@ -283,12 +298,12 @@ document.addEventListener('DOMContentLoaded', function() {
 			this.elements.referenceList.querySelectorAll('.cleara11y-view-details-btn').forEach(btn => {
 				btn.addEventListener('click', (e) => {
 					const ruleId = e.target.dataset.ruleId;
-					this.showRuleDetails(ruleId);
+					this.showRuleDetails(ruleId, e.currentTarget);
 				});
 			});
 		},
 
-		showRuleDetails(ruleId) {
+		showRuleDetails(ruleId, openingControl) {
 			const rule = this.state.allRules.find(r => r.ruleId === ruleId);
 
 			if (!rule) {
@@ -360,7 +375,12 @@ document.addEventListener('DOMContentLoaded', function() {
 			`;
 
 			// Show modal
+			const currentFocus = document.activeElement;
+			this.state.lastFocusedElement = openingControl || (
+				currentFocus && currentFocus !== document.body ? currentFocus : null
+			);
 			this.elements.detailModal.style.display = 'flex';
+			this.elements.modalTitle.focus();
 		},
 
 		getWcagLabel(tag) {
@@ -389,6 +409,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
 		closeModal() {
 			this.elements.detailModal.style.display = 'none';
+			const target = this.state.lastFocusedElement;
+			if (target && document.contains(target)) {
+				target.focus();
+			} else {
+				this.elements.searchInput.focus();
+			}
 		},
 
 		updateStats() {

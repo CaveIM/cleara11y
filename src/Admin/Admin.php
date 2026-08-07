@@ -42,6 +42,7 @@ class Admin {
 		add_action('admin_menu', [$this, 'register_menu']);
 		add_action('admin_enqueue_scripts', [$this, 'enqueue_assets']);
 		add_action('admin_bar_menu', [$this, 'add_toolbar_indicator'], 999);
+		add_filter('set-screen-option', [$this, 'save_screen_option'], 10, 3);
 
 		// AJAX handlers for pages list (fallback if REST API fails)
 		add_action('wp_ajax_cleara11y_get_posts', [$this, 'ajax_get_posts']);
@@ -508,7 +509,7 @@ class Admin {
 		);
 
 		// Add Issues List submenu page
-		add_submenu_page(
+		$issues_hook = add_submenu_page(
 			'cleara11y',
 			__('Issues', 'cleara11y'),
 			__('Issues', 'cleara11y'),
@@ -516,6 +517,7 @@ class Admin {
 			'cleara11y-issues',
 			[Issues_List_Page::class, 'render']
 		);
+		add_action('load-' . $issues_hook, [$this, 'register_issues_screen_options']);
 
 		// Add Exceptions submenu page
 		add_submenu_page(
@@ -566,6 +568,38 @@ class Admin {
 			'cleara11y-debug',
 			[$this, 'render_debug_page']
 		);
+	}
+
+	/**
+	 * Register per-user display preferences for the Issues Explorer.
+	 *
+	 * @return void
+	 */
+	public function register_issues_screen_options(): void {
+		add_screen_option(
+			'per_page',
+			[
+				'label' => __('Issues per page', 'cleara11y'),
+				'default' => 20,
+				'option' => 'cleara11y_issues_per_page',
+			]
+		);
+	}
+
+	/**
+	 * Sanitize ClearA11y Screen Options before WordPress stores them.
+	 *
+	 * @param mixed  $screen_option Existing filtered value.
+	 * @param string $option Screen option name.
+	 * @param mixed  $value Submitted value.
+	 * @return mixed
+	 */
+	public function save_screen_option($screen_option, string $option, $value) {
+		if ('cleara11y_issues_per_page' !== $option) {
+			return $screen_option;
+		}
+
+		return min(100, max(1, absint($value)));
 	}
 
 	/**
@@ -766,6 +800,9 @@ class Admin {
 
 		// Enqueue the appropriate JavaScript
 		if ($is_issues_page) {
+			$issues_per_page = absint(get_user_option('cleara11y_issues_per_page'));
+			$issues_per_page = min(100, max(1, $issues_per_page ?: 20));
+
 			wp_enqueue_style(
 				'cleara11y-issues-explorer',
 				CLEARA11Y_PLUGIN_URL . 'assets/css/issues-explorer.css',
@@ -830,6 +867,7 @@ class Admin {
 				'apiUrl' => $rest_url . 'cleara11y/v1/',
 				'nonce' => wp_create_nonce('wp_rest'),
 				'pluginUrl' => CLEARA11Y_PLUGIN_URL,
+				'perPage' => $issues_per_page,
 				'strings' => [
 					'loadingOccurrences' => __('Loading issue occurrences…', 'cleara11y'),
 					'activeTitle' => __('Active accessibility issues', 'cleara11y'),

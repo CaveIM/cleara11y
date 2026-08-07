@@ -431,6 +431,10 @@ class REST_Controller {
 						'type' => 'string',
 						'enum' => ['critical', 'moderate', 'minor'],
 					],
+					'finding_type' => [
+						'type' => 'string',
+						'enum' => ['violation', 'review'],
+					],
 					'rule_id' => ['type' => 'string'],
 					'page_id' => ['type' => 'integer', 'minimum' => 1],
 					'scan_id' => ['type' => 'integer', 'minimum' => 1],
@@ -1640,6 +1644,7 @@ class REST_Controller {
 		$args = [
 			'status' => $scan_id > 0 ? 'all' : ($request->get_param('status') ?: 'active'),
 			'severity' => $request->get_param('severity') ?: '',
+			'finding_type' => $request->get_param('finding_type') ?: '',
 			'rule_id' => sanitize_key((string) $request->get_param('rule_id')),
 			'post_id' => $page_id,
 			'scan_id' => $scan_id,

@@ -49,10 +49,13 @@ class Exceptions_Page {
 		?>
 		<div class="wrap cleara11y-exceptions-wrap">
 			<h1 class="wp-heading-inline"><?php esc_html_e('Exceptions', 'cleara11y'); ?></h1>
-			<a href="#" class="page-title-action" id="cleara11y-create-exception">
-				<?php esc_html_e('Create Exception', 'cleara11y'); ?>
+			<a href="<?php echo esc_url(Issues_List_Page::get_url()); ?>" class="page-title-action">
+				<?php esc_html_e('Review Issues', 'cleara11y'); ?>
 			</a>
 			<hr class="wp-header-end">
+			<p class="description">
+				<?php esc_html_e('Create exceptions from a detected finding so ClearA11y can preserve its rule, page, evidence, and element identity.', 'cleara11y'); ?>
+			</p>
 
 			<!-- Tabs Navigation -->
 			<nav class="nav-tab-wrapper wp-clearfix" style="margin: 20px 0;">
@@ -256,13 +259,13 @@ class Exceptions_Page {
 			'createSuccess' => __('Exception created successfully!', 'cleara11y'),
 			'createFailed' => __('Failed to create exception.', 'cleara11y'),
 			'step1Title' => __('What should become an exception?', 'cleara11y'),
-			'step1Desc' => __('Choose the detected issue pattern this review decision should apply to: a specific rule, a specific element, or both.', 'cleara11y'),
-			'ruleOnly' => __('Rule Only', 'cleara11y'),
-			'ruleOnlyDesc' => __('Mark all detected issues for a specific accessibility rule as exceptions (e.g. color-contrast).', 'cleara11y'),
-			'elementOnly' => __('Element Only', 'cleara11y'),
-			'elementOnlyDesc' => __('Mark detected issues on a specific element as exceptions, regardless of rule.', 'cleara11y'),
-			'ruleOnElement' => __('Rule on Element', 'cleara11y'),
-			'ruleOnElementDesc' => __('Mark a specific accessibility rule on a specific element as an exception (most precise).', 'cleara11y'),
+			'step1Desc' => __('The finding supplies the rule and element context. Choose how broadly this review decision should apply.', 'cleara11y'),
+			'ruleOnly' => __('This rule in the selected scope', 'cleara11y'),
+			'ruleOnlyDesc' => __('Apply the detected accessibility rule throughout the scope you choose next.', 'cleara11y'),
+			'elementOnly' => __('This element for any rule', 'cleara11y'),
+			'elementOnlyDesc' => __('Apply to this detected element when it is reported by any accessibility rule.', 'cleara11y'),
+			'ruleOnElement' => __('This rule on this element', 'cleara11y'),
+			'ruleOnElementDesc' => __('Apply only to this detected rule and element combination (most precise).', 'cleara11y'),
 			'step2Title' => __('Where should this apply?', 'cleara11y'),
 			'step2Desc' => __('Choose the scope for this exception.', 'cleara11y'),
 			'singlePage' => __('Single Page', 'cleara11y'),

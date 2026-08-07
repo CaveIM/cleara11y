@@ -92,10 +92,6 @@
 		$(document).on('click', '.cleara11y-enable-exception', enableException);
 		$(document).on('click', '.cleara11y-revoke-exception', revokeException);
 		$(document).on('click', '.cleara11y-modal-close', closeModals);
-		$('#cleara11y-create-exception').on('click', function(e) {
-			e.preventDefault();
-			openCreateWizard();
-		});
 		$(document).on('click', '[data-cleara11y-create-exception]', function(e) {
 			e.preventDefault();
 			const button = this;
@@ -110,6 +106,7 @@
 					page_id: Number(button.dataset.pageId || 0),
 					page_title: button.dataset.pageTitle || '',
 					post_type: button.dataset.postType || '',
+					rule_title: button.dataset.ruleTitle || '',
 					occurrence_fallback: !canAnchor
 				},
 				duration: {duration_type: 'permanent'},
@@ -578,6 +575,9 @@
 	let wizardReturnFocus = null;
 
 	function openCreateWizard(initialData = {}, editingId = null) {
+		if (!editingId && !Number(initialData?.violation_id || 0)) {
+			return;
+		}
 		wizardReturnFocus = document.activeElement;
 		resetWizard();
 		wizardState.editingId = editingId;
@@ -587,8 +587,13 @@
 		}
 		renderWizardModal();
 		hydrateWizard();
-		showWizardStep(1);
-		$('#cleara11y-wizard-modal input[name="target_type"]').first().trigger('focus');
+		showWizardStep(1, false, false);
+		const $target = $('#cleara11y-wizard-modal input[name="target_type"]:checked');
+		if (editingId || !$target.length) {
+			$('#cleara11y-wizard-modal .cleara11y-wizard-step[data-step="1"] h3').trigger('focus');
+		} else {
+			$target.trigger('focus');
+		}
 	}
 
 	function resetWizard() {
@@ -610,9 +615,13 @@
 		const data = wizardState.data;
 		const contextPostType = data.context?.post_type || '';
 		const occurrenceSpecific = Boolean(data.violation_id) && !data.context?.occurrence_fallback;
-		$('input[name="target_type"][value="element"], input[name="target_type"][value="rule_on_element"]')
-			.prop('disabled', !occurrenceSpecific);
-		$('#cleara11y-occurrence-target-help').toggle(!occurrenceSpecific);
+		if (wizardState.editingId) {
+			$('input[name="target_type"]').prop('disabled', true);
+			$('#cleara11y-edit-target-notice').prop('hidden', false);
+		} else {
+			$('input[name="target_type"][value="element"], input[name="target_type"][value="rule_on_element"]')
+				.prop('disabled', !occurrenceSpecific);
+		}
 		if (data.context?.occurrence_fallback) {
 			$('#cleara11y-occurrence-fallback-notice').prop('hidden', false);
 		}
@@ -634,11 +643,7 @@
 		if (data.target_type) {
 			$('input[name="target_type"][value="' + data.target_type + '"]').prop('checked', true).trigger('change');
 		}
-		renderSelectedRules();
-		if (data.element_match?.css_selector) {
-			$('input[name="element_match_type"][value="css_selector"]').prop('checked', true).trigger('change');
-			$('#cleara11y-css-selector').val(data.element_match.css_selector);
-		}
+		renderFindingContext();
 		if (data.scope?.scope_type) {
 			$('input[name="scope_type"][value="' + data.scope.scope_type + '"]').prop('checked', true).trigger('change');
 			renderSelectedPage();
@@ -646,6 +651,11 @@
 			(data.scope.post_types || []).forEach(type => {
 				$('input[name="post_types"][value="' + type + '"]').prop('checked', true);
 			});
+		}
+		if (!wizardState.editingId && data.violation_id) {
+			$('#cleara11y-page-search').prop('hidden', true).prop('disabled', true);
+			$('#cleara11y-selected-page [data-remove-page]').remove();
+			$('#cleara11y-scope-page-section > label').text('Detected page:');
 		}
 		if (data.duration?.duration_type) {
 			$('input[name="duration_type"][value="' + data.duration.duration_type + '"]').prop('checked', true).trigger('change');
@@ -657,36 +667,35 @@
 	}
 
 	function renderWizardModal() {
+		const stepLabels = [
+			str('target'),
+			str('scope'),
+			str('duration'),
+			str('reason'),
+			str('step5Title')
+		];
 		const wizardHtml = `
 			<div id="cleara11y-wizard-modal" style="display: none;">
 				<div class="cleara11y-modal-backdrop"></div>
 				<div class="cleara11y-modal-content cleara11y-wizard-content" role="dialog" aria-modal="true" aria-labelledby="cleara11y-wizard-title">
 					<div class="cleara11y-modal-header">
 						<h2 id="cleara11y-wizard-title">${esc_html(wizardState.editingId ? 'Edit reviewed exception' : str('createWizardTitle'))}</h2>
-						<button type="button" class="cleara11y-modal-close" aria-label="${esc_html(str('cancel'))}">
-							<span class="dashicons dashicons-no-alt"></span>
+						<button type="button" class="cleara11y-modal-close cleara11y-modal-close--icon" aria-label="${esc_html(str('cancel'))}">
+							<span class="dashicons dashicons-no-alt" aria-hidden="true"></span>
 						</button>
 					</div>
 
-					<!-- Progress Bar -->
-					<div class="cleara11y-wizard-progress">
-						<div class="cleara11y-progress-bar">
-							<div class="cleara11y-progress-fill" id="cleara11y-progress-fill"></div>
-						</div>
-						<div class="cleara11y-progress-steps">
-							<span class="cleara11y-progress-step active" data-step="1">1</span>
-							<span class="cleara11y-progress-step" data-step="2">2</span>
-							<span class="cleara11y-progress-step" data-step="3">3</span>
-							<span class="cleara11y-progress-step" data-step="4">4</span>
-							<span class="cleara11y-progress-step" data-step="5">5</span>
-						</div>
-						<div class="cleara11y-progress-labels">
-							<span data-step="1">${esc_html(str('target'))}</span>
-							<span data-step="2">${esc_html(str('scope'))}</span>
-							<span data-step="3">${esc_html(str('duration'))}</span>
-							<span data-step="4">${esc_html(str('reason'))}</span>
-							<span data-step="5">${esc_html(str('step5Title'))}</span>
-						</div>
+					<div class="cleara11y-wizard-progress" role="group" aria-label="Exception setup progress">
+						<p class="cleara11y-wizard-step-count" aria-live="polite">
+							Step <span id="cleara11y-current-step">1</span> of ${wizardState.totalSteps}:
+							<strong id="cleara11y-current-step-label">${esc_html(stepLabels[0])}</strong>
+						</p>
+						<ol class="cleara11y-progress-steps">
+							${stepLabels.map(function(label, index) {
+								const step = index + 1;
+								return `<li class="cleara11y-progress-step${step === 1 ? ' active' : ''}" data-step="${step}"${step === 1 ? ' aria-current="step"' : ''}><span aria-hidden="true">${step}.</span> ${esc_html(label)}</li>`;
+							}).join('')}
+						</ol>
 					</div>
 
 					<!-- Wizard Steps -->
@@ -700,15 +709,18 @@
 
 					<!-- Wizard Footer -->
 					<div class="cleara11y-modal-footer cleara11y-wizard-footer">
-						<button type="button" class="button button-secondary cleara11y-modal-close" id="cleara11y-wizard-cancel">
+						<button type="button" class="button" id="cleara11y-wizard-cancel">
 							${esc_html(str('cancel'))}
 						</button>
-						<button type="button" class="button button-primary" id="cleara11y-wizard-next" disabled>
-							${esc_html(str('next'))}
-						</button>
-						<button type="button" class="button button-primary" id="cleara11y-wizard-create" style="display: none;">
-							${esc_html(wizardState.editingId ? 'Save Exception' : str('createRule'))}
-						</button>
+						<div class="cleara11y-wizard-footer__actions">
+							<button type="button" class="button" id="cleara11y-wizard-back" hidden>Back</button>
+							<button type="button" class="button button-primary" id="cleara11y-wizard-next" disabled>
+								${esc_html(str('next'))}
+							</button>
+							<button type="button" class="button button-primary" id="cleara11y-wizard-create" hidden>
+								${esc_html(wizardState.editingId ? 'Save Exception' : str('createRule'))}
+							</button>
+						</div>
 					</div>
 				</div>
 			</div>
@@ -732,8 +744,16 @@
 			case 1:
 				return `
 					<div class="cleara11y-wizard-step" data-step="1">
-						<h3>${esc_html(str('step1Title'))}</h3>
+						<h3 tabindex="-1">${esc_html(str('step1Title'))}</h3>
 						<p class="description">${esc_html(str('step1Desc'))}</p>
+						<div class="cleara11y-finding-context" aria-label="Detected finding">
+							<h4>Detected finding</h4>
+							<dl>
+								<dt>Rule</dt><dd><span id="cleara11y-finding-rule-title"></span> <code id="cleara11y-finding-rule-id"></code></dd>
+								<dt>Page</dt><dd id="cleara11y-finding-page"></dd>
+								<dt>Element</dt><dd><code id="cleara11y-finding-selector"></code></dd>
+							</dl>
+						</div>
 
 						<div class="cleara11y-target-options">
 							<label class="cleara11y-radio-card">
@@ -760,42 +780,11 @@
 								</div>
 							</label>
 						</div>
-						<p id="cleara11y-occurrence-target-help" class="description">
-							Element-specific exceptions start from a detected finding. Use Create exception on a finding to select one.
-						</p>
 						<div id="cleara11y-occurrence-fallback-notice" class="notice notice-warning inline" hidden>
 							<p>This older finding does not have stable element identity. This exception will apply to the selected rule on this page.</p>
 						</div>
-
-						<div id="cleara11y-rule-ids-section" style="display: none; margin-top: 20px;">
-							<label for="cleara11y-rule-search"><strong>Accessibility rules:</strong></label>
-							<div class="cleara11y-picker">
-								<input type="search" id="cleara11y-rule-search" role="combobox" aria-autocomplete="list"
-									aria-controls="cleara11y-rule-options" aria-expanded="false" autocomplete="off"
-									placeholder="Search rules by name or ID">
-								<ul id="cleara11y-rule-options" class="cleara11y-picker__options" role="listbox" hidden></ul>
-							</div>
-							<div id="cleara11y-selected-rules" class="cleara11y-picker__selected" aria-live="polite"></div>
-							<p class="description">Select one or more rules. Their technical IDs are shown for clarity.</p>
-						</div>
-
-						<div id="cleara11y-element-section" style="display: none; margin-top: 20px;">
-							<label><strong>Element Matching:</strong></label>
-							<div style="margin: 10px 0;">
-								<label>
-									<input type="radio" name="element_match_type" value="css_selector">
-									CSS Selector
-								</label>
-								<input type="text" id="cleara11y-css-selector" class="regular-text" placeholder=".my-button, #header" style="margin-left: 10px;">
-							</div>
-							<div style="margin: 10px 0;">
-								<label>
-									<input type="radio" name="element_match_type" value="fingerprint">
-									Element Fingerprint (more stable)
-								</label>
-								<input type="text" id="cleara11y-element-fingerprint" class="regular-text" placeholder="SHA-256 hash" style="margin-left: 10px;">
-							</div>
-							<p class="description">Choose how to identify the element. CSS selectors are simpler but may break if the page structure changes.</p>
+						<div id="cleara11y-edit-target-notice" class="notice notice-info inline" hidden>
+							<p>The target of an existing exception cannot be changed. You can still update its scope, duration, reason, and note.</p>
 						</div>
 					</div>
 				`;
@@ -803,7 +792,7 @@
 			case 2:
 				return `
 					<div class="cleara11y-wizard-step" data-step="2" style="display: none;">
-						<h3>${esc_html(str('step2Title'))}</h3>
+						<h3 tabindex="-1">${esc_html(str('step2Title'))}</h3>
 						<p class="description">${esc_html(str('step2Desc'))}</p>
 
 						<div class="cleara11y-scope-options">
@@ -840,7 +829,7 @@
 							</label>
 						</div>
 
-						<div id="cleara11y-scope-page-section" style="display: none; margin-top: 20px;">
+						<div id="cleara11y-scope-page-section" class="cleara11y-wizard-reveal-section" style="display: none;">
 							<label for="cleara11y-page-search"><strong>Page or content:</strong></label>
 							<div class="cleara11y-picker">
 								<input type="search" id="cleara11y-page-search" role="combobox" aria-autocomplete="list"
@@ -852,15 +841,15 @@
 							<p class="description">The page URL is filled from the selected scanned content.</p>
 						</div>
 
-						<div id="cleara11y-scope-content-type-section" style="display: none; margin-top: 20px;">
+						<div id="cleara11y-scope-content-type-section" class="cleara11y-wizard-reveal-section" style="display: none;">
 							<label><strong>Post Types:</strong></label>
-							<div style="margin: 10px 0;">
+							<div class="cleara11y-wizard-checkboxes">
 								<label><input type="checkbox" name="post_types" value="page"> Pages</label>
-								<label style="margin-left: 15px;"><input type="checkbox" name="post_types" value="post"> Posts</label>
+								<label><input type="checkbox" name="post_types" value="post"> Posts</label>
 							</div>
 						</div>
 
-						<div id="cleara11y-scope-url-pattern-section" style="display: none; margin-top: 20px;">
+						<div id="cleara11y-scope-url-pattern-section" class="cleara11y-wizard-reveal-section" style="display: none;">
 							<label for="cleara11y-scope-patterns"><strong>URL Patterns:</strong></label>
 							<input type="text" id="cleara11y-scope-patterns" class="large-text" placeholder="*/blog/*, */products/*">
 							<p class="description">Enter patterns separated by commas. Use * as a wildcard.</p>
@@ -871,7 +860,7 @@
 			case 3:
 				return `
 					<div class="cleara11y-wizard-step" data-step="3" style="display: none;">
-						<h3>${esc_html(str('step3Title'))}</h3>
+						<h3 tabindex="-1">${esc_html(str('step3Title'))}</h3>
 						<p class="description">${esc_html(str('step3Desc'))}</p>
 
 						<div class="cleara11y-duration-options">
@@ -908,7 +897,7 @@
 							</label>
 						</div>
 
-						<div id="cleara11y-duration-date-section" style="display: none; margin-top: 20px;">
+						<div id="cleara11y-duration-date-section" class="cleara11y-wizard-reveal-section" style="display: none;">
 							<label for="cleara11y-expires-at"><strong>Expiration Date:</strong></label>
 							<input type="datetime-local" id="cleara11y-expires-at" class="regular-text">
 						</div>
@@ -918,12 +907,12 @@
 			case 4:
 				return `
 					<div class="cleara11y-wizard-step" data-step="4" style="display: none;">
-						<h3>${esc_html(str('step4Title'))}</h3>
+						<h3 tabindex="-1">${esc_html(str('step4Title'))}</h3>
 						<p class="description">${esc_html(str('step4Desc'))}</p>
 
-						<div style="margin: 20px 0;">
+						<div class="cleara11y-wizard-form-row">
 							<label for="cleara11y-reason-category"><strong>Reason Category:</strong> <span class="required">*</span></label>
-							<select id="cleara11y-reason-category" class="regular-text" style="width: 100%;">
+							<select id="cleara11y-reason-category" class="regular-text">
 								<option value="">Select a reason...</option>
 								<option value="false_positive">False Positive</option>
 								<option value="not_applicable">Not Applicable</option>
@@ -937,7 +926,7 @@
 							</select>
 						</div>
 
-						<div style="margin: 20px 0;">
+						<div class="cleara11y-wizard-form-row">
 								<label for="cleara11y-note"><strong>Additional Notes:</strong></label>
 							<textarea id="cleara11y-note" rows="4" class="large-text" placeholder="Provide more context about this review decision..."></textarea>
 						</div>
@@ -947,7 +936,7 @@
 			case 5:
 				return `
 					<div class="cleara11y-wizard-step" data-step="5" style="display: none;">
-						<h3>${esc_html(str('step5Title'))}</h3>
+						<h3 tabindex="-1">${esc_html(str('step5Title'))}</h3>
 						<p class="description">${esc_html(str('step5Desc'))}</p>
 
 						<div id="cleara11y-review-content">
@@ -972,7 +961,7 @@
 							</div>
 						</div>
 
-						<div id="cleara11y-impact-preview-section" style="margin-top: 30px; padding: 20px; background: #f0f6fc; border-left: 4px solid #0073aa;">
+						<div id="cleara11y-impact-preview-section" class="cleara11y-impact-preview">
 							<h4>${esc_html(str('impactPreview'))}</h4>
 							<p class="description">${esc_html(str('impactPreviewDesc'))}</p>
 							<div id="cleara11y-impact-preview-content">
@@ -994,6 +983,21 @@
 			if (event.key === 'Escape') {
 				event.preventDefault();
 				closeWizard();
+			} else if (event.key === 'Tab') {
+				trapWizardFocus(event);
+			}
+		});
+		$('#cleara11y-wizard-modal').on('mousedown', function(event) {
+			if (!$(event.target).closest('.cleara11y-picker').length) {
+				hideAllWizardOptions();
+			}
+		});
+		$(window).off('resize.cleara11yWizard').on('resize.cleara11yWizard', function() {
+			resizeWizardModal(false);
+		});
+		$('#cleara11y-wizard-back').on('click', function() {
+			if (wizardState.currentStep > 1) {
+				showWizardStep(wizardState.currentStep - 1, true);
 			}
 		});
 
@@ -1002,7 +1006,7 @@
 			if (validateCurrentStep()) {
 				saveCurrentStep();
 				if (wizardState.currentStep < wizardState.totalSteps) {
-					showWizardStep(wizardState.currentStep + 1);
+					showWizardStep(wizardState.currentStep + 1, true);
 				}
 			}
 		});
@@ -1014,25 +1018,10 @@
 
 		// Step 1: Target type changes
 		$('input[name="target_type"]').on('change', function() {
-			const value = $(this).val();
-			$('#cleara11y-rule-ids-section').toggle(
-				value === 'rule' || value === 'rule_on_element'
-			);
-			$('#cleara11y-element-section').toggle(
-				value === 'element' || value === 'rule_on_element'
-			);
 			updateNextButtonState();
 		});
 
-		setupWizardPicker('rule', $('#cleara11y-rule-search'), $('#cleara11y-rule-options'));
 		setupWizardPicker('page', $('#cleara11y-page-search'), $('#cleara11y-page-options'));
-		$('#cleara11y-selected-rules').on('click', '[data-remove-rule]', function() {
-			const ruleId = String($(this).data('removeRule'));
-			wizardState.data.rule_ids = (wizardState.data.rule_ids || []).filter(id => id !== ruleId);
-			renderSelectedRules();
-			updateNextButtonState();
-			$('#cleara11y-rule-search').trigger('focus');
-		});
 		$('#cleara11y-selected-page').on('click', '[data-remove-page]', function() {
 			wizardState.data.scope.url = '';
 			wizardState.data.context = $.extend({}, wizardState.data.context, {
@@ -1044,14 +1033,6 @@
 			updateNextButtonState();
 			$('#cleara11y-page-search').trigger('focus');
 		});
-
-		// Step 1: Element match changes
-		$('input[name="element_match_type"]').on('change', function() {
-			$('#cleara11y-css-selector').toggle($(this).val() === 'css_selector');
-			$('#cleara11y-element-fingerprint').toggle($(this).val() === 'fingerprint');
-			updateNextButtonState();
-		});
-		$('#cleara11y-css-selector, #cleara11y-element-fingerprint').on('input', updateNextButtonState);
 
 		// Step 2: Scope type changes
 		$('input[name="scope_type"]').on('change', function() {
@@ -1105,6 +1086,8 @@
 				event.preventDefault();
 				$list.find('button').first().trigger('focus');
 			} else if (event.key === 'Escape') {
+				event.preventDefault();
+				event.stopPropagation();
 				hideWizardOptions($input, $list);
 			}
 		});
@@ -1118,6 +1101,8 @@
 					: Math.max(0, index - 1);
 				buttons[next]?.focus();
 			} else if (event.key === 'Escape') {
+				event.preventDefault();
+				event.stopPropagation();
 				hideWizardOptions($input, $list);
 				$input.trigger('focus');
 			}
@@ -1129,20 +1114,13 @@
 				request.abort();
 				request = null;
 			}
-			if (type === 'rule') {
-				const selected = new Set(wizardState.data.rule_ids || []);
-				selected.add(option.optionId);
-				wizardState.data.rule_ids = Array.from(selected);
-				renderSelectedRules();
-			} else {
-				wizardState.data.scope.url = option.optionUrl || '';
-				wizardState.data.context = $.extend({}, wizardState.data.context, {
-					page_id: Number(option.optionId || 0),
-					page_title: option.optionLabel || '',
-					post_type: option.optionPostType || ''
-				});
-				renderSelectedPage();
-			}
+			wizardState.data.scope.url = option.optionUrl || '';
+			wizardState.data.context = $.extend({}, wizardState.data.context, {
+				page_id: Number(option.optionId || 0),
+				page_title: option.optionLabel || '',
+				post_type: option.optionPostType || ''
+			});
+			renderSelectedPage();
 			$input.val('');
 			hideWizardOptions($input, $list);
 			updateNextButtonState();
@@ -1178,9 +1156,7 @@
 								'data-option-post-type': option.post_type || ''
 							});
 							$button.append($('<span>').text(option.label));
-							if (type === 'rule') {
-								$button.append($('<code>').text(option.id));
-							} else if (option.post_type) {
+							if (option.post_type) {
 								$button.append($('<small>').text(option.post_type));
 							}
 							$list.append($('<li>', {role: 'option'}).append($button));
@@ -1188,6 +1164,7 @@
 					}
 					$list.prop('hidden', false);
 					$input.attr('aria-expanded', 'true');
+					revealWizardOptions($input, $list);
 				},
 				complete: function() {
 					request = null;
@@ -1196,24 +1173,55 @@
 		}
 	}
 
-	function hideWizardOptions($input, $list) {
-		$list.prop('hidden', true);
-		$input.attr('aria-expanded', 'false');
+	function revealWizardOptions($input, $list) {
+		const $body = $input.closest('.cleara11y-wizard-body');
+		$body.addClass('has-open-picker');
+		resizeWizardModal();
+		const keepListAboveFooter = function() {
+			const body = $body.get(0);
+			const list = $list.get(0);
+			if (!body || !list || $list.prop('hidden')) {
+				return;
+			}
+			const overflow = list.getBoundingClientRect().bottom - body.getBoundingClientRect().bottom;
+			if (overflow > 0) {
+				body.scrollTop += overflow + 8;
+			}
+		};
+		window.requestAnimationFrame(function() {
+			keepListAboveFooter();
+		});
+		window.setTimeout(keepListAboveFooter, 220);
 	}
 
-	function renderSelectedRules() {
-		const $selected = $('#cleara11y-selected-rules').empty();
-		(wizardState.data.rule_ids || []).forEach(function(ruleId) {
-			const title = ruleTitles[ruleId] || ruleId;
-			const $item = $('<span>', {class: 'cleara11y-picker__selection'});
-			$item.append($('<span>').text(title + ' (' + ruleId + ')'));
-			$item.append($('<button>', {
-				type: 'button',
-				'data-remove-rule': ruleId,
-				'aria-label': 'Remove ' + ruleId
-			}).text('×'));
-			$selected.append($item);
+	function hideWizardOptions($input, $list, resize = true) {
+		$list.prop('hidden', true);
+		$input.attr('aria-expanded', 'false');
+		$input.closest('.cleara11y-wizard-body').removeClass('has-open-picker');
+		if (resize) {
+			resizeWizardModal();
+		}
+	}
+
+	function hideAllWizardOptions(resize = true) {
+		$('#cleara11y-wizard-modal .cleara11y-picker').each(function() {
+			const $picker = $(this);
+			hideWizardOptions($picker.find('[role="combobox"]'), $picker.find('[role="listbox"]'), false);
 		});
+		if (resize) {
+			resizeWizardModal();
+		}
+	}
+
+	function renderFindingContext() {
+		const ruleId = (wizardState.data.rule_ids || [])[0] || '';
+		const ruleTitle = wizardState.data.context?.rule_title || ruleTitles[ruleId] || ruleId || 'Unavailable';
+		const pageTitle = wizardState.data.context?.page_title || wizardState.data.scope?.url || 'Unavailable';
+		const selector = wizardState.data.element_match?.css_selector || 'Unavailable';
+		$('#cleara11y-finding-rule-title').text(ruleTitle);
+		$('#cleara11y-finding-rule-id').text(ruleId);
+		$('#cleara11y-finding-page').text(pageTitle);
+		$('#cleara11y-finding-selector').text(selector);
 	}
 
 	function renderSelectedPage() {
@@ -1225,44 +1233,103 @@
 		const label = wizardState.data.context?.page_title || url;
 		const $item = $('<span>', {class: 'cleara11y-picker__selection'});
 		$item.append($('<span>').text(label));
-		$item.append($('<button>', {
-			type: 'button',
-			'data-remove-page': '1',
-			'aria-label': 'Remove selected page'
-		}).text('×'));
+		if (wizardState.editingId) {
+			$item.append($('<button>', {
+				type: 'button',
+				'data-remove-page': '1',
+				'aria-label': 'Remove selected page'
+			}).text('×'));
+		}
 		$selected.append($item);
 	}
 
-	function showWizardStep(step) {
+	function showWizardStep(step, moveFocus = false, animate = true) {
+		hideAllWizardOptions(false);
 		wizardState.currentStep = step;
-
-		// Update progress bar
-		const progress = ((step - 1) / (wizardState.totalSteps - 1)) * 100;
-		$('#cleara11y-progress-fill').css('width', progress + '%');
+		const labels = [str('target'), str('scope'), str('duration'), str('reason'), str('step5Title')];
+		$('#cleara11y-current-step').text(step);
+		$('#cleara11y-current-step-label').text(labels[step - 1]);
 
 		// Update step indicators
-		$('.cleara11y-progress-step').removeClass('active completed').each(function() {
+		$('.cleara11y-progress-step').removeClass('active completed').removeAttr('aria-current').each(function() {
 			const stepNum = $(this).data('step');
 			if (stepNum < step) {
 				$(this).addClass('completed');
 			} else if (stepNum === step) {
-				$(this).addClass('active');
+				$(this).addClass('active').attr('aria-current', 'step');
 			}
 		});
 
 		// Show/hide step content
 		$('.cleara11y-wizard-step').hide();
 		$('.cleara11y-wizard-step[data-step="' + step + '"]').show();
+		$('#cleara11y-wizard-back').prop('hidden', step === 1);
 
 		// Update buttons
 		if (step === wizardState.totalSteps) {
-			$('#cleara11y-wizard-next').hide();
-			$('#cleara11y-wizard-create').show();
+			$('#cleara11y-wizard-next').prop('hidden', true);
+			$('#cleara11y-wizard-create').prop('hidden', false);
 			loadImpactPreview();
 		} else {
-			$('#cleara11y-wizard-next').show();
-			$('#cleara11y-wizard-create').hide();
+			$('#cleara11y-wizard-next').prop('hidden', false);
+			$('#cleara11y-wizard-create').prop('hidden', true);
 			updateNextButtonState();
+		}
+
+		if (moveFocus) {
+			$('.cleara11y-wizard-step[data-step="' + step + '"] h3').first().trigger('focus');
+		}
+		resizeWizardModal(animate);
+	}
+
+	function resizeWizardModal(animate = true) {
+		const $modal = $('#cleara11y-wizard-modal .cleara11y-wizard-content');
+		const $body = $modal.find('.cleara11y-wizard-body');
+		const $step = $body.find('.cleara11y-wizard-step:visible').first();
+		if (!$modal.length || !$body.length || !$step.length) {
+			return;
+		}
+
+		const bodyStyle = window.getComputedStyle($body.get(0));
+		const bodyPadding = parseFloat(bodyStyle.paddingTop) + parseFloat(bodyStyle.paddingBottom);
+		const chromeHeight = $modal.find('.cleara11y-modal-header').outerHeight(true)
+			+ $modal.find('.cleara11y-wizard-progress').outerHeight(true)
+			+ $modal.find('.cleara11y-wizard-footer').outerHeight(true);
+		const viewportGap = window.innerWidth <= 782 ? 16 : 32;
+		const maximumHeight = Math.max(320, window.innerHeight - viewportGap);
+		const desiredHeight = Math.min(
+			maximumHeight,
+			Math.ceil(chromeHeight + bodyPadding + $step.outerHeight(true) + 2)
+		);
+		const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+		if (!animate || reduceMotion) {
+			$modal.css('height', desiredHeight + 'px');
+			return;
+		}
+
+		$modal.css('height', Math.round($modal.get(0).getBoundingClientRect().height) + 'px');
+		$modal.get(0).offsetHeight;
+		window.requestAnimationFrame(function() {
+			$modal.css('height', desiredHeight + 'px');
+		});
+	}
+
+	function trapWizardFocus(event) {
+		const focusable = $('#cleara11y-wizard-modal .cleara11y-wizard-content')
+			.find('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')
+			.filter(':visible')
+			.toArray();
+		if (!focusable.length) {
+			return;
+		}
+		const first = focusable[0];
+		const last = focusable[focusable.length - 1];
+		if (event.shiftKey && document.activeElement === first) {
+			event.preventDefault();
+			last.focus();
+		} else if (!event.shiftKey && document.activeElement === last) {
+			event.preventDefault();
+			first.focus();
 		}
 	}
 
@@ -1278,18 +1345,7 @@
 			case 1:
 				const targetType = $('input[name="target_type"]:checked').val();
 				if (!targetType) return false;
-
-				if (targetType === 'rule' || targetType === 'rule_on_element') {
-					if (!(wizardState.data.rule_ids || []).length) return false;
-				}
-
-				if (targetType === 'element' || targetType === 'rule_on_element') {
-					const matchType = $('input[name="element_match_type"]:checked').val();
-					if (!matchType) return false;
-					if (matchType === 'css_selector' && !$('#cleara11y-css-selector').val().trim()) return false;
-					if (matchType === 'fingerprint' && !$('#cleara11y-element-fingerprint').val().trim()) return false;
-				}
-				return true;
+				return targetType === 'element' || Boolean((wizardState.data.rule_ids || []).length);
 
 			case 2:
 				const scopeType = $('input[name="scope_type"]:checked').val();
@@ -1320,17 +1376,6 @@
 		switch(step) {
 			case 1:
 				wizardState.data.target_type = $('input[name="target_type"]:checked').val();
-
-				const matchType = $('input[name="element_match_type"]:checked').val();
-				if (matchType === 'css_selector') {
-					wizardState.data.element_match = {
-						css_selector: $('#cleara11y-css-selector').val().trim()
-					};
-				} else if (matchType === 'fingerprint') {
-					wizardState.data.element_match = {
-						element_fingerprint: $('#cleara11y-element-fingerprint').val().trim()
-					};
-				}
 				break;
 
 			case 2:
@@ -1370,9 +1415,14 @@
 
 	function updateReviewContent() {
 		// Target
-		let targetHtml = '<p><strong>Type:</strong> ' + esc_html(wizardState.data.target_type) + '</p>';
+		const targetLabels = {
+			rule: str('ruleOnly'),
+			element: str('elementOnly'),
+			rule_on_element: str('ruleOnElement')
+		};
+		let targetHtml = '<p><strong>Type:</strong> ' + esc_html(targetLabels[wizardState.data.target_type] || wizardState.data.target_type) + '</p>';
 		if (wizardState.data.rule_ids.length) {
-			targetHtml += '<p><strong>Rules:</strong> ' + esc_html(wizardState.data.rule_ids.join(', ')) + '</p>';
+			targetHtml += '<p><strong>Source rule:</strong> ' + esc_html(wizardState.data.rule_ids.join(', ')) + '</p>';
 		}
 		if (wizardState.data.element_match.css_selector) {
 			targetHtml += '<p><strong>CSS Selector:</strong> <code>' + esc_html(wizardState.data.element_match.css_selector) + '</code></p>';
@@ -1382,7 +1432,13 @@
 		$('#cleara11y-review-target').html(targetHtml);
 
 		// Scope
-		let scopeHtml = '<p><strong>Type:</strong> ' + esc_html(wizardState.data.scope.scope_type) + '</p>';
+		const scopeLabels = {
+			page: str('singlePage'),
+			site: str('entireSite'),
+			content_type: str('contentTypes'),
+			url_pattern: str('urlPattern')
+		};
+		let scopeHtml = '<p><strong>Type:</strong> ' + esc_html(scopeLabels[wizardState.data.scope.scope_type] || wizardState.data.scope.scope_type) + '</p>';
 		if (wizardState.data.scope.url) {
 			scopeHtml += '<p><strong>URL:</strong> ' + esc_html(wizardState.data.scope.url) + '</p>';
 		} else if (wizardState.data.scope.post_types) {
@@ -1393,14 +1449,21 @@
 		$('#cleara11y-review-scope').html(scopeHtml);
 
 		// Duration
-		let durationHtml = '<p><strong>Type:</strong> ' + esc_html(wizardState.data.duration.duration_type) + '</p>';
+		const durationLabels = {
+			until_next_scan: str('untilNextScan'),
+			permanent: str('permanent'),
+			until_date: str('untilDate'),
+			until_content_changes: str('untilContentChanges')
+		};
+		let durationHtml = '<p><strong>Type:</strong> ' + esc_html(durationLabels[wizardState.data.duration.duration_type] || wizardState.data.duration.duration_type) + '</p>';
 		if (wizardState.data.duration.expires_at) {
 			durationHtml += '<p><strong>Expires:</strong> ' + esc_html(wizardState.data.duration.expires_at) + '</p>';
 		}
 		$('#cleara11y-review-duration').html(durationHtml);
 
 		// Reason
-		let reasonHtml = '<p><strong>Category:</strong> ' + esc_html(wizardState.data.reason_category) + '</p>';
+		const reasonLabel = $('#cleara11y-reason-category option:selected').text() || wizardState.data.reason_category;
+		let reasonHtml = '<p><strong>Category:</strong> ' + esc_html(reasonLabel) + '</p>';
 		if (wizardState.data.note) {
 			reasonHtml += '<p><strong>Note:</strong> ' + esc_html(wizardState.data.note) + '</p>';
 		}
@@ -1422,10 +1485,12 @@
 				wizardState.impactPreview = response.data;
 				renderImpactPreview(response.data);
 				$('#cleara11y-wizard-create').prop('disabled', false);
+				resizeWizardModal();
 			},
 			error: function() {
-				$('#cleara11y-impact-preview-content').html('<p style="color: #d63638;">' + esc_html(str('failedToCalculate')) + '</p>');
+				$('#cleara11y-impact-preview-content').html('<p class="cleara11y-impact-error">' + esc_html(str('failedToCalculate')) + '</p>');
 				$('#cleara11y-wizard-create').prop('disabled', false);
+				resizeWizardModal();
 			}
 		});
 	}
@@ -1463,6 +1528,8 @@
 
 	function createExceptionRule() {
 		const $createBtn = $('#cleara11y-wizard-create');
+		const createLabel = wizardState.editingId ? 'Save Exception' : str('createRule');
+		$('.cleara11y-wizard-error').remove();
 		$createBtn.prop('disabled', true).text(esc_html(wizardState.editingId ? 'Saving...' : str('creating')));
 
 		$.ajax({
@@ -1475,7 +1542,14 @@
 			},
 			success: function(response) {
 				const successMessage = wizardState.editingId ? 'Exception updated successfully.' : str('createSuccess');
+				const savedViolationId = Number(wizardState.data.violation_id || 0);
+				const wasEditing = Boolean(wizardState.editingId);
 				closeWizard();
+				if (!wasEditing && savedViolationId) {
+					document.dispatchEvent(new CustomEvent('cleara11y:exception-saved', {
+						detail: {violationId: savedViolationId}
+					}));
+				}
 				if ($tbody.length) {
 					loadRules();
 				}
@@ -1497,16 +1571,22 @@
 				}, 3000);
 			},
 			error: function(xhr) {
-				const error = xhr.responseJSON?.message || esc_html(str('createFailed'));
-				$('#cleara11y-impact-preview-section').after(
-					'<div class="notice notice-error" style="margin: 20px 0;"><p>' + esc_html(error) + '</p></div>'
-				);
-				$createBtn.prop('disabled', false).text(esc_html(str('createRule')));
+				const error = xhr.responseJSON?.message || str('createFailed');
+				const $notice = $('<div>', {
+					class: 'notice notice-error inline cleara11y-wizard-error',
+					role: 'alert',
+					tabindex: '-1'
+				}).append($('<p>').text(error));
+				$('#cleara11y-impact-preview-section').after($notice);
+				$createBtn.prop('disabled', false).text(esc_html(createLabel));
+				resizeWizardModal();
+				$notice.trigger('focus');
 			}
 		});
 	}
 
 	function closeWizard() {
+		$(window).off('resize.cleara11yWizard');
 		$('#cleara11y-wizard-modal').remove();
 		if (wizardReturnFocus && document.contains(wizardReturnFocus)) {
 			wizardReturnFocus.focus();

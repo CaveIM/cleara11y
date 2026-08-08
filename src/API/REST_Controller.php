@@ -441,7 +441,7 @@ class REST_Controller {
 					'search' => ['type' => 'string'],
 					'group_by' => [
 						'type' => 'string',
-						'enum' => ['page', 'rule', 'none'],
+						'enum' => ['page', 'rule'],
 						'default' => 'page',
 					],
 					'sort' => [

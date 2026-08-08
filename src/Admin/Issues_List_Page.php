@@ -80,7 +80,6 @@ class Issues_List_Page {
 						<select id="cleara11y-group-by">
 							<option value="page"><?php esc_html_e('Page', 'cleara11y'); ?></option>
 							<option value="rule"><?php esc_html_e('Rule', 'cleara11y'); ?></option>
-							<option value="none"><?php esc_html_e('No grouping', 'cleara11y'); ?></option>
 						</select>
 					</label>
 					<label>

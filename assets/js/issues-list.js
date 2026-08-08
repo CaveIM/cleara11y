@@ -303,8 +303,6 @@
 				: (filtered ? cleara11yData.strings.noFilteredIssues : cleara11yData.strings.noIssues);
 			el['issues-container'].innerHTML = `<div class="cleara11y-empty-state"><h3>${escapeHtml(text)}</h3>` +
 				(filtered ? '<button type="button" class="button" data-clear-results>Clear filters</button>' : '') + '</div>';
-		} else if (query.groupBy === 'none') {
-			el['issues-container'].innerHTML = `<div class="cleara11y-result-list">${items.map(item => renderRow(item, 'none')).join('')}</div>`;
 		} else {
 			const groups = new Map();
 			items.forEach(item => {
@@ -413,31 +411,6 @@
 			: '');
 	}
 
-	function renderRow(item, grouping) {
-		const pagePrimary = grouping === 'rule';
-		const primaryTitle = pagePrimary ? item.page.title : item.rule.title;
-		const accessibleLabel = `View details for ${item.rule.title} on ${item.page.title}`;
-		const pagePath = pathname(item.page.url);
-		const pageMetadata = grouping === 'none'
-			? `<p class="cleara11y-result-row__meta"><strong>${escapeHtml(item.page.title)}</strong>${truncatedValue(pagePath, 'Page path')}</p>`
-			: (pagePrimary ? `<p class="cleara11y-result-row__meta">${truncatedValue(pagePath, 'Page path')}</p>` : '');
-		const stateBadges = renderStateBadges(item);
-		const identifier = item.selector || `Occurrence #${item.id}`;
-		const identifierLabel = item.selector ? 'Affected element selector' : 'Occurrence identifier';
-		return `<article class="cleara11y-result-row severity-${escapeHtml(item.severity)}" data-occurrence-row="${item.id}">
-			<div class="cleara11y-result-row__main">
-				<span class="screen-reader-text">${escapeHtml(capitalize(item.severity))} severity.</span>
-				<div class="cleara11y-result-row__heading">
-					<h4><button type="button" class="button-link cleara11y-view-occurrence" data-occurrence-id="${item.id}"
-						aria-label="${escapeAttribute(accessibleLabel)}" aria-controls="cleara11y-detail-panel" aria-expanded="false">${escapeHtml(primaryTitle)}</button></h4>
-					${stateBadges}
-				</div>
-				${pageMetadata}
-				<code class="cleara11y-selector cleara11y-truncated-value" tabindex="0" aria-label="${escapeAttribute(identifierLabel + ': ' + identifier)}" data-tooltip="${escapeAttribute(identifier)}"><span class="cleara11y-truncated-value__text">${escapeHtml(identifier)}</span></code>
-			</div>
-		</article>`;
-	}
-
 	function truncatedValue(value, label) {
 		return `<span class="cleara11y-truncated-value" tabindex="0" aria-label="${escapeAttribute(label + ': ' + value)}" data-tooltip="${escapeAttribute(value)}"><span class="cleara11y-truncated-value__text">${escapeHtml(value)}</span></span>`;
 	}
@@ -508,36 +481,37 @@
 
 	function renderDetail(item) {
 		const evidence = parseEvidence(item.node_evidence);
+		const reviewFinding = item.finding_type === 'review';
 		el['detail-content'].innerHTML = `
 			<div class="cleara11y-detail__header">
-				<button type="button" class="cleara11y-detail__close" data-close-detail aria-label="Close details"><span aria-hidden="true">×</span></button>
+				<div class="cleara11y-detail__statusbar">
+					<div class="cleara11y-detail__meta" aria-label="Finding status">
+						<span class="cleara11y-badge severity-${escapeHtml(item.severity)}">${escapeHtml(capitalize(item.severity))}</span>
+						<span>${reviewFinding ? 'Needs review' : 'Confirmed finding'}</span>
+						${item.status === 'exception' ? '<span>Current exception</span>' : ''}
+					</div>
+					<button type="button" class="cleara11y-detail__close" data-close-detail aria-label="Close details"><span class="dashicons dashicons-no-alt" aria-hidden="true"></span></button>
+				</div>
 				<header>
 					<h2 id="cleara11y-detail-title" tabindex="-1">${escapeHtml(item.rule.title)}</h2>
-					<p><code>${escapeHtml(item.rule.id)}</code>
-						<span class="cleara11y-badge severity-${escapeHtml(item.severity)}">${escapeHtml(capitalize(item.severity))}</span>
-						<span class="cleara11y-status-text">${item.finding_type === 'review' ? 'Unconfirmed' : 'Confirmed'}</span>
-						${item.status === 'exception' ? '<span class="cleara11y-status-text is-exception">Current exception</span>' : ''}</p>
-					${item.finding_type === 'review' ? '<p class="cleara11y-review-note"><strong>Unconfirmed — manual review required.</strong> The scanner found evidence of a possible failure but could not classify it with full certainty.</p>' : ''}
 				</header>
 				<div class="cleara11y-detail__tabs" role="tablist" aria-label="Issue detail sections">
 					<button type="button" role="tab" id="cleara11y-detail-tab-overview" aria-controls="cleara11y-detail-panel-overview" data-detail-tab="overview">Overview</button>
 					<button type="button" role="tab" id="cleara11y-detail-tab-evidence" aria-controls="cleara11y-detail-panel-evidence" data-detail-tab="evidence">Evidence</button>
 					<button type="button" role="tab" id="cleara11y-detail-tab-guidance" aria-controls="cleara11y-detail-panel-guidance" data-detail-tab="guidance">Guidance</button>
-					<button type="button" role="tab" id="cleara11y-detail-tab-exception" aria-controls="cleara11y-detail-panel-exception" data-detail-tab="exception">Exception</button>
 				</div>
 			</div>
 			<div role="tabpanel" id="cleara11y-detail-panel-overview" aria-labelledby="cleara11y-detail-tab-overview" data-detail-panel="overview">
+				${reviewFinding ? '<div class="cleara11y-review-note"><strong>Manual review required.</strong> The scanner found evidence of a possible failure but could not classify it with full certainty.</div>' : ''}
 				<section><h3>Location</h3>
 					<p><strong>${escapeHtml(item.page.title)}</strong><br><span class="cleara11y-break-word">${escapeHtml(item.page.url)}</span></p>
-					<p class="cleara11y-detail__actions">
-						<a class="button" href="${escapeHtml(item.page.url)}" target="_blank" rel="noopener noreferrer">Open page</a>
-						${item.inspect_url ? `<a class="button" href="${escapeHtml(item.inspect_url)}" target="_blank" rel="noopener noreferrer">Inspect current page</a>` : ''}
-					</p>
-					${detailValue('CSS selector', item.selector, true)}
-					${detailValue('XPath', item.xpath, true)}
+					${detailValue('CSS selector', item.selector, true, 'pre')}
+					${detailValue('XPath', item.xpath, true, 'pre')}
+					${sourceContext(item.source)}
 				</section>
 				<section><h3>Observation</h3>
-					<dl><dt>Occurrence ID</dt><dd>${item.id}</dd>
+					<dl><dt>Rule ID</dt><dd><code>${escapeHtml(item.rule.id)}</code></dd>
+						<dt>Occurrence ID</dt><dd>${item.id}</dd>
 						<dt>Scan</dt><dd><a data-scan-explorer-url href="${escapeHtml(explorerUrl({scanId: item.scan.id, groupBy: 'rule'}))}">${escapeHtml(item.scan.name)}</a> (${escapeHtml(item.scan.status)})</dd>
 						<dt>Captured</dt><dd>${escapeHtml(formatDate(item.scan.scanned_at) || 'Unavailable')}</dd></dl>
 				</section>
@@ -553,23 +527,24 @@
 				</section>
 			</div>
 			<div role="tabpanel" id="cleara11y-detail-panel-guidance" aria-labelledby="cleara11y-detail-tab-guidance" data-detail-panel="guidance" hidden>
-				<section><h3>Remediation reference</h3>
-					<p>${escapeHtml(item.help_text || 'No additional remediation guidance was captured.')}</p>
-					<p class="description">Guidance is contextual and should be verified against the component and codebase.</p>
-					${item.rule.wcag_criterion ? `<p><strong>WCAG:</strong> ${escapeHtml(item.rule.wcag_criterion)}</p>` : ''}
-					${item.rule.help_url ? `<p><a href="${escapeHtml(item.rule.help_url)}" target="_blank" rel="noopener noreferrer">Learn more about this rule</a></p>` : ''}
+				<section><h3>Recommended approach</h3>
+					<p>${escapeHtml(item.help_text || 'Review the affected element and update its markup or content so it satisfies the rule.')}</p>
+					${item.message ? `<div class="cleara11y-guidance-callout"><strong>What the scanner found</strong><p>${escapeHtml(item.message)}</p></div>` : ''}
+				</section>
+				<section><h3>Verify the fix</h3>
+					<ul class="cleara11y-guidance-checklist">
+						<li>Check the affected element in its surrounding page context.</li>
+						<li>Test the relevant keyboard and assistive technology behavior.</li>
+						<li>Run a new scan and confirm this occurrence no longer appears.</li>
+					</ul>
+				</section>
+				<section><h3>Rule reference</h3>
+					${item.rule.wcag_criterion ? `<p><strong>WCAG criterion:</strong> ${escapeHtml(item.rule.wcag_criterion)}</p>` : ''}
+					<p><a href="${escapeHtml(item.rule.reference_url)}">View the ClearA11y issue reference</a></p>
+					${item.rule.help_url ? `<p><a href="${escapeHtml(item.rule.help_url)}" target="_blank" rel="noopener noreferrer">Learn more about this rule <span class="screen-reader-text">(opens in a new tab)</span></a></p>` : ''}
 				</section>
 			</div>
-			<div role="tabpanel" id="cleara11y-detail-panel-exception" aria-labelledby="cleara11y-detail-tab-exception" data-detail-panel="exception" hidden>
-				<section><h3>Exception workflow</h3>
-					${item.status === 'exception'
-						? '<p>This observation currently matches an active exception.</p>'
-						: `<div class="cleara11y-detail__actions">
-							<button type="button" class="button" data-structured-exception data-occurrence-id="${item.id}">Create exception…</button>
-							<button type="button" class="button" data-temporary-exception data-occurrence-id="${item.id}">Snooze until next scan</button>
-						</div>`}
-				</section>
-			</div>`;
+			${detailToolbar(item)}`;
 		activateDetailTab(activeDetailTab);
 	}
 
@@ -579,7 +554,83 @@
 		const scrollable = element === 'code' || element === 'pre'
 			? ` tabindex="0" aria-label="${escapeHtml(label)}"`
 			: '';
-		return `<div class="cleara11y-detail-value"><h4>${escapeHtml(label)}</h4><${element}${scrollable}>${escapeHtml(value)}</${element}></div>`;
+		const content = code && element === 'pre'
+			? `<code>${escapeHtml(value)}</code>`
+			: escapeHtml(value);
+		return `<div class="cleara11y-detail-value"><h4>${escapeHtml(label)}</h4><${element}${scrollable}>${content}</${element}></div>`;
+	}
+
+	function sourceContext(source) {
+		if (!source) return '';
+		const label = source.owner_name || sourceLabel(source.owner_type) || sourceLabel(source.type);
+		if (!label && !source.ref) return '';
+		return `<div class="cleara11y-source-context">
+			<h4>Likely source</h4>
+			<p>${label ? `<strong>${escapeHtml(label)}</strong>` : ''}${label && source.ref ? '<br>' : ''}${source.ref ? `<code>${escapeHtml(source.ref)}</code>` : ''}</p>
+			<p class="description">Based on source attribution captured during the scan.</p>
+		</div>`;
+	}
+
+	function sourceLabel(value) {
+		return value ? String(value).replace(/_/g, ' ').replace(/\b\w/g, character => character.toUpperCase()) : '';
+	}
+
+	function detailToolbar(item) {
+		const viewAction = item.inspect_url
+			? splitToolbarAction({
+				id: `cleara11y-view-actions-menu-${item.id}`,
+				primaryLabel: 'Inspect issue',
+				primaryUrl: item.inspect_url,
+				secondaryLabel: 'View page',
+				secondaryUrl: item.page.url,
+				primary: true,
+				newTab: true,
+				menuLabel: 'More viewing options'
+			})
+			: `<a class="button button-primary" href="${escapeHtml(item.page.url)}" target="_blank" rel="noopener noreferrer">View page</a>`;
+		const specificEditUrl = item.source?.edit_url || '';
+		const specificEditLabel = item.source?.edit_label || (item.source?.owner_name ? `Edit ${item.source.owner_name}` : 'Edit identified source');
+		const editAction = specificEditUrl && item.page.edit_url && specificEditUrl !== item.page.edit_url
+			? splitToolbarAction({
+				id: `cleara11y-edit-actions-menu-${item.id}`,
+				primaryLabel: specificEditLabel,
+				primaryUrl: specificEditUrl,
+				secondaryLabel: 'Edit page',
+				secondaryUrl: item.page.edit_url,
+				menuLabel: 'More editing options'
+			})
+			: (specificEditUrl
+				? `<a class="button" href="${escapeHtml(specificEditUrl)}">${escapeHtml(specificEditLabel)}</a>`
+				: (item.page.edit_url ? `<a class="button" href="${escapeHtml(item.page.edit_url)}">Edit page</a>` : ''));
+		const exceptionAction = item.status === 'exception'
+			? '<span class="cleara11y-toolbar__exception-status">Current exception</span>'
+			: `<div class="cleara11y-split-action">
+				<button type="button" class="button" data-structured-exception data-occurrence-id="${item.id}">Create exception…</button>
+				<div class="cleara11y-split-action__dropdown">
+					<button type="button" class="button" data-action-menu-toggle aria-expanded="false" aria-controls="cleara11y-exception-actions-menu" aria-label="More exception options"><span aria-hidden="true">▾</span></button>
+					<div id="cleara11y-exception-actions-menu" class="cleara11y-split-action__menu" hidden>
+						<button type="button" data-temporary-exception data-occurrence-id="${item.id}">Snooze until next scan</button>
+					</div>
+				</div>
+			</div>`;
+		return `<div class="cleara11y-detail__toolbar" role="region" aria-label="Issue actions">
+			<div class="cleara11y-detail__toolbar-primary">${viewAction}${editAction}</div>
+			${exceptionAction}
+		</div>`;
+	}
+
+	function splitToolbarAction(options) {
+		const primaryClass = options.primary ? ' button-primary' : '';
+		const target = options.newTab ? ' target="_blank" rel="noopener noreferrer"' : '';
+		return `<div class="cleara11y-split-action">
+			<a class="button${primaryClass}" href="${escapeHtml(options.primaryUrl)}"${target}>${escapeHtml(options.primaryLabel)}</a>
+			<div class="cleara11y-split-action__dropdown">
+				<button type="button" class="button${primaryClass}" data-action-menu-toggle aria-expanded="false" aria-controls="${escapeHtml(options.id)}" aria-label="${escapeHtml(options.menuLabel)}"><span aria-hidden="true">▾</span></button>
+				<div id="${escapeHtml(options.id)}" class="cleara11y-split-action__menu is-align-left" hidden>
+					<a href="${escapeHtml(options.secondaryUrl)}"${target}>${escapeHtml(options.secondaryLabel)}</a>
+				</div>
+			</div>
+		</div>`;
 	}
 
 	function explorerUrl(overrides) {
@@ -622,12 +673,29 @@
 			return;
 		}
 		const quick = event.target.closest('[data-temporary-exception]');
-		if (quick) createTemporaryException(Number(quick.dataset.occurrenceId), quick);
+		if (quick) {
+			closeActionMenus();
+			createTemporaryException(Number(quick.dataset.occurrenceId), quick);
+		}
 		const structured = event.target.closest('[data-structured-exception]');
 		if (structured) openStructuredException(Number(structured.dataset.occurrenceId));
+		const menuToggle = event.target.closest('[data-action-menu-toggle]');
+		if (menuToggle) {
+			closeActionMenus(false, menuToggle);
+			const menu = byId(menuToggle.getAttribute('aria-controls'));
+			const expanded = menuToggle.getAttribute('aria-expanded') === 'true';
+			menuToggle.setAttribute('aria-expanded', String(!expanded));
+			if (menu) menu.hidden = expanded;
+		}
 	}
 
 	function handleDetailKeydown(event) {
+		if (event.key === 'Escape' && el['detail-content'].querySelector('.cleara11y-split-action__menu:not([hidden])')) {
+			event.preventDefault();
+			event.stopPropagation();
+			closeActionMenus(true);
+			return;
+		}
 		const tab = event.target.closest('[role="tab"]');
 		if (!tab || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
 		const tabs = Array.from(el['detail-content'].querySelectorAll('[role="tab"]'));
@@ -653,7 +721,19 @@
 			if (selected && moveFocus) tab.focus();
 		});
 		panels.forEach(panel => { panel.hidden = panel.dataset.detailPanel !== tabName; });
-		el['detail-panel'].scrollTop = 0;
+		el['detail-content'].scrollTop = 0;
+	}
+
+	function closeActionMenus(restoreFocus = false, exceptToggle = null) {
+		let openToggle = null;
+		el['detail-content'].querySelectorAll('[data-action-menu-toggle]').forEach(toggle => {
+			if (toggle === exceptToggle) return;
+			const menu = byId(toggle.getAttribute('aria-controls'));
+			if (toggle.getAttribute('aria-expanded') === 'true') openToggle = toggle;
+			toggle.setAttribute('aria-expanded', 'false');
+			if (menu) menu.hidden = true;
+		});
+		if (restoreFocus) openToggle?.focus();
 	}
 
 	function requestCloseDetail() {

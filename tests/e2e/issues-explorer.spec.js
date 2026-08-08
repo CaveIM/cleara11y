@@ -303,13 +303,6 @@ test('group-aware rows remove repeated context and expose contextual actions', a
 	await expect(page.locator('[data-occurrence-row] .is-unconfirmed')).toHaveCount(0);
 
 	await page.locator('#cleara11y-filter-status').selectOption('');
-	await page.locator('#cleara11y-group-by').selectOption('none');
-	await waitForResults(page);
-	const ungroupedRow = page.locator('[data-occurrence-row]').first();
-	await expect(ungroupedRow.locator('.cleara11y-result-row__meta')).toContainText('ClearA11y Issues Explorer Fixture');
-	await expect(ungroupedRow.locator('.cleara11y-selector')).toBeVisible();
-	await expect(ungroupedRow.locator('.cleara11y-result-row__meta .cleara11y-truncated-value')).toHaveAttribute('data-tooltip', /cleara11y-issues-explorer-fixture/);
-
 	await page.locator('#cleara11y-group-by').selectOption('rule');
 	await waitForResults(page);
 	const ruleGroup = page.locator('.cleara11y-result-group').filter({
@@ -415,7 +408,7 @@ test('direct scan and occurrence URLs render snapshot and safe evidence', async 
 	await page.goto(url);
 	await page.getByRole('tab', {name: 'Evidence'}).click();
 	await expect(page.getByRole('heading', {name: 'Scan evidence'})).toBeVisible();
-	await expect(page.locator('.cleara11y-detail pre').first()).toBeVisible();
+	await expect(page.locator('#cleara11y-detail-panel-evidence pre').first()).toBeVisible();
 	await expect(page.locator('.cleara11y-detail script')).toHaveCount(0);
 });
 
@@ -429,6 +422,16 @@ test('explorer has no automated accessibility violations in list and detail stat
 	if (!await page.locator('[data-occurrence-row]').count()) return;
 	await page.getByRole('button', {name: 'View details'}).first().click();
 	await expect(page.getByRole('heading', {name: 'Location'})).toBeVisible();
+	const drawer = page.locator('#cleara11y-detail-panel');
+	await expect(drawer.getByRole('region', {name: 'Issue actions'})).toBeVisible();
+	await expect(drawer.getByRole('tab', {name: 'Exception'})).toHaveCount(0);
+	await expect(drawer.locator('#cleara11y-detail-panel-overview pre code').first()).toBeVisible();
+	await expect(drawer.locator('.cleara11y-review-note')).toHaveCSS('margin-top', '16px');
+	const viewMenu = drawer.getByRole('button', {name: 'More viewing options'});
+	await viewMenu.click();
+	await expect(drawer.getByRole('link', {name: 'View page'})).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(viewMenu).toHaveAttribute('aria-expanded', 'false');
 	const overviewTab = page.getByRole('tab', {name: 'Overview'});
 	const evidenceTab = page.getByRole('tab', {name: 'Evidence'});
 	await expect(overviewTab).toHaveAttribute('aria-selected', 'true');
@@ -462,21 +465,22 @@ test('issue inspector becomes a full-width non-modal drawer on narrow screens', 
 });
 
 test('reviewed exception wizard preserves occurrence context and updates the explorer', async ({page}) => {
-	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=active&ruleId=button-name&groupBy=none');
+	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=active&ruleId=button-name&groupBy=rule');
 	await waitForResults(page);
 	await page.getByRole('button', {name: 'View details'}).first().click();
-	await page.getByRole('tab', {name: 'Exception'}).click();
+	const exceptionMenu = page.getByRole('button', {name: 'More exception options'});
+	await exceptionMenu.click();
+	await expect(exceptionMenu).toHaveAttribute('aria-expanded', 'true');
 	await page.getByRole('button', {name: 'Snooze until next scan'}).click();
-	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=exception&ruleId=button-name&groupBy=none');
+	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=exception&ruleId=button-name&groupBy=rule');
 	await waitForResults(page);
 	await expect(page.locator('[data-occurrence-row]').first()).toBeVisible();
 
 	await rescanOccurrenceFixture(page);
-	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=active&ruleId=button-name&groupBy=none');
+	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=active&ruleId=button-name&groupBy=rule');
 	await waitForResults(page);
 	await expect(page.locator('[data-occurrence-row]').first()).toBeVisible();
 	await page.getByRole('button', {name: 'View details'}).first().click();
-	await page.getByRole('tab', {name: 'Exception'}).click();
 	await page.getByRole('button', {name: 'Create exception…'}).click();
 
 	const dialog = page.getByRole('dialog', {name: 'Create Exception'});
@@ -519,7 +523,7 @@ test('reviewed exception wizard preserves occurrence context and updates the exp
 	await expect(editDialog).toBeHidden();
 
 	await rescanOccurrenceFixture(page);
-	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=exception&ruleId=button-name&groupBy=none');
+	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=exception&ruleId=button-name&groupBy=rule');
 	await waitForResults(page);
 	await expect(page.locator('[data-occurrence-row]').first()).toBeVisible();
 	await page.getByRole('button', {name: 'View details'}).first().click();
@@ -559,7 +563,7 @@ test('reviewed exception API requires a source occurrence', async ({page}) => {
 });
 
 test('reviewed exception API derives rule and page from the source occurrence', async ({page}) => {
-	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=active&ruleId=image-alt&groupBy=none');
+	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=active&ruleId=image-alt&groupBy=rule');
 	await waitForResults(page);
 	const violationId = Number(await page.locator('[data-occurrence-row]').first().getAttribute('data-occurrence-row'));
 	const result = await page.evaluate(async id => {
@@ -747,7 +751,7 @@ test('exception lifecycle controls disable, enable, and revoke without losing au
 			.first()
 	).toBeVisible();
 
-	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=active&ruleId=button-name&groupBy=none');
+	await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=active&ruleId=button-name&groupBy=rule');
 	await waitForResults(page);
 	await expect(page.locator('[data-occurrence-row]').first()).toBeVisible();
 });

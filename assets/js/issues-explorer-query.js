@@ -15,7 +15,7 @@
 		status: ['active', 'exception', 'all'],
 		severity: ['critical', 'moderate', 'minor'],
 		findingType: ['violation', 'review'],
-		groupBy: ['page', 'rule', 'none'],
+		groupBy: ['page', 'rule'],
 		sort: ['severity', 'newest', 'page', 'rule']
 	};
 

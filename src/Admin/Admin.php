@@ -802,12 +802,18 @@ class Admin {
 		if ($is_issues_page) {
 			$issues_per_page = absint(get_user_option('cleara11y_issues_per_page'));
 			$issues_per_page = min(100, max(1, $issues_per_page ?: 20));
+			$issues_style_version = CLEARA11Y_VERSION;
+			$issues_script_version = CLEARA11Y_VERSION;
+			if ('local' === wp_get_environment_type()) {
+				$issues_style_version = (string) filemtime(CLEARA11Y_PLUGIN_DIR . 'assets/css/issues-explorer.css');
+				$issues_script_version = (string) filemtime(CLEARA11Y_PLUGIN_DIR . 'assets/js/issues-list.js');
+			}
 
 			wp_enqueue_style(
 				'cleara11y-issues-explorer',
 				CLEARA11Y_PLUGIN_URL . 'assets/css/issues-explorer.css',
 				[],
-				CLEARA11Y_VERSION
+				$issues_style_version
 			);
 
 			// Enqueue toast CSS for notifications
@@ -858,7 +864,7 @@ class Admin {
 				'cleara11y-issues-list',
 				CLEARA11Y_PLUGIN_URL . 'assets/js/issues-list.js',
 				['cleara11y-issues-query'],
-				CLEARA11Y_VERSION,
+				$issues_script_version,
 				true
 			);
 

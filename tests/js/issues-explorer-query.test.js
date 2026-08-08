@@ -20,11 +20,12 @@ test('page and scan scopes default to rule grouping', () => {
 });
 
 test('invalid enums and identifiers recover safely', () => {
-	const query = Query.parse('http://example.test/?status=deleted&severity=huge&pageId=-2&occurrenceId=text');
+	const query = Query.parse('http://example.test/?status=deleted&severity=huge&pageId=-2&occurrenceId=text&groupBy=none');
 	assert.equal(query.status, 'active');
 	assert.equal(query.severity, '');
 	assert.equal(query.pageId, undefined);
 	assert.equal(query.occurrenceId, undefined);
+	assert.equal(query.groupBy, 'page');
 });
 
 test('serialization preserves WordPress page slug and meaningful state', () => {

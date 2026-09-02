@@ -17,8 +17,8 @@
 	}
 
 	function init() {
-		// Check if scan data is available
-		if (!window.cleara11yIssues || !window.cleara11yIssues.issues || window.cleara11yIssues.issues.length === 0) {
+		// Always initialize if data is available, even with no issues
+		if (!window.cleara11yIssues) {
 			return;
 		}
 
@@ -34,77 +34,109 @@
 		$toggle: null,
 		currentIssueIndex: -1,
 
+		// Drag state
+		isDragging: false,
+		dragOffset: { x: 0, y: 0 },
+		panelPosition: { x: null, y: null },
+
+		// Resize state
+		isResizing: false,
+		panelHeight: null,
+		resizeStartY: 0,
+		resizeStartHeight: 0,
+
+
+
+
 		init: function() {
 			this.issues = window.cleara11yIssues.issues || [];
 			this.createToggleButton();
 			this.createPanel();
+			this.loadPanelPosition();
+			this.loadPanelHeight();
+
+
 			this.bindEvents();
 		},
 
 		createToggleButton: function() {
 			var toggle = document.createElement('button');
-			toggle.className = 'cleara11y-toggle';
-			toggle.title = 'Toggle Accessibility Issues (' + this.issues.length + ')';
+			var hasIssues = this.issues.length > 0;
+
+			toggle.className = 'cleara11y-toggle' + (hasIssues ? ' has-issues' : ' no-issues');
+			toggle.title = hasIssues
+				? 'Toggle Accessibility Issues (' + this.issues.length + ' found)'
+				: 'Toggle Accessibility Panel (No issues found)';
 			toggle.setAttribute('aria-label', 'Toggle accessibility issues panel');
-			toggle.innerHTML = '<span class="cleara11y-toggle-icon">⚠</span><span class="cleara11y-toggle-count">' + this.issues.length + '</span>';
+		toggle.setAttribute('aria-expanded', 'false');
+		toggle.setAttribute('aria-controls', 'cleara11y-issues-panel');
+
+			// Show different icon and state based on issues
+			var icon = hasIssues ? '⚠' : '✓';
+			var count = hasIssues ? this.issues.length : 'OK';
+
+			toggle.innerHTML = '<span class="cleara11y-toggle-icon" data-cleara11y-plugin="true">' + icon + '</span><span class="cleara11y-toggle-count" data-cleara11y-plugin="true">' + count + '</span>';
 			toggle.setAttribute('data-cleara11y-plugin', 'true'); // Mark as plugin element
-			document.body.appendChild(toggle);
+			document.documentElement.appendChild(toggle);
 			this.$toggle = toggle;
 		},
 
 		createPanel: function() {
 			var panel = document.createElement('aside');
 			panel.className = 'cleara11y-panel';
+			panel.id = 'cleara11y-issues-panel';
 			panel.setAttribute('role', 'complementary');
 			panel.setAttribute('aria-label', 'Accessibility issues panel');
 			panel.setAttribute('data-cleara11y-plugin', 'true'); // Mark as plugin element
 			panel.innerHTML = this.buildPanelHtml();
-			document.body.appendChild(panel);
+			document.documentElement.appendChild(panel);
 			this.panel = panel;
 
 			// Add overlay backdrop
 			var backdrop = document.createElement('div');
 			backdrop.className = 'cleara11y-backdrop';
 			backdrop.setAttribute('data-cleara11y-plugin', 'true');
-			document.body.appendChild(backdrop);
+			document.documentElement.appendChild(backdrop);
 		},
 
 		buildPanelHtml: function() {
 			var html = '';
 
-			// Header
-			html += '<div class="cleara11y-panel-header">';
+			html += '<div class="cleara11y-panel-header" data-cleara11y-plugin="true">';
+
 			html += '<div class="cleara11y-panel-header-left">';
-			html += '<h2 class="cleara11y-panel-title">Accessibility Issues</h2>';
-			html += '<span class="cleara11y-panel-issue-count">' + this.issues.length + ' issues</span>';
+			html += '<div class="cleara11y-panel-drag-handle" title="Drag to move panel" aria-label="Drag handle">';
+			html += '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#646970" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>';
+			html += '</div>';
+			html += '<div class="cleara11y-panel-title-group">';
+			html += '<h2 class="cleara11y-panel-title" data-cleara11y-plugin="true">Accessibility Issues</h2>';
+			html += '<span class="cleara11y-panel-issue-count" data-cleara11y-plugin="true">' + this.issues.length + ' issues</span>';
+			html += '</div>';
+
 			html += '</div>';
 			html += '<div class="cleara11y-panel-header-right">';
 			html += '<button class="cleara11y-panel-prev" title="Previous issue (Shift + ↑)" aria-label="Previous issue" disabled>';
-			html += '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>';
+			html += '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#646970" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><polyline points="15 18 9 12 15 6"></polyline></svg>';
 			html += '</button>';
 			html += '<button class="cleara11y-panel-next" title="Next issue (Shift + ↓)" aria-label="Next issue">';
-			html += '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>';
+			html += '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#646970" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><polyline points="9 18 15 12 9 6"></polyline></svg>';
 			html += '</button>';
-			html += '<button class="cleara11y-panel-close" title="Close panel (Escape)" aria-label="Close panel">&times;</button>';
+			html += '<button class="cleara11y-panel-close" title="Close panel (Escape)" aria-label="Close panel"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#646970" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>';
 			html += '</div>';
 			html += '</div>';
 
 			// Content
-			html += '<div class="cleara11y-panel-content">';
+			html += '<div class="cleara11y-panel-content" data-cleara11y-plugin="true">';
 
 			// Summary
 			var criticalCount = this.issues.filter(function(i) { return i.severity === 'critical'; }).length;
 			var moderateCount = this.issues.filter(function(i) { return i.severity === 'moderate'; }).length;
 			var minorCount = this.issues.filter(function(i) { return i.severity === 'minor'; }).length;
 
-			html += '<div class="cleara11y-panel-summary' + (this.issues.length > 0 ? ' has-violations' : '') + '">';
+			html += '<div class="cleara11y-panel-summary' + (this.issues.length > 0 ? ' has-violations' : ' no-violations') + '" data-cleara11y-plugin="true">';
 			html += '<div class="cleara11y-summary-header">';
-			html += '<svg class="cleara11y-summary-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">';
-			html += '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>';
-			html += '<line x1="12" y1="9" x2="12" y2="13"></line>';
-			html += '<line x1="12" y1="17" x2="12.01" y2="17"></line>';
-			html += '</svg>';
-			html += '<h3>' + (this.issues.length > 0 ? this.issues.length + ' Issues Found' : 'No Issues Found') + '</h3>';
+			html += '<svg class="cleara11y-summary-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><circle cx="12" cy="17" r="0.5"></circle></svg>';
+			html += '<h3 data-cleara11y-plugin="true">' + (this.issues.length > 0 ? this.issues.length + ' Issues Found' : 'No Issues Found') + '</h3>';
 			html += '</div>';
 
 			if (this.issues.length > 0) {
@@ -142,12 +174,8 @@
 				html += '<ul class="cleara11y-panel-issues">';
 
 				this.issues.forEach(function(issue, index) {
-					var impact = issue.impact || 'serious';
-					var impactIcon = this.getImpactIcon(impact);
-
 					html += '<li class="cleara11y-panel-issue severity-' + issue.severity + '" data-issue-index="' + index + '" data-severity="' + issue.severity + '">';
 					html += '<div class="cleara11y-issue-header">';
-					html += '<div class="cleara11y-issue-icon">' + impactIcon + '</div>';
 					html += '<div class="cleara11y-issue-info">';
 					html += '<div class="cleara11y-issue-title">' + this.escapeHtml(issue.rule_id) + '</div>';
 					html += '<div class="cleara11y-issue-selector" title="Selector: ' + this.escapeHtml(issue.selector || '') + '">';
@@ -159,16 +187,16 @@
 					html += '</div>';
 					html += '<div class="cleara11y-issue-message">' + this.escapeHtml(issue.message || issue.help_text || '') + '</div>';
 					html += '<div class="cleara11y-issue-actions">';
+					html += '<button class="cleara11y-issue-highlight-btn" data-issue-index="' + index + '">';
+					html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#646970" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>';
+					html += ' Highlight';
+					html += '</button>';
 					if (issue.help_url) {
 						html += '<a href="' + this.escapeHtml(issue.help_url) + '" target="_blank" rel="noopener noreferrer" class="cleara11y-issue-help-link">';
-						html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
-						html += 'Learn more';
+						html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#646970" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><circle cx="12" cy="17" r="0.5"></circle></svg>';
+						html += ' Learn more';
 						html += '</a>';
 					}
-					html += '<button class="cleara11y-issue-highlight-btn" data-issue-index="' + index + '">';
-					html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>';
-					html += 'Highlight';
-					html += '</button>';
 					html += '</div>';
 					html += '</li>';
 				}.bind(this));
@@ -185,23 +213,12 @@
 				html += '<div class="cleara11y-panel-footer-info">';
 				html += '<span class="cleara11y-keyboard-hint">Keyboard: <kbd>Shift</kbd> + <kbd>↑</kbd>/<kbd>↓</kbd> to navigate</span>';
 				html += '</div>';
+				html += '<div class="cleara11y-panel-resize-handle" title="Drag to resize panel height" aria-label="Resize handle"></div>';
+
 				html += '</div>';
 			}
 
 			return html;
-		},
-
-		getImpactIcon: function(impact) {
-			switch(impact) {
-				case 'critical':
-					return '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>';
-				case 'serious':
-					return '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>';
-				case 'moderate':
-					return '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>';
-				default:
-					return '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>';
-			}
 		},
 
 		truncateSelector: function(selector) {
@@ -310,6 +327,24 @@
 				}
 			});
 
+				// Window resize handler with debounce
+				var resizeTimeout;
+				window.addEventListener('resize', function() {
+					clearTimeout(resizeTimeout);
+					resizeTimeout = setTimeout(function() {
+						self.handleResize();
+					}, 100);
+				});
+
+				// Orientation change handler for mobile devices
+				window.addEventListener('orientationchange', function() {
+					setTimeout(function() {
+						self.handleResize();
+					}, 200);
+				});
+
+
+
 			// Mouse events for tooltips
 			document.addEventListener('mouseenter', function(e) {
 				if (e.target && e.target.classList && e.target.classList.contains('cleara11y-highlight')) {
@@ -322,6 +357,10 @@
 					self.hideTooltip();
 				}
 			}, true);
+
+				// Bind drag events to panel handle
+				this.bindDragEvents();
+
 		},
 
 		togglePanel: function() {
@@ -345,6 +384,12 @@
 			}
 			this.showHighlights();
 			this.updateNavigationButtons();
+
+			// Apply saved panel position if available
+			this.applyPanelPosition();
+			this.applyPanelHeight();
+
+
 		},
 
 		closePanel: function() {
@@ -352,30 +397,47 @@
 
 			this.panel.classList.remove('open');
 			document.body.classList.remove('cleara11y-panel-open');
+
+			// Reset inline styles so panel returns to default hidden position
+			this.panel.style.left = '';
+			this.panel.style.top = '';
+			this.panel.style.transform = '';
+			this.panel.style.height = '';
+
 			if (this.$toggle) {
 				this.$toggle.classList.remove('panel-open');
 				this.$toggle.setAttribute('aria-expanded', 'false');
 			}
+
 			this.hideHighlights();
 			this.currentIssueIndex = -1;
 		},
 
+			handleResize: function() {
+				// Constrain panel to viewport when window resizes
+				if (this.panel && this.panel.classList.contains('open')) {
+					this.constrainPanelToViewport();
+
+					// Recalculate tooltip position if visible
+					if (this.tooltip && this.tooltip.classList.contains('show')) {
+						this.hideTooltip();
+					}
+				}
+			},
+
+
 		filterIssues: function(severity) {
 			var issues = this.panel.querySelectorAll('.cleara11y-panel-issue');
-			var filteredIndices = [];
 
 			issues.forEach(function(issue) {
 				var issueSeverity = issue.getAttribute('data-severity');
 				if (severity === 'all' || issueSeverity === severity) {
 					issue.style.display = '';
-					filteredIndices.push(parseInt(issue.getAttribute('data-issue-index'), 10));
 				} else {
 					issue.style.display = 'none';
 				}
 			});
 
-			// Store filtered indices for navigation
-			this.filteredIndices = filteredIndices;
 			this.currentIssueIndex = -1;
 			this.updateNavigationButtons();
 		},
@@ -424,6 +486,11 @@
 					try {
 						var elements = document.querySelectorAll(issue.selector);
 						elements.forEach(function(el) {
+							// Skip highlighting elements inside the panel or already marked as plugin elements
+							if (self.panel && self.panel.contains(el)) return;
+							if (el.hasAttribute('data-cleara11y-plugin')) return;
+							if (el.hasAttribute('data-cleara11y-highlighted')) return;
+
 							el.classList.add('cleara11y-highlight', 'severity-' + issue.severity);
 							el.setAttribute('data-issue-index', index);
 							el.setAttribute('data-cleara11y-highlighted', 'true'); // Mark as highlighted by plugin
@@ -440,8 +507,9 @@
 		hideHighlights: function() {
 			var highlights = document.querySelectorAll('.cleara11y-highlight');
 			highlights.forEach(function(el) {
-				el.classList.remove('cleara11y-highlight', 'severity-critical', 'severity-moderate', 'severity-minor');
+				el.classList.remove('cleara11y-highlight', 'cleara11y-highlight-focus', 'severity-critical', 'severity-moderate', 'severity-minor', 'severity-serious');
 				el.removeAttribute('data-issue-index');
+				el.removeAttribute('data-cleara11y-highlighted');
 			});
 
 			this.highlightsVisible = false;
@@ -464,12 +532,10 @@
 			// Add focus highlight to this issue's elements
 			try {
 				var elements = document.querySelectorAll(issue.selector);
-				console.log('ClearA11y: Highlighting issue', index, 'found', elements.length, 'elements with selector:', issue.selector);
 				elements.forEach(function(el) {
 					// Ensure base highlight class is present for the pulse animation
 					el.classList.add('cleara11y-highlight', 'severity-' + issue.severity);
 					el.classList.add('cleara11y-highlight-focus');
-					console.log('ClearA11y: Added highlight classes to element:', el);
 				});
 
 				// Scroll to first element
@@ -512,7 +578,7 @@
 				this.tooltip.className = 'cleara11y-tooltip';
 				this.tooltip.setAttribute('data-cleara11y-plugin', 'true'); // Mark as plugin element
 				this.tooltip.setAttribute('role', 'tooltip');
-				document.body.appendChild(this.tooltip);
+				document.documentElement.appendChild(this.tooltip);
 			}
 
 			// Build tooltip content
@@ -569,7 +635,280 @@
 			var div = document.createElement('div');
 			div.textContent = text;
 			return div.innerHTML;
-		}
+		},
+
+		bindDragEvents: function() {
+			var self = this;
+			var dragHandle = this.panel.querySelector('.cleara11y-panel-drag-handle');
+			if (!dragHandle) return;
+
+			// Mouse events
+			dragHandle.addEventListener('mousedown', function(e) {
+				self.startDrag(e);
+			});
+
+			// Touch events
+			dragHandle.addEventListener('touchstart', function(e) {
+				self.startDrag(e);
+			}, { passive: false });
+
+			// Bind resize events
+			var resizeHandle = this.panel.querySelector('.cleara11y-panel-resize-handle');
+			if (resizeHandle) {
+				resizeHandle.addEventListener('mousedown', function(e) {
+					self.startResize(e);
+				});
+				resizeHandle.addEventListener('touchstart', function(e) {
+					self.startResize(e);
+				}, { passive: false });
+			}
+		},
+
+			startDrag: function(e) {
+				if (!this.panel || !this.panel.classList.contains('open')) return;
+
+				e.preventDefault();
+				this.isDragging = true;
+				this.panel.classList.add('draggable');
+
+				var clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
+				var clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+
+				var rect = this.panel.getBoundingClientRect();
+				this.dragOffset.x = clientX - rect.left;
+				this.dragOffset.y = clientY - rect.top;
+
+				// Add global event listeners
+				var self = this;
+				this._dragBoundHandler = function(ev) { self.drag(ev); };
+				this._dragEndHandler = function(ev) { self.endDrag(ev); };
+
+				if (e.type.includes('touch')) {
+					document.addEventListener('touchmove', this._dragBoundHandler, { passive: false });
+					document.addEventListener('touchend', this._dragEndHandler);
+				} else {
+					document.addEventListener('mousemove', this._dragBoundHandler);
+					document.addEventListener('mouseup', this._dragEndHandler);
+				}
+			},
+
+			drag: function(e) {
+				if (!this.isDragging) return;
+
+				e.preventDefault();
+
+				var clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
+				var clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+
+				var newX = clientX - this.dragOffset.x;
+				var newY = clientY - this.dragOffset.y;
+
+				// Keep panel within viewport bounds with minimum margins
+				var minMargin = window.innerWidth <= 600 ? 10 : (window.innerWidth <= 900 ? 20 : 30);
+				var maxX = window.innerWidth - this.panel.offsetWidth - minMargin;
+				var maxY = window.innerHeight - this.panel.offsetHeight - minMargin;
+
+				newX = Math.max(minMargin, Math.min(newX, maxX));
+				newY = Math.max(minMargin, Math.min(newY, maxY));
+
+				this.panel.style.left = newX + 'px';
+				this.panel.style.top = newY + 'px';
+				this.panel.style.transform = 'none';
+				this.panel.style.right = 'auto';
+			},
+
+			endDrag: function(e) {
+				if (!this.isDragging) return;
+
+				this.isDragging = false;
+				this.panel.classList.remove('draggable');
+
+				// Remove global event listeners
+				if (this._dragBoundHandler) {
+					document.removeEventListener('mousemove', this._dragBoundHandler);
+					document.removeEventListener('touchmove', this._dragBoundHandler);
+					this._dragBoundHandler = null;
+				}
+				if (this._dragEndHandler) {
+					document.removeEventListener('mouseup', this._dragEndHandler);
+					document.removeEventListener('touchend', this._dragEndHandler);
+					this._dragEndHandler = null;
+				}
+
+				// Save position
+				var rect = this.panel.getBoundingClientRect();
+				this.panelPosition.x = rect.left;
+				this.panelPosition.y = rect.top;
+				this.savePanelPosition();
+			},
+
+
+			startResize: function(e) {
+				if (!this.panel || !this.panel.classList.contains('open')) return;
+
+				e.preventDefault();
+				e.stopPropagation();
+
+				this.isResizing = true;
+				this.panel.classList.add('resizing');
+
+				var clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+				var rect = this.panel.getBoundingClientRect();
+
+				this.resizeStartY = clientY;
+				this.resizeStartHeight = rect.height;
+
+				// Add global event listeners
+				var self = this;
+				this._resizeBoundHandler = function(ev) { self.resize(ev); };
+				this._resizeEndHandler = function(ev) { self.endResize(ev); };
+
+				if (e.type.includes('touch')) {
+					document.addEventListener('touchmove', this._resizeBoundHandler, { passive: false });
+					document.addEventListener('touchend', this._resizeEndHandler);
+				} else {
+					document.addEventListener('mousemove', this._resizeBoundHandler);
+					document.addEventListener('mouseup', this._resizeEndHandler);
+				}
+			},
+
+			resize: function(e) {
+				if (!this.isResizing) return;
+
+				e.preventDefault();
+
+				var clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+
+				var deltaY = clientY - this.resizeStartY;
+				var newHeight = this.resizeStartHeight + deltaY;
+
+				// Calculate minimum height needed to show at least 1 issue (approximately 200px)
+				var minMargin = window.innerWidth <= 600 ? 10 : (window.innerWidth <= 900 ? 20 : 30);
+				var minPanelHeight = 200; // Minimum for 1 issue + header
+				var maxPanelHeight = window.innerHeight - (minMargin * 2);
+
+				newHeight = Math.max(minPanelHeight, Math.min(newHeight, maxPanelHeight));
+
+				this.panel.style.height = newHeight + 'px';
+				this.panelHeight = newHeight;
+			},
+
+			endResize: function(e) {
+				if (!this.isResizing) return;
+
+				this.isResizing = false;
+				this.panel.classList.remove('resizing');
+
+				// Remove global event listeners
+				if (this._resizeBoundHandler) {
+					document.removeEventListener('mousemove', this._resizeBoundHandler);
+					document.removeEventListener('touchmove', this._resizeBoundHandler);
+					this._resizeBoundHandler = null;
+				}
+				if (this._resizeEndHandler) {
+					document.removeEventListener('mouseup', this._resizeEndHandler);
+					document.removeEventListener('touchend', this._resizeEndHandler);
+					this._resizeEndHandler = null;
+				}
+
+				// Save height
+				this.savePanelHeight();
+			},
+
+			savePanelHeight: function() {
+				if (this.panelHeight !== null) {
+					try {
+						localStorage.setItem('cleara11y-panel-height', this.panelHeight);
+					} catch (e) {
+						console.warn('Could not save panel height:', e);
+					}
+				}
+			},
+
+			loadPanelHeight: function() {
+				try {
+					var saved = localStorage.getItem('cleara11y-panel-height');
+					if (saved) {
+						this.panelHeight = parseInt(saved, 10);
+					}
+				} catch (e) {
+					console.warn('Could not load panel height:', e);
+				}
+			},
+
+			applyPanelHeight: function() {
+				if (this.panelHeight && this.panel) {
+					var minMargin = window.innerWidth <= 600 ? 10 : (window.innerWidth <= 900 ? 20 : 30);
+					var minPanelHeight = 200;
+					var maxPanelHeight = window.innerHeight - (minMargin * 2);
+
+					// Ensure saved height is within valid range
+					if (this.panelHeight >= minPanelHeight && this.panelHeight <= maxPanelHeight) {
+						this.panel.style.height = this.panelHeight + 'px';
+					}
+				}
+			},
+
+			savePanelPosition: function() {
+				if (this.panelPosition.x !== null && this.panelPosition.y !== null) {
+					try {
+						localStorage.setItem('cleara11y-panel-position', JSON.stringify(this.panelPosition));
+					} catch (e) {
+						console.warn('Could not save panel position:', e);
+					}
+				}
+			},
+
+			loadPanelPosition: function() {
+				try {
+					var saved = localStorage.getItem('cleara11y-panel-position');
+					if (saved) {
+						this.panelPosition = JSON.parse(saved);
+					}
+				} catch (e) {
+					console.warn('Could not load panel position:', e);
+				}
+			},
+
+			applyPanelPosition: function() {
+				if (this.panelPosition.x !== null && this.panelPosition.y !== null) {
+					// Check if position is still within viewport with minimum margins
+					var minMargin = window.innerWidth <= 600 ? 10 : (window.innerWidth <= 900 ? 20 : 30);
+					var maxX = window.innerWidth - this.panel.offsetWidth - minMargin;
+					var maxY = window.innerHeight - this.panel.offsetHeight - minMargin;
+
+					if (this.panelPosition.x >= minMargin && this.panelPosition.x <= maxX &&
+						this.panelPosition.y >= minMargin && this.panelPosition.y <= maxY) {
+						this.panel.style.left = this.panelPosition.x + 'px';
+						this.panel.style.top = this.panelPosition.y + 'px';
+						this.panel.style.transform = 'none';
+						this.panel.style.right = 'auto';
+					}
+				}
+			},
+
+			constrainPanelToViewport: function() {
+				if (!this.panel) return;
+
+				var rect = this.panel.getBoundingClientRect();
+				var minMargin = window.innerWidth <= 600 ? 10 : (window.innerWidth <= 900 ? 20 : 30);
+				var maxX = window.innerWidth - this.panel.offsetWidth - minMargin;
+				var maxY = window.innerHeight - this.panel.offsetHeight - minMargin;
+
+				if (rect.left > maxX) {
+					this.panel.style.left = maxX + 'px';
+				}
+				if (rect.top > maxY) {
+					this.panel.style.top = maxY + 'px';
+				}
+				if (rect.left < minMargin) {
+					this.panel.style.left = minMargin + 'px';
+				}
+				if (rect.top < minMargin) {
+					this.panel.style.top = minMargin + 'px';
+				}
+			},
+
 	};
 
 	// Export for use in other scripts

@@ -274,8 +274,12 @@ test('group-aware rows remove repeated context and expose contextual actions', a
 	await expect(pageRow).toHaveAttribute('aria-label', /View details for/);
 	await expect(pageRow.locator('.cleara11y-badge')).toHaveCount(0);
 	await expect(pageRow.locator('.screen-reader-text')).toContainText(/severity/i);
-	const selector = pageRow.locator('.cleara11y-occurrence-identifier');
-	await expect(selector).toHaveAttribute('data-tooltip', (await selector.textContent()).trim());
+	await expect(pageRow.locator('.cleara11y-occurrence-summary__label')).toBeVisible();
+	await expect(pageRow.locator('.cleara11y-occurrence-summary__meta')).toBeVisible();
+	expect(await pageRow.locator('.cleara11y-occurrence-summary').evaluate(
+		element => element.firstElementChild?.className
+	)).toContain('cleara11y-occurrence-summary__meta');
+	await expect(pageRow.locator('.cleara11y-occurrence-evidence')).toHaveCount(0);
 	await expect(pageRow.locator('.cleara11y-result-row__meta')).toHaveCount(0);
 	await expect(pageRow).not.toContainText('ClearA11y Issues Explorer Fixture');
 	const pageDividerGroup = pageGroup.locator('.cleara11y-secondary-group:not(:last-child)').first();
@@ -326,16 +330,9 @@ test('group-aware rows remove repeated context and expose contextual actions', a
 	});
 	expect(ruleDividerLeft).toBe('0px');
 	const ruleRow = ruleSecondaryGroup.locator('[data-occurrence-row]').first();
-	const shortIdentifier = ruleRow;
-	await expect(shortIdentifier).not.toContainText('ClearA11y Issues Explorer Fixture');
-	const shortCode = shortIdentifier.locator('.cleara11y-selector');
-	await expect(shortCode).toHaveCSS('border-top-style', 'none');
-	await expect(shortCode).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-	await expect(shortCode).toHaveCSS('color', 'rgb(51, 51, 51)');
-	await expect(shortCode).toHaveCSS('text-decoration-line', 'none');
-	await expect(shortCode).not.toHaveClass(/is-truncated/);
-	await shortCode.hover();
-	expect(await shortCode.evaluate(node => getComputedStyle(node, '::after').display)).toBe('none');
+	await expect(ruleRow).not.toContainText('ClearA11y Issues Explorer Fixture');
+	await expect(ruleRow.locator('.cleara11y-element-visual .dashicons')).toBeVisible();
+	await expect(ruleRow.locator('.cleara11y-occurrence-summary__label')).toContainText(/Unlabelled button|Affected/);
 	await expect(ruleRow).not.toContainText('Element must have text that is visible to screen readers');
 	const confirmedRow = page.locator('[data-occurrence-row]:not(:has(.is-unconfirmed)):not(:has(.is-exception))').first();
 	const unconfirmedRow = page.locator('[data-occurrence-row]:has(.is-unconfirmed)').first();
@@ -345,7 +342,7 @@ test('group-aware rows remove repeated context and expose contextual actions', a
 		expect(Math.abs(confirmedBox.height - unconfirmedBox.height)).toBeLessThan(1);
 	}
 
-	await shortCode.click();
+	await ruleRow.click();
 	await expect(page.locator('#cleara11y-detail-panel')).toHaveClass(/is-open/);
 	await page.getByRole('button', {name: /Close details/}).click();
 	await expect(page.locator('#cleara11y-detail-panel')).toBeHidden();
@@ -385,6 +382,68 @@ test('Issues per page Screen Option controls the explorer request', async ({page
 			wp(['user', 'meta', 'update', 'admin', 'cleara11y_issues_per_page', String(previous.value)]);
 		} else {
 			wp(['user', 'meta', 'delete', 'admin', 'cleara11y_issues_per_page']);
+		}
+	}
+});
+
+test('issue display Screen Options persist and update occurrence evidence', async ({page}) => {
+	const previous = JSON.parse(wp([
+		'eval',
+		`$user = get_user_by('login', 'admin');
+		echo wp_json_encode([
+			'exists' => metadata_exists('user', $user->ID, 'cleara11y_issue_view_options'),
+			'value' => get_user_meta($user->ID, 'cleara11y_issue_view_options', true),
+		]);`
+	]));
+
+	try {
+		wp([
+			'eval',
+			`$user = get_user_by('login', 'admin');
+			update_user_meta($user->ID, 'cleara11y_issue_view_options', [
+				'show_selector' => false,
+				'show_html' => false,
+				'show_thumbnails' => false,
+			]);`
+		]);
+		await page.goto('/wp-admin/admin.php?page=cleara11y-issues&status=active');
+		await waitForResults(page);
+		await page.locator('#show-settings-link').click();
+
+		const selectorOption = page.locator('[data-cleara11y-view-option="show_selector"]');
+		const htmlOption = page.locator('[data-cleara11y-view-option="show_html"]');
+		const thumbnailOption = page.locator('[data-cleara11y-view-option="show_thumbnails"]');
+		await expect(selectorOption).not.toBeChecked();
+		await expect(htmlOption).not.toBeChecked();
+		await expect(thumbnailOption).not.toBeChecked();
+
+		const saveResponse = page.waitForResponse(response =>
+			response.url().includes('/wp-admin/admin-ajax.php')
+			&& response.request().postData()?.includes('action=cleara11y_save_issue_view_option')
+		);
+		await selectorOption.check();
+		expect((await saveResponse).ok()).toBe(true);
+		await expect(page.locator('[data-occurrence-row] .cleara11y-occurrence-evidence:not(.is-html)').first()).toBeVisible();
+
+		await page.reload();
+		await waitForResults(page);
+		await page.locator('#show-settings-link').click();
+		await expect(page.locator('[data-cleara11y-view-option="show_selector"]')).toBeChecked();
+		await expect(page.locator('[data-occurrence-row] .cleara11y-occurrence-evidence:not(.is-html)').first()).toBeVisible();
+	} finally {
+		if (previous.exists) {
+			const encoded = Buffer.from(JSON.stringify(previous.value)).toString('base64');
+			wp([
+				'eval',
+				`$user = get_user_by('login', 'admin');
+				update_user_meta(
+					$user->ID,
+					'cleara11y_issue_view_options',
+					json_decode(base64_decode('${encoded}'), true)
+				);`
+			]);
+		} else {
+			wp(['user', 'meta', 'delete', 'admin', 'cleara11y_issue_view_options']);
 		}
 	}
 });

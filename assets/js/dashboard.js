@@ -15,6 +15,83 @@
 	const AJAX_NONCE = cleara11yData.ajaxNonce;
 	const STRINGS = cleara11yData.strings;
 
+	/**
+	 * Build a WordPress REST URL for both pretty and plain permalink sites.
+	 *
+	 * @param {string} resource REST collection relative to wp/v2.
+	 * @param {Object} params Query parameters.
+	 * @return {string} Complete REST URL.
+	 */
+	function buildRestUrl(baseUrl, resource, params = {}) {
+		const url = new URL(baseUrl, window.location.origin);
+		const restRoute = url.searchParams.get('rest_route');
+		const resourcePath = String(resource).replace(/^\/+/, '');
+
+		if (restRoute) {
+			url.searchParams.set('rest_route', restRoute.replace(/\/?$/, '/') + resourcePath);
+		} else {
+			url.pathname = url.pathname.replace(/\/?$/, '/') + resourcePath;
+		}
+
+		Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, String(value)));
+		return url.toString();
+	}
+
+	function buildWpRestUrl(resource, params = {}) {
+		return buildRestUrl(WP_API_URL, resource, params);
+	}
+
+	function buildApiUrl(resource, params = {}) {
+		return buildRestUrl(API_URL, resource, params);
+	}
+
+	function normalizeJobStats(data) {
+		const count = key => {
+			const value = Number(data?.[key]);
+			return Number.isFinite(value) && value >= 0 ? value : 0;
+		};
+		const stats = {
+			pending: count('pending'),
+			active: count('active'),
+			completed: count('completed'),
+			failed: count('failed')
+		};
+		stats.total = Math.max(count('total'), stats.pending + stats.active + stats.completed + stats.failed);
+		stats.finished = stats.completed + stats.failed;
+		return stats;
+	}
+
+	async function readRestResponse(response, fallbackMessage) {
+		const data = await response.json();
+		if (!response.ok || data?.code) {
+			throw new Error(data?.message || fallbackMessage);
+		}
+		return data;
+	}
+
+	/**
+	 * Fetch and validate one WordPress REST collection page.
+	 *
+	 * @param {string} resource REST collection relative to wp/v2.
+	 * @param {Object} params Query parameters.
+	 * @return {Promise<{items: Array, totalPages: number}>} Collection response.
+	 */
+	async function fetchWpCollection(resource, params = {}) {
+		const response = await fetch(buildWpRestUrl(resource, params), {
+			headers: {'X-WP-Nonce': NONCE}
+		});
+		const data = await response.json();
+
+		if (!response.ok || !Array.isArray(data)) {
+			throw new Error(data?.message || `WordPress returned an invalid ${resource} response.`);
+		}
+
+		return {
+			items: data,
+			totalPages: Math.max(1, Number(response.headers.get('X-WP-TotalPages')) || 1)
+		};
+	}
+
 	// Use admin-ajax fallback if REST API fails
 	let useAjaxFallback = false;
 
@@ -31,6 +108,18 @@
 		isProcessingQueue: false,
 		orchestrator: null,
 		useParallelScanning: true, // Enable parallel scanning by default
+
+		buildWpRestUrl(resource, params) {
+			return buildWpRestUrl(resource, params);
+		},
+
+		buildApiUrl(resource, params) {
+			return buildApiUrl(resource, params);
+		},
+
+		normalizeJobStats(data) {
+			return normalizeJobStats(data);
+		},
 
 		/**
 		 * Initialize
@@ -58,32 +147,34 @@
 		async checkAndResumeQueue() {
 			try {
 				// First, expire any stuck jobs
-				await fetch(API_URL + 'jobs/expire', {
+				await fetch(buildApiUrl('jobs/expire'), {
 					method: 'POST',
 					headers: { 'X-WP-Nonce': NONCE }
 				});
 
 				// Clean up completed jobs from finished scans
-				await fetch(API_URL + 'jobs/cleanup', {
+				await fetch(buildApiUrl('jobs/cleanup'), {
 					method: 'POST',
 					headers: { 'X-WP-Nonce': NONCE }
 				});
 
 				// Get queue status to find the current scan_id
-				const queueResponse = await fetch(API_URL + 'queue/status', {
+				const queueResponse = await fetch(buildApiUrl('queue/status'), {
 					headers: { 'X-WP-Nonce': NONCE }
 				});
-				const queueData = await queueResponse.json();
+				const queueData = await readRestResponse(queueResponse, 'Could not load the scan queue.');
 
 				// Get current scan_id from queue if available
 				const scanId = (queueData.queue && queueData.queue.length > 0) ? queueData.queue[0].scan_id : null;
 
 				// Check job stats for parallel scanning, filtered by scan_id if available
-				const statsUrl = scanId ? `${API_URL}jobs/stats?scan_id=${scanId}` : `${API_URL}jobs/stats`;
+				const statsUrl = buildApiUrl('jobs/stats', scanId ? {scan_id: scanId} : {});
 				const jobsResponse = await fetch(statsUrl, {
 					headers: { 'X-WP-Nonce': NONCE }
 				});
-				const jobsData = await jobsResponse.json();
+				const jobsData = normalizeJobStats(
+					await readRestResponse(jobsResponse, 'Could not load scan progress.')
+				);
 
 				// Start orchestrator if there are pending jobs or active queue
 				if ((jobsData.pending > 0 || jobsData.active > 0) && this.useParallelScanning) {
@@ -184,7 +275,7 @@
 		 */
 		async updateSiteHealthStats() {
 			try {
-				const response = await fetch(API_URL + 'stats/overview', {
+				const response = await fetch(buildApiUrl('stats/overview'), {
 					headers: { 'X-WP-Nonce': NONCE }
 				});
 				const stats = await response.json();
@@ -309,30 +400,17 @@
 		 * Load pages via REST API
 		 */
 		async loadPagesViaRest() {
-			const postsResponse = await fetch(WP_API_URL + this.currentPostType + '?per_page=20&page=' + this.currentPage + '&_fields=id,title,link,meta', {
-				headers: {
-					'X-WP-Nonce': NONCE
-				}
+			const {items: posts} = await fetchWpCollection(this.currentPostType, {
+				per_page: 20,
+				page: this.currentPage,
+				_fields: 'id,title,link,meta'
 			});
-
-			if (!postsResponse.ok) {
-				throw new Error(`HTTP ${postsResponse.status}: ${postsResponse.statusText}`);
-			}
-
-			const posts = await postsResponse.json();
-
-			if (!Array.isArray(posts)) {
-				if (posts.code && posts.message) {
-					throw new Error(posts.message);
-				}
-				throw new Error('Invalid response from server');
-			}
 
 			// Get issue counts for each post
 			return await Promise.all(
 				posts.map(async (post) => {
 					try {
-						const issuesUrl = API_URL + 'posts/' + post.id + '/issues';
+						const issuesUrl = buildApiUrl('posts/' + post.id + '/issues');
 						console.log('[ClearA11y Dashboard] Fetching issues from:', issuesUrl);
 
 						const issuesResponse = await fetch(issuesUrl, {
@@ -572,7 +650,7 @@
 						return;
 					}
 
-					const response = await fetch(API_URL + 'scans/' + scanId, {
+					const response = await fetch(buildApiUrl('scans/' + scanId), {
 						headers: { 'X-WP-Nonce': NONCE }
 					});
 
@@ -616,17 +694,14 @@
 
 			// Get all published pages and posts
 			try {
-				const [pagesResponse, postsResponse] = await Promise.all([
-					fetch(WP_API_URL + 'pages?per_page=100&_fields=id', { headers: { 'X-WP-Nonce': NONCE } }),
-					fetch(WP_API_URL + 'posts?per_page=100&_fields=id', { headers: { 'X-WP-Nonce': NONCE } })
+				const [pages, posts] = await Promise.all([
+					this.getAllPublishedIds('pages'),
+					this.getAllPublishedIds('posts')
 				]);
 
-				const pages = await pagesResponse.json();
-				const posts = await postsResponse.json();
-
 				const allPostIds = [
-					...pages.map(p => p.id),
-					...posts.map(p => p.id)
+					...pages,
+					...posts
 				];
 
 				if (allPostIds.length === 0) {
@@ -643,11 +718,28 @@
 		},
 
 		/**
+		 * Get every published object ID from a WordPress REST collection.
+		 *
+		 * @param {string} resource WordPress REST collection.
+		 * @return {Promise<number[]>} Published object IDs.
+		 */
+		async getAllPublishedIds(resource) {
+			const first = await fetchWpCollection(resource, {per_page: 100, page: 1, _fields: 'id'});
+			const remaining = [];
+			for (let page = 2; page <= first.totalPages; page++) {
+				remaining.push(fetchWpCollection(resource, {per_page: 100, page, _fields: 'id'}));
+			}
+
+			const responses = await Promise.all(remaining);
+			return [first, ...responses].flatMap(response => response.items.map(item => item.id));
+		},
+
+		/**
 		 * Add posts to scan queue
 		 */
 		async addToQueue(postIds, scanName = null, scanType = 'full') {
 			try {
-				const response = await fetch(API_URL + 'queue/add', {
+				const response = await fetch(buildApiUrl('queue/add'), {
 					method: 'POST',
 					headers: {
 						'X-WP-Nonce': NONCE,
@@ -680,7 +772,7 @@
 					// For parallel scanning, also create jobs in scan_jobs table
 					if (this.useParallelScanning) {
 						try {
-							const jobsResponse = await fetch(API_URL + 'queue/create-jobs', {
+							const jobsResponse = await fetch(buildApiUrl('queue/create-jobs'), {
 								method: 'POST',
 								headers: {
 									'X-WP-Nonce': NONCE,
@@ -736,20 +828,22 @@
 				}
 
 				// First, get queue status to find the current scan_id
-				const queueResponse = await fetch(API_URL + 'queue/status', {
+				const queueResponse = await fetch(buildApiUrl('queue/status'), {
 					headers: { 'X-WP-Nonce': NONCE }
 				});
-				const data = await queueResponse.json();
+				const data = await readRestResponse(queueResponse, 'Could not load the scan queue.');
 
 				// Get current scan_id from queue if available
 				const scanId = (data.queue && data.queue.length > 0) ? data.queue[0].scan_id : null;
 
 				// Check job stats for parallel scanning, filtered by scan_id if available
-				const statsUrl = scanId ? `${API_URL}jobs/stats?scan_id=${scanId}` : `${API_URL}jobs/stats`;
+				const statsUrl = buildApiUrl('jobs/stats', scanId ? {scan_id: scanId} : {});
 				const jobsResponse = await fetch(statsUrl, {
 					headers: { 'X-WP-Nonce': NONCE }
 				});
-				const jobsData = await jobsResponse.json();
+				const jobsData = normalizeJobStats(
+					await readRestResponse(jobsResponse, 'Could not load scan progress.')
+				);
 
 				// Determine if we should show the indicator
 				const hasActiveJobs = jobsData.pending > 0 || jobsData.active > 0;
@@ -782,14 +876,14 @@
 
 					if (isOrchestratorRunning) {
 						// Show orchestrator status
-						const totalJobs = jobsData.pending + jobsData.active + jobsData.completed;
-						const completed = jobsData.completed;
+						const totalJobs = jobsData.total;
+						const completed = jobsData.finished;
 						// text.textContent = `Scanning site: ${completed} of ${totalJobs} pages complete (${orchestratorStatus.activeJobs} workers active)`;
 						text.textContent = `Scanning site: ${completed} of ${totalJobs} pages complete`;
 					} else if (hasActiveJobs) {
 						// Jobs exist but orchestrator not running - show status
-						const totalJobs = jobsData.pending + jobsData.active + jobsData.completed;
-						const completed = jobsData.completed;
+						const totalJobs = jobsData.total;
+						const completed = jobsData.finished;
 						text.textContent = `Scan Queue: ${completed}/${totalJobs} pages complete`;
 					} else if (hasActiveQueue) {
 						// Old sequential queue - show that status
@@ -856,7 +950,7 @@
 
 					try {
 						// Get next item from queue
-						const response = await fetch(API_URL + 'queue/next', {
+						const response = await fetch(buildApiUrl('queue/next'), {
 						method: 'POST',
 						headers: { 'X-WP-Nonce': NONCE }
 					});
@@ -1130,7 +1224,7 @@
 														console.log('[ClearA11y Dashboard] Scan complete, found', results.violations?.length || 0, 'violations');
 
 														// Save results via REST API with evidence
-														return fetch(API_URL + 'scan/results', {
+												return fetch(buildApiUrl('scan/results'), {
 															method: 'POST',
 															headers: {
 																'Content-Type': 'application/json',
@@ -1205,7 +1299,7 @@
 						console.error('[ClearA11y Dashboard] Scan failed for:', item.post_title, error);
 						// Mark as failed in database
 						try {
-							await fetch(API_URL + 'scan-items/' + item.id + '/fail', {
+							await fetch(buildApiUrl('scan-items/' + item.id + '/fail'), {
 								method: 'POST',
 								headers: { 'X-WP-Nonce': NONCE },
 								body: JSON.stringify({ error_message: error.message })
@@ -1301,7 +1395,7 @@
 		 */
 		async loadRecentScans() {
 			try {
-				const response = await fetch(API_URL + 'scans/recent?limit=10', {
+				const response = await fetch(buildApiUrl('scans/recent', {limit: 10}), {
 					headers: { 'X-WP-Nonce': NONCE }
 				});
 				const data = await response.json();

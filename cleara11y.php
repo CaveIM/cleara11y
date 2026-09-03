@@ -108,9 +108,9 @@ class ClearA11y_Plugin {
 		add_filter('cron_schedules', [$this, 'add_custom_cron_schedules']);
 
 		// Admin hooks
-		add_action('admin_init', [$this, 'check_tables_exist']);
-		add_action('admin_init', [$this, 'handle_manual_recreate_tables']);
+		add_action('admin_init', [$this, 'handle_manual_recreate_tables'], 5);
 		add_action('admin_init', [$this, 'run_database_migrations']);
+		add_action('admin_init', [$this, 'check_tables_exist'], 20);
 		add_action('admin_post_cleara11y_migrate_db', [$this, 'handle_manual_migration']);
 		// Test runner (development only)
 		add_action('admin_init', [$this, 'run_test_if_requested']);
@@ -122,6 +122,24 @@ class ClearA11y_Plugin {
 	public function check_tables_exist(): void {
 		if (!current_user_can('manage_options')) {
 			return;
+		}
+
+		$table_action = isset($_GET['cleara11y_tables'])
+			? sanitize_key(wp_unslash($_GET['cleara11y_tables']))
+			: '';
+
+		if ('recreated' === $table_action && \ClearA11y\Database\Schema::tables_exist()) {
+			add_action('admin_notices', function() {
+				echo '<div class="notice notice-success is-dismissible"><p>'
+					. esc_html__('ClearA11y database tables have been reset and recreated successfully!', 'cleara11y')
+					. '</p></div>';
+			});
+		} elseif ('failed' === $table_action) {
+			add_action('admin_notices', function() {
+				echo '<div class="notice notice-error"><p>'
+					. esc_html__('Failed to create ClearA11y database tables. Please check the error log.', 'cleara11y')
+					. '</p></div>';
+			});
 		}
 
 		if (!\ClearA11y\Database\Schema::tables_exist()) {
@@ -143,44 +161,31 @@ class ClearA11y_Plugin {
 	 * Usage: /wp-admin/admin.php?page=cleara11y&cleara11y_recreate_tables=1
 	 */
 	public function handle_manual_recreate_tables(): void {
-		// Debug logging
-		error_log('[ClearA11y] handle_manual_recreate_tables called');
-		error_log('[ClearA11y] GET params: ' . print_r($_GET, true));
-
-		if (!isset($_GET['cleara11y_recreate_tables']) || $_GET['cleara11y_recreate_tables'] !== '1') {
-			error_log('[ClearA11y] cleara11y_recreate_tables param not set or not equal to 1');
+		$recreate = isset($_GET['cleara11y_recreate_tables'])
+			? sanitize_text_field(wp_unslash($_GET['cleara11y_recreate_tables']))
+			: '';
+		if ('1' !== $recreate) {
 			return;
 		}
 
 		if (!current_user_can('manage_options')) {
-			error_log('[ClearA11y] User does not have manage_options capability');
-			wp_die('You do not have permission to perform this action.');
+			wp_die(esc_html__('You do not have permission to perform this action.', 'cleara11y'));
 		}
-
-		// Debug nonce
-		error_log('[ClearA11y] _wpnonce: ' . (isset($_GET['_wpnonce']) ? sanitize_text_field($_GET['_wpnonce']) : 'not set'));
 
 		// Verify nonce
 		if (!isset($_GET['_wpnonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'cleara11y_recreate_tables')) {
-			error_log('[ClearA11y] Nonce verification failed');
-			error_log('[ClearA11y] Expected nonce action: cleara11y_recreate_tables');
-			wp_die('Security check failed.');
+			wp_die(esc_html__('Security check failed.', 'cleara11y'));
 		}
-
-		error_log('[ClearA11y] Nonce verified successfully, proceeding to recreate tables');
 
 		// Recreate tables (drop and recreate fresh)
 		$result = \ClearA11y\Database\Schema::recreate_tables();
-
-		if ($result) {
-			add_action('admin_notices', function() {
-				echo '<div class="notice notice-success is-dismissible"><p>ClearA11y database tables have been reset and recreated successfully!</p></div>';
-			});
-		} else {
-			add_action('admin_notices', function() {
-				echo '<div class="notice notice-error"><p>Failed to create ClearA11y database tables. Please check error logs.</p></div>';
-			});
-		}
+		$redirect = add_query_arg(
+			'cleara11y_tables',
+			$result ? 'recreated' : 'failed',
+			admin_url('admin.php?page=cleara11y')
+		);
+		wp_safe_redirect($redirect);
+		exit;
 	}
 
 	/**

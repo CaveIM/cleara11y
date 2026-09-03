@@ -107,7 +107,8 @@
 					page_title: button.dataset.pageTitle || '',
 					post_type: button.dataset.postType || '',
 					rule_title: button.dataset.ruleTitle || '',
-					occurrence_fallback: !canAnchor
+					occurrence_fallback: !canAnchor,
+					occurrence_fallback_reason: button.dataset.anchorStatus || 'unavailable'
 				},
 				duration: {duration_type: 'permanent'},
 				note: button.dataset.message || ''
@@ -623,6 +624,10 @@
 				.prop('disabled', !occurrenceSpecific);
 		}
 		if (data.context?.occurrence_fallback) {
+			const fallbackMessage = data.context.occurrence_fallback_reason === 'ambiguous'
+				? 'This finding shares its element identity with multiple elements in the scan. This exception will apply to the selected rule on this page.'
+				: 'This older finding does not have stable element identity. This exception will apply to the selected rule on this page.';
+			$('#cleara11y-occurrence-fallback-notice p').text(fallbackMessage);
 			$('#cleara11y-occurrence-fallback-notice').prop('hidden', false);
 		}
 		if (

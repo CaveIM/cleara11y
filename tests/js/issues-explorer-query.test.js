@@ -57,3 +57,26 @@ test('API pagination is clamped to the supported range', () => {
 	assert.equal(Query.apiParams(query, 1000).get('per_page'), '100');
 	assert.equal(Query.apiParams(query, 'invalid').get('per_page'), '20');
 });
+
+test('REST URLs preserve plain-permalink routes and append endpoint parameters', () => {
+	const url = Query.restUrl(
+		'http://example.test/index.php?rest_route=/cleara11y/v1/',
+		'issues/occurrences',
+		new URLSearchParams({status: 'active', per_page: '20'})
+	);
+
+	assert.equal(url.searchParams.get('rest_route'), '/cleara11y/v1/issues/occurrences');
+	assert.equal(url.searchParams.get('status'), 'active');
+	assert.equal(url.searchParams.get('per_page'), '20');
+});
+
+test('REST URLs append endpoints to pretty-permalink paths', () => {
+	const url = Query.restUrl(
+		'http://example.test/wp-json/cleara11y/v1/',
+		'issues/filter-options',
+		{type: 'rule'}
+	);
+
+	assert.equal(url.pathname, '/wp-json/cleara11y/v1/issues/filter-options');
+	assert.equal(url.searchParams.get('type'), 'rule');
+});

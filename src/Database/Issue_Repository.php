@@ -181,6 +181,38 @@ class Issue_Repository {
 	}
 
 	/**
+	 * Determine whether an issue can safely anchor an occurrence exception.
+	 *
+	 * @param Issue $issue Issue to inspect.
+	 * @return string Available, ambiguous, or unavailable.
+	 */
+	public static function get_exception_anchor_status(Issue $issue): string {
+		if (
+			empty($issue->violation_identity_v2)
+			|| empty($issue->element_identity_v2)
+			|| empty($issue->identity_signature_version)
+		) {
+			return 'unavailable';
+		}
+
+		global $wpdb;
+		$table = self::get_table();
+		$count = (int) $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT COUNT(*) FROM `{$table}`
+					WHERE scan_item_id = %d
+						AND violation_identity_v2 = %s
+						AND identity_signature_version = %d",
+				$issue->scan_item_id,
+				$issue->violation_identity_v2,
+				$issue->identity_signature_version
+			)
+		);
+
+		return 1 === $count ? 'available' : 'ambiguous';
+	}
+
+	/**
 	 * Get all issues for a scan.
 	 *
 	 * @param int   $scan_id Scan ID.
@@ -632,6 +664,11 @@ class Issue_Repository {
 		$item_sql = "SELECT i.*, si.post_title, si.post_url, si.post_type, si.scanned_at,
 				s.scan_name, s.status AS scan_status, s.completed_at AS scan_completed_at,
 				{$lifecycle_select},
+				(SELECT COUNT(*) FROM `{$issues_table}` identity_issue
+					WHERE identity_issue.scan_item_id = i.scan_item_id
+						AND identity_issue.violation_identity_v2 = i.violation_identity_v2
+						AND identity_issue.identity_signature_version = i.identity_signature_version
+				) AS identity_observation_count,
 				CASE WHEN i.dismissed = 1 OR i.dismissed_global = 1
 					OR active_exceptions.violation_id IS NOT NULL THEN 1 ELSE 0 END AS is_exception,
 				EXISTS (
@@ -699,6 +736,11 @@ class Issue_Repository {
 					s.scan_name, s.status AS scan_status, s.created_at AS scan_created_at,
 					s.completed_at AS scan_completed_at,
 					{$lifecycle_select},
+					(SELECT COUNT(*) FROM `{$issues_table}` identity_issue
+						WHERE identity_issue.scan_item_id = i.scan_item_id
+							AND identity_issue.violation_identity_v2 = i.violation_identity_v2
+							AND identity_issue.identity_signature_version = i.identity_signature_version
+					) AS identity_observation_count,
 					CASE WHEN i.dismissed = 1 OR i.dismissed_global = 1 OR EXISTS (
 						SELECT 1 FROM `{$matches_table}` vm
 						INNER JOIN `{$rules_table}` ir ON ir.id = vm.exception_rule_id
@@ -817,6 +859,17 @@ class Issue_Repository {
 			admin_url('admin.php')
 		);
 
+		$anchor_status = 'unavailable';
+		if (
+			! empty($row['violation_identity_v2'])
+			&& ! empty($row['element_identity_v2'])
+			&& ! empty($row['identity_signature_version'])
+		) {
+			$anchor_status = 1 === (int) ($row['identity_observation_count'] ?? 0)
+				? 'available'
+				: 'ambiguous';
+		}
+
 		return [
 			'id' => (int) $row['id'],
 			'rule' => [
@@ -846,9 +899,8 @@ class Issue_Repository {
 			'finding_type' => ('incomplete' === ($row['result_type'] ?? '') || 'review' === $row['rule_type']) ? 'review' : 'violation',
 			'status' => ! empty($row['is_exception']) ? 'exception' : 'active',
 			'resembles_exception' => ! empty($row['resembles_exception']),
-			'can_anchor_exception' => ! empty($row['violation_identity_v2'])
-				&& ! empty($row['element_identity_v2'])
-				&& ! empty($row['identity_signature_version']),
+			'can_anchor_exception' => 'available' === $anchor_status,
+			'exception_anchor_status' => $anchor_status,
 			'message' => (string) ($row['message'] ?? ''),
 			'help_text' => (string) ($row['help_text'] ?? ''),
 			'selector' => $row['selector'] ?: null,

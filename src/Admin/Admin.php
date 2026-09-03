@@ -47,6 +47,7 @@ class Admin {
 		// AJAX handlers for pages list (fallback if REST API fails)
 		add_action('wp_ajax_cleara11y_get_posts', [$this, 'ajax_get_posts']);
 		add_action('wp_ajax_cleara11y_get_post_issues', [$this, 'ajax_get_post_issues']);
+		add_action('wp_ajax_cleara11y_save_issue_view_option', [$this, 'ajax_save_issue_view_option']);
 
 		// AJAX handlers for global scanner state management
 		add_action('wp_ajax_cleara11y_get_scan_state', [$this, 'ajax_get_scan_state']);
@@ -150,6 +151,31 @@ class Admin {
 		wp_send_json_success([
 			'counts' => $counts,
 		]);
+	}
+
+	/**
+	 * Save one Issues Explorer display preference for the current user.
+	 *
+	 * @return void
+	 */
+	public function ajax_save_issue_view_option(): void {
+		check_ajax_referer('cleara11y_issue_view_options', 'nonce');
+
+		if (! current_user_can('manage_options')) {
+			wp_send_json_error(['message' => __('Permission denied.', 'cleara11y')], 403);
+		}
+
+		$option = isset($_POST['option']) ? sanitize_key(wp_unslash($_POST['option'])) : '';
+		$allowed = array_keys($this->get_issue_view_option_defaults());
+		if (! in_array($option, $allowed, true)) {
+			wp_send_json_error(['message' => __('Invalid display option.', 'cleara11y')], 400);
+		}
+
+		$options = $this->get_issue_view_options();
+		$options[$option] = isset($_POST['enabled']) && '1' === wp_unslash($_POST['enabled']);
+		update_user_meta(get_current_user_id(), 'cleara11y_issue_view_options', $options);
+
+		wp_send_json_success(['options' => $options]);
 	}
 
 	/**
@@ -584,6 +610,75 @@ class Admin {
 				'option' => 'cleara11y_issues_per_page',
 			]
 		);
+
+		add_filter('screen_settings', [$this, 'render_issues_screen_settings'], 10, 2);
+	}
+
+	/**
+	 * Add Issues Explorer display preferences to WordPress Screen Options.
+	 *
+	 * @param string     $settings Existing Screen Options markup.
+	 * @param \WP_Screen $screen Current screen.
+	 * @return string
+	 */
+	public function render_issues_screen_settings(string $settings, \WP_Screen $screen): string {
+		if ('cleara11y_page_cleara11y-issues' !== $screen->id) {
+			return $settings;
+		}
+
+		$options = $this->get_issue_view_options();
+		ob_start();
+		?>
+		<fieldset class="metabox-prefs cleara11y-issue-view-options">
+			<legend><?php esc_html_e('Issue display', 'cleara11y'); ?></legend>
+			<label>
+				<input type="checkbox" data-cleara11y-view-option="show_selector" <?php checked($options['show_selector']); ?>>
+				<?php esc_html_e('CSS selectors', 'cleara11y'); ?>
+			</label>
+			<label>
+				<input type="checkbox" data-cleara11y-view-option="show_html" <?php checked($options['show_html']); ?>>
+				<?php esc_html_e('HTML excerpts', 'cleara11y'); ?>
+			</label>
+			<label>
+				<input type="checkbox" data-cleara11y-view-option="show_thumbnails" <?php checked($options['show_thumbnails']); ?>>
+				<?php esc_html_e('Image thumbnails', 'cleara11y'); ?>
+			</label>
+			<p class="description">
+				<?php esc_html_e('Changes save automatically for your account.', 'cleara11y'); ?>
+				<span id="cleara11y-view-options-status" class="screen-reader-text" aria-live="polite"></span>
+			</p>
+		</fieldset>
+		<?php
+
+		return $settings . (string) ob_get_clean();
+	}
+
+	/**
+	 * Get Issues Explorer display preferences for the current user.
+	 *
+	 * @return array<string, bool>
+	 */
+	private function get_issue_view_options(): array {
+		$options = get_user_meta(get_current_user_id(), 'cleara11y_issue_view_options', true);
+		$options = is_array($options) ? $options : [];
+
+		$defaults = $this->get_issue_view_option_defaults();
+		$options = array_merge($defaults, array_intersect_key($options, $defaults));
+
+		return array_map(static fn($value): bool => (bool) $value, $options);
+	}
+
+	/**
+	 * Get default Issues Explorer display preferences.
+	 *
+	 * @return array<string, bool>
+	 */
+	private function get_issue_view_option_defaults(): array {
+		return [
+			'show_selector' => false,
+			'show_html' => false,
+			'show_thumbnails' => false,
+		];
 	}
 
 	/**
@@ -802,10 +897,13 @@ class Admin {
 		if ($is_issues_page) {
 			$issues_per_page = absint(get_user_option('cleara11y_issues_per_page'));
 			$issues_per_page = min(100, max(1, $issues_per_page ?: 20));
+			$issue_view_options = $this->get_issue_view_options();
 			$issues_style_version = CLEARA11Y_VERSION;
+			$issues_query_version = CLEARA11Y_VERSION;
 			$issues_script_version = CLEARA11Y_VERSION;
 			if ('local' === wp_get_environment_type()) {
 				$issues_style_version = (string) filemtime(CLEARA11Y_PLUGIN_DIR . 'assets/css/issues-explorer.css');
+				$issues_query_version = (string) filemtime(CLEARA11Y_PLUGIN_DIR . 'assets/js/issues-explorer-query.js');
 				$issues_script_version = (string) filemtime(CLEARA11Y_PLUGIN_DIR . 'assets/js/issues-list.js');
 			}
 
@@ -855,7 +953,7 @@ class Admin {
 				'cleara11y-issues-query',
 				CLEARA11Y_PLUGIN_URL . 'assets/js/issues-explorer-query.js',
 				[],
-				CLEARA11Y_VERSION,
+				$issues_query_version,
 				true
 			);
 
@@ -871,9 +969,12 @@ class Admin {
 			// Localize issues list script
 			wp_localize_script('cleara11y-issues-list', 'cleara11yData', [
 				'apiUrl' => $rest_url . 'cleara11y/v1/',
+				'ajaxUrl' => admin_url('admin-ajax.php'),
 				'nonce' => wp_create_nonce('wp_rest'),
+				'viewOptionsNonce' => wp_create_nonce('cleara11y_issue_view_options'),
 				'pluginUrl' => CLEARA11Y_PLUGIN_URL,
 				'perPage' => $issues_per_page,
+				'viewOptions' => $issue_view_options,
 				'strings' => [
 					'loadingOccurrences' => __('Loading issue occurrences…', 'cleara11y'),
 					'activeTitle' => __('Active accessibility issues', 'cleara11y'),

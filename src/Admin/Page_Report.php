@@ -179,6 +179,7 @@ class Page_Report {
 					<?php if ($total_issues > 0): ?>
 						<div class="cleara11y-issues-list">
 							<?php foreach ($issues as $issue): ?>
+								<?php $anchor_status = Issue_Repository::get_exception_anchor_status($issue); ?>
 								<div class="cleara11y-issue-card severity-<?php echo esc_attr($issue->severity); ?>">
 									<div class="cleara11y-issue-card-header">
 										<div class="cleara11y-issue-title-row">
@@ -212,13 +213,8 @@ class Page_Report {
 											data-page-url="<?php echo esc_url(get_permalink($post_id)); ?>"
 											data-post-type="<?php echo esc_attr($post->post_type); ?>"
 											data-message="<?php echo esc_attr((string) ($issue->message ?: $issue->help_text)); ?>"
-											data-can-anchor="<?php echo esc_attr(
-												! empty($issue->violation_identity_v2)
-												&& ! empty($issue->element_identity_v2)
-												&& ! empty($issue->identity_signature_version)
-													? '1'
-													: '0'
-											); ?>"
+											data-can-anchor="<?php echo esc_attr('available' === $anchor_status ? '1' : '0'); ?>"
+											data-anchor-status="<?php echo esc_attr($anchor_status); ?>"
 										>
 											<?php esc_html_e('Create exception…', 'cleara11y'); ?>
 										</button>

@@ -7,6 +7,11 @@
 	const Query = window.ClearA11yIssueQuery;
 	const API_URL = cleara11yData.apiUrl;
 	const NONCE = cleara11yData.nonce;
+	const viewOptions = Object.assign({
+		show_selector: false,
+		show_html: false,
+		show_thumbnails: false
+	}, cleara11yData.viewOptions || {});
 	let query = Query.parse(window.location.href);
 	let requestController = null;
 	let detailController = null;
@@ -39,6 +44,7 @@
 		].forEach(id => { el[id] = byId('cleara11y-' + id); });
 
 		bindControls();
+		bindViewOptions();
 		setupEntityFilters();
 		syncControls();
 		load();
@@ -60,6 +66,51 @@
 			load({restoreFocus: previousQuery.occurrenceId && !query.occurrenceId});
 		});
 		document.addEventListener('cleara11y:exception-saved', handleExceptionSaved);
+	}
+
+	function bindViewOptions() {
+		document.querySelectorAll('[data-cleara11y-view-option]').forEach(input => {
+			input.addEventListener('change', async () => {
+				const option = input.dataset.cleara11yViewOption;
+				const previous = Boolean(viewOptions[option]);
+				viewOptions[option] = input.checked;
+				if (lastResult) renderResults(lastResult);
+
+				input.disabled = true;
+				setViewOptionsStatus('Saving display preference…');
+				try {
+					const body = new URLSearchParams({
+						action: 'cleara11y_save_issue_view_option',
+						nonce: cleara11yData.viewOptionsNonce,
+						option,
+						enabled: input.checked ? '1' : '0'
+					});
+					const response = await fetch(cleara11yData.ajaxUrl, {
+						method: 'POST',
+						headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
+						body
+					});
+					const result = await response.json();
+					if (!response.ok || !result.success) {
+						throw new Error(result?.data?.message || 'Display preference could not be saved.');
+					}
+					Object.assign(viewOptions, result.data.options || {});
+					setViewOptionsStatus('Display preference saved.');
+				} catch (error) {
+					viewOptions[option] = previous;
+					input.checked = previous;
+					if (lastResult) renderResults(lastResult);
+					setViewOptionsStatus(error.message || 'Display preference could not be saved.');
+				} finally {
+					input.disabled = false;
+				}
+			});
+		});
+	}
+
+	function setViewOptionsStatus(message) {
+		const status = byId('cleara11y-view-options-status');
+		if (status) status.textContent = message;
 	}
 
 	function bindControls() {
@@ -180,10 +231,10 @@
 
 			try {
 				// Fetch the options to find the label for this ID
-				const response = await fetch(API_URL + 'issues/filter-options?' + new URLSearchParams({
+				const response = await fetch(Query.restUrl(API_URL, 'issues/filter-options', new URLSearchParams({
 					type: entityType.type,
 					search: '' // Get all options to find the match
-				}), {
+				})), {
 					headers: {'X-WP-Nonce': NONCE}
 				});
 
@@ -221,7 +272,7 @@
 		requestController = new AbortController();
 		setLoading();
 		try {
-			const response = await fetch(API_URL + 'issues/occurrences?' + Query.apiParams(query, cleara11yData.perPage), {
+			const response = await fetch(Query.restUrl(API_URL, 'issues/occurrences', Query.apiParams(query, cleara11yData.perPage)), {
 				headers: {'X-WP-Nonce': NONCE},
 				signal: requestController.signal
 			});
@@ -319,6 +370,7 @@
 		el['page-info'].textContent = `Page ${pagination.page} of ${pagination.total_pages}`;
 		el['results-announcer'].textContent = `${data.summary.total_occurrences} issue occurrences found.`;
 		syncTruncatedValues();
+		syncImageThumbnails();
 		syncSelectedRow();
 	}
 
@@ -390,17 +442,171 @@
 	}
 
 	function renderOccurrenceRow(item) {
-		const accessibleLabel = `View details for ${item.rule.title} on ${item.page.title}`;
-		const identifier = item.selector || `Occurrence #${item.id}`;
-		const identifierLabel = item.selector ? 'Affected element selector' : 'Occurrence identifier';
+		const presentation = elementPresentation(item);
+		const accessibleLabel = `View details for ${item.rule.title} on ${item.page.title}. Affected element: ${presentation.spokenLabel}. ${presentation.type}`;
+		const selector = viewOptions.show_selector && item.selector
+			? `<code class="cleara11y-occurrence-evidence cleara11y-truncated-value" data-tooltip="${escapeAttribute(item.selector)}"><span class="cleara11y-truncated-value__text">${escapeHtml(item.selector)}</span></code>`
+			: '';
+		const html = viewOptions.show_html && item.html
+			? `<code class="cleara11y-occurrence-evidence is-html cleara11y-truncated-value" data-tooltip="${escapeAttribute(normalizeDisplayText(item.html, 240))}"><span class="cleara11y-truncated-value__text">${escapeHtml(normalizeDisplayText(item.html, 240))}</span></code>`
+			: '';
 		return `<div class="cleara11y-result-row cleara11y-occurrence-row" data-occurrence-row="${item.id}" tabindex="0" role="button"
-			aria-label="${escapeAttribute(accessibleLabel + '. ' + identifierLabel + ': ' + identifier)}" aria-controls="cleara11y-detail-panel" aria-expanded="false">
+			aria-label="${escapeAttribute(accessibleLabel)}" aria-controls="cleara11y-detail-panel" aria-expanded="false">
 			<div class="cleara11y-result-row__main">
 				<span class="screen-reader-text">${escapeHtml(capitalize(item.severity))} severity.</span>
-				<code class="cleara11y-selector cleara11y-occurrence-identifier cleara11y-truncated-value" data-tooltip="${escapeAttribute(identifier)}"><span class="cleara11y-truncated-value__text">${escapeHtml(identifier)}</span></code>
-				${renderStateBadges(item)}
+				${renderElementVisual(presentation)}
+				<div class="cleara11y-occurrence-summary">
+					<span class="cleara11y-occurrence-summary__meta">${escapeHtml(presentation.meta)}</span>
+					<strong class="cleara11y-occurrence-summary__label">${escapeHtml(presentation.label)}</strong>
+					${selector}${html}
+				</div>
+				<div class="cleara11y-occurrence-statuses">${renderStateBadges(item)}</div>
 			</div>
 		</div>`;
+	}
+
+	function elementPresentation(item) {
+		const evidence = parseNodeEvidence(item.node_evidence);
+		const attributes = evidence.attributes || {};
+		const tag = String(evidence.tag_name || htmlTagName(item.html) || '').toLowerCase();
+		const role = String(evidence.computed_role || attributes.role || '').toLowerCase();
+		const type = elementType(tag, role, evidence.input_type || attributes.type);
+		const accessibleName = normalizeDisplayText(item.accessible_name || evidence.accessible_name, 120);
+		const innerText = normalizeDisplayText(item.inner_text_snippet || evidence.inner_text_snippet, 120);
+		const source = normalizeDisplayText(attributes.src, 180);
+		const filename = imageFilename(source, item.page.url);
+		let label = accessibleName || innerText;
+		let spokenLabel = label;
+
+		if (label) {
+			label = `“${label}”`;
+		} else if ('img' === tag && filename) {
+			label = filename;
+			spokenLabel = filename;
+		} else if ('img' === tag || 'Image' === type) {
+			label = 'Image without alternative text';
+			spokenLabel = label;
+		} else if (['Button', 'Link', 'Text field', 'Checkbox', 'Radio button', 'Select field'].includes(type)) {
+			label = `Unlabelled ${type.toLowerCase()}`;
+			spokenLabel = label;
+		} else {
+			label = `Affected ${type.toLowerCase()}`;
+			spokenLabel = label;
+		}
+
+		const context = elementContext(type, evidence, attributes, label, item.page.url);
+		return {
+			label,
+			spokenLabel,
+			type,
+			meta: context ? `${type} · ${context}` : type,
+			tag,
+			icon: elementIcon(type),
+			thumbnailUrl: viewOptions.show_thumbnails && 'img' === tag
+				? safeThumbnailUrl(source, item.page.url)
+				: ''
+		};
+	}
+
+	function parseNodeEvidence(value) {
+		if (!value) return {};
+		try {
+			const parsed = 'string' === typeof value ? JSON.parse(value) : value;
+			return parsed?.node_evidence || parsed || {};
+		} catch (error) {
+			return {};
+		}
+	}
+
+	function htmlTagName(html) {
+		const match = String(html || '').match(/^\s*<([a-z0-9-]+)/i);
+		return match ? match[1] : '';
+	}
+
+	function normalizeDisplayText(value, maxLength) {
+		const text = String(value || '').replace(/\s+/g, ' ').trim();
+		if (!maxLength || text.length <= maxLength) return text;
+		return text.slice(0, maxLength - 1).trimEnd() + '…';
+	}
+
+	function elementType(tag, role, inputType) {
+		const roleTypes = {
+			button: 'Button', link: 'Link', img: 'Image', textbox: 'Text field', checkbox: 'Checkbox', radio: 'Radio button',
+			combobox: 'Select field', heading: 'Heading', navigation: 'Navigation', main: 'Main content', banner: 'Banner',
+			contentinfo: 'Footer', form: 'Form', list: 'List', listitem: 'List item', table: 'Table'
+		};
+		if (roleTypes[role]) return roleTypes[role];
+		if ('input' === tag) {
+			if ('checkbox' === inputType) return 'Checkbox';
+			if ('radio' === inputType) return 'Radio button';
+			if (['button', 'submit', 'reset'].includes(inputType)) return 'Button';
+			return 'Text field';
+		}
+		const tagTypes = {
+			a: 'Link', button: 'Button', img: 'Image', textarea: 'Text field', select: 'Select field', label: 'Label',
+			h1: 'Heading', h2: 'Heading', h3: 'Heading', h4: 'Heading', h5: 'Heading', h6: 'Heading',
+			nav: 'Navigation', main: 'Main content', header: 'Header', footer: 'Footer', form: 'Form',
+			ul: 'List', ol: 'List', li: 'List item', table: 'Table', iframe: 'Embedded frame', video: 'Video', audio: 'Audio',
+			p: 'Paragraph', span: 'Text', div: 'Container', section: 'Section', article: 'Article'
+		};
+		return tagTypes[tag] || (tag ? `<${tag}> element` : 'Element');
+	}
+
+	function elementContext(type, evidence, attributes, label, pageUrl) {
+		if ('Link' === type) return normalizeDisplayText(evidence.href_path || attributes.href, 90);
+		if ('Image' === type) {
+			const filename = imageFilename(attributes.src, pageUrl);
+			return filename && filename !== label ? filename : '';
+		}
+		if (['Text field', 'Checkbox', 'Radio button', 'Select field'].includes(type)) {
+			return normalizeDisplayText(attributes.name || attributes.id || evidence.input_type || attributes.type, 60);
+		}
+		return '';
+	}
+
+	function imageFilename(source, pageUrl) {
+		if (!source) return '';
+		try {
+			const path = new URL(source, pageUrl).pathname;
+			return decodeURIComponent(path.split('/').filter(Boolean).pop() || '');
+		} catch (error) {
+			return '';
+		}
+	}
+
+	function safeThumbnailUrl(source, pageUrl) {
+		if (!source) return '';
+		try {
+			const url = new URL(source, pageUrl);
+			const page = new URL(pageUrl);
+			return ['http:', 'https:'].includes(url.protocol) && url.origin === page.origin ? url.href : '';
+		} catch (error) {
+			return '';
+		}
+	}
+
+	function elementIcon(type) {
+		if ('Link' === type) return 'dashicons-admin-links';
+		if ('Image' === type) return 'dashicons-format-image';
+		if ('Button' === type) return 'dashicons-button';
+		if (['Text field', 'Checkbox', 'Radio button', 'Select field', 'Form'].includes(type)) return 'dashicons-feedback';
+		if ('Heading' === type) return 'dashicons-heading';
+		if (['List', 'List item', 'Navigation'].includes(type)) return 'dashicons-menu-alt3';
+		if ('Table' === type) return 'dashicons-editor-table';
+		return 'dashicons-editor-code';
+	}
+
+	function renderElementVisual(presentation) {
+		if (presentation.thumbnailUrl) {
+			return `<span class="cleara11y-element-visual is-thumbnail" aria-hidden="true"><span class="dashicons ${presentation.icon}"></span><img src="${escapeAttribute(presentation.thumbnailUrl)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"></span>`;
+		}
+		return `<span class="cleara11y-element-visual" aria-hidden="true"><span class="dashicons ${presentation.icon}"></span></span>`;
+	}
+
+	function syncImageThumbnails() {
+		el['issues-container'].querySelectorAll('.cleara11y-element-visual img').forEach(image => {
+			image.addEventListener('error', () => image.remove(), {once: true});
+		});
 	}
 
 	function renderStateBadges(item) {
@@ -463,7 +669,7 @@
 		el['detail-content'].innerHTML = '<div class="cleara11y-loading-state" role="status">Loading occurrence details…</div>';
 		activeOccurrence = null;
 		try {
-			const response = await fetch(API_URL + 'issues/occurrences/' + id, {
+			const response = await fetch(Query.restUrl(API_URL, 'issues/occurrences/' + id), {
 				headers: {'X-WP-Nonce': NONCE},
 				signal: detailController.signal
 			});
@@ -767,7 +973,7 @@
 	async function createTemporaryException(id, button) {
 		button.disabled = true;
 		try {
-			const response = await fetch(API_URL + 'exceptions/snooze', {
+			const response = await fetch(Query.restUrl(API_URL, 'exceptions/snooze'), {
 				method: 'POST',
 				headers: {'X-WP-Nonce': NONCE, 'Content-Type': 'application/json'},
 				body: JSON.stringify({violation_id: id})
@@ -799,7 +1005,8 @@
 				page_title: item.page.title,
 				post_type: item.page.post_type || '',
 				rule_title: item.rule.title || item.rule.id,
-				occurrence_fallback: !item.can_anchor_exception
+				occurrence_fallback: !item.can_anchor_exception,
+				occurrence_fallback_reason: item.exception_anchor_status || 'unavailable'
 			},
 			duration: {duration_type: 'permanent'},
 			note: item.message || ''
@@ -865,7 +1072,7 @@
 	}
 
 	async function loadOptions(type, input, list) {
-		const response = await fetch(API_URL + 'issues/filter-options?' + new URLSearchParams({type, search: input.value}), {
+		const response = await fetch(Query.restUrl(API_URL, 'issues/filter-options', new URLSearchParams({type, search: input.value})), {
 			headers: {'X-WP-Nonce': NONCE}
 		});
 		if (!response.ok) return;

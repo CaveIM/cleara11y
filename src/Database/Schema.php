@@ -107,9 +107,7 @@ class Schema {
 			KEY `scan_method` (`scan_method`),
 			KEY `pass_percentage` (`pass_percentage`),
 			KEY `score_grade` (`score_grade`),
-			KEY `created_at` (`created_at`),
-			KEY `explorer_scan_filters` (`scan_id`, `severity`, `rule_id`, `post_id`, `id`),
-			KEY `explorer_live_filters` (`scan_item_id`, `severity`, `rule_id`, `id`)
+			KEY `created_at` (`created_at`)
 		) $charset_collate;";
 
 		// 3. Issues table - Individual accessibility issues
@@ -178,7 +176,9 @@ class Schema {
 			KEY `page_object_key` (`page_object_key`(191)),
 			KEY `element_identity_v2` (`element_identity_v2`),
 			KEY `violation_identity_v2` (`violation_identity_v2`),
-			KEY `created_at` (`created_at`)
+			KEY `created_at` (`created_at`),
+			KEY `explorer_scan_filters` (`scan_id`, `severity`, `rule_id`, `post_id`, `id`),
+			KEY `explorer_live_filters` (`scan_item_id`, `severity`, `rule_id`, `id`)
 		) $charset_collate;";
 
 		// 4. Canonical occurrence state keyed by validated v2 identity.
@@ -241,9 +241,12 @@ class Schema {
 			dbDelta($query);
 		}
 
-		// Update database version
-		update_option('cleara11y_db_version', CLEARA11Y_DB_VERSION);
+		if (! self::tables_exist()) {
+			return false;
+		}
 
+		// Update database version only after every required table exists.
+		update_option('cleara11y_db_version', CLEARA11Y_DB_VERSION);
 		return true;
 	}
 
@@ -296,6 +299,7 @@ class Schema {
 			"{$prefix}scans",
 			"{$prefix}scan_items",
 			"{$prefix}issues",
+			"{$prefix}occurrence_states",
 			"{$prefix}scan_jobs",
 		];
 

@@ -102,5 +102,20 @@
 		return params;
 	}
 
-	return {parse, toUrl, apiParams, defaultGroup, enums};
+	function restUrl(baseUrl, resource, params) {
+		const url = baseUrl instanceof URL ? new URL(baseUrl.href) : new URL(baseUrl, 'http://localhost');
+		const restRoute = url.searchParams.get('rest_route');
+		const resourcePath = String(resource || '').replace(/^\/+/, '');
+
+		if (restRoute) {
+			url.searchParams.set('rest_route', restRoute.replace(/\/?$/, '/') + resourcePath);
+		} else {
+			url.pathname = url.pathname.replace(/\/?$/, '/') + resourcePath;
+		}
+
+		new URLSearchParams(params || {}).forEach((value, key) => url.searchParams.set(key, value));
+		return url;
+	}
+
+	return {parse, toUrl, apiParams, restUrl, defaultGroup, enums};
 });

@@ -50,6 +50,7 @@ class Highlighter {
 		add_action('template_redirect', [$this, 'detect_highlight_request']);
 		add_action('wp_footer', [$this, 'inject_highlighter_script']);
 		add_action('wp_enqueue_scripts', [$this, 'enqueue_frontend_assets']);
+		add_action('wp_ajax_cleara11y_save_panel_setting', [$this, 'ajax_save_panel_setting']);
 	}
 
 	/**
@@ -63,12 +64,12 @@ class Highlighter {
 			return;
 		}
 
-		// Enqueue styles
+		// Enqueue styles (filemtime busts browser cache whenever the file changes)
 		wp_enqueue_style(
 			'cleara11y-frontend',
 			CLEARA11Y_PLUGIN_URL . 'assets/css/frontend.css',
 			[],
-			CLEARA11Y_VERSION
+			CLEARA11Y_VERSION . '.' . (string) (filemtime(CLEARA11Y_PLUGIN_DIR . 'assets/css/frontend.css') ?: CLEARA11Y_VERSION)
 		);
 
 		// Enqueue script
@@ -76,7 +77,7 @@ class Highlighter {
 			'cleara11y-frontend',
 			CLEARA11Y_PLUGIN_URL . 'assets/js/frontend.js',
 			[],
-			CLEARA11Y_VERSION,
+			CLEARA11Y_VERSION . '.' . (string) (filemtime(CLEARA11Y_PLUGIN_DIR . 'assets/js/frontend.js') ?: CLEARA11Y_VERSION),
 			true
 		);
 
@@ -168,13 +169,99 @@ class Highlighter {
 				'message' => $issue->message,
 				'help_text' => $issue->help_text,
 				'help_url' => $issue->help_url,
+				'html' => $issue->html,
+				'accessible_name' => $issue->accessible_name,
+				'inner_text_snippet' => $issue->inner_text_snippet,
+				'node_evidence' => $issue->node_evidence,
 			];
 		}
 
 		wp_localize_script('cleara11y-frontend', 'cleara11yIssues', [
 			'post_id' => $post->ID,
 			'issues' => $frontend_issues,
+			'settings' => $this->get_panel_settings(),
+			'ajaxUrl' => admin_url('admin-ajax.php'),
+			'settingsNonce' => wp_create_nonce('cleara11y_panel_settings'),
 		]);
+	}
+
+	/**
+	 * Defaults for the frontend panel display settings.
+	 *
+	 * @return array
+	 */
+	private function get_panel_setting_defaults(): array {
+		return [
+			'highlight_all' => true,
+			'pulse' => true,
+			'tooltips' => true,
+			'sort' => 'page',
+			'group' => 'none',
+		];
+	}
+
+	/**
+	 * Allowed values for choice-based panel settings.
+	 *
+	 * @return array
+	 */
+	private function get_panel_setting_choices(): array {
+		return [
+			'sort' => ['page', 'severity'],
+			'group' => ['none', 'rule', 'element'],
+		];
+	}
+
+	/**
+	 * Get the current user's panel display settings, merged over defaults.
+	 *
+	 * @return array
+	 */
+	private function get_panel_settings(): array {
+		$saved = get_user_meta(get_current_user_id(), 'cleara11y_panel_settings', true);
+
+		if (!is_array($saved)) {
+			$saved = [];
+		}
+
+		return array_merge($this->get_panel_setting_defaults(), $saved);
+	}
+
+	/**
+	 * Save one frontend panel display setting for the current user.
+	 *
+	 * @return void
+	 */
+	public function ajax_save_panel_setting(): void {
+		check_ajax_referer('cleara11y_panel_settings', 'nonce');
+
+		if (!current_user_can('edit_posts')) {
+			wp_send_json_error(['message' => __('Permission denied.', 'cleara11y')], 403);
+		}
+
+		$option = isset($_POST['option']) ? sanitize_key(wp_unslash($_POST['option'])) : '';
+		$choices = $this->get_panel_setting_choices();
+		$settings = $this->get_panel_settings();
+
+		if (array_key_exists($option, $choices)) {
+			// Choice-based setting (sort/group): validate against its allowed values.
+			$value = isset($_POST['value']) ? sanitize_key(wp_unslash($_POST['value'])) : '';
+
+			if (!in_array($value, $choices[$option], true)) {
+				wp_send_json_error(['message' => __('Invalid panel setting value.', 'cleara11y')], 400);
+			}
+
+			$settings[$option] = $value;
+		} elseif (array_key_exists($option, $this->get_panel_setting_defaults())) {
+			// Boolean setting (highlight_all/pulse/tooltips).
+			$settings[$option] = isset($_POST['enabled']) && '1' === wp_unslash($_POST['enabled']);
+		} else {
+			wp_send_json_error(['message' => __('Invalid panel setting.', 'cleara11y')], 400);
+		}
+
+		update_user_meta(get_current_user_id(), 'cleara11y_panel_settings', $settings);
+
+		wp_send_json_success(['settings' => $settings]);
 	}
 
 	/**

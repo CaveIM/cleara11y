@@ -13,6 +13,7 @@ Thumbs.db
 *.log
 error_log
 debug.log
+/docs
 
 # Temporary files
 *.tmp

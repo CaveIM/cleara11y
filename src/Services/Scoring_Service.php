@@ -11,9 +11,8 @@
 
 namespace ClearA11y\Services;
 
-// Force OPcache to reload this file
-if (function_exists('opcache_invalidate')) {
-    opcache_invalidate(__FILE__, true);
+if (! defined('ABSPATH')) {
+	exit;
 }
 
 /**

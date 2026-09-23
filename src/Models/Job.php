@@ -10,6 +10,10 @@
 
 namespace ClearA11y\Models;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 /**
  * Job Model Class
  */

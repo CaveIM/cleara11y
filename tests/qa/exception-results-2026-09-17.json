@@ -1,0 +1,312 @@
+{
+    "checks": [
+        {
+            "phase": "matrix",
+            "name": "rule-page",
+            "expected": [
+                "exception",
+                "exception",
+                "active",
+                "active",
+                "active"
+            ],
+            "actual": [
+                "exception",
+                "exception",
+                "active",
+                "active",
+                "active"
+            ],
+            "pass": true
+        },
+        {
+            "phase": "matrix",
+            "name": "rule-site",
+            "expected": [
+                "exception",
+                "exception",
+                "active",
+                "exception",
+                "exception"
+            ],
+            "actual": [
+                "exception",
+                "exception",
+                "active",
+                "exception",
+                "exception"
+            ],
+            "pass": true
+        },
+        {
+            "phase": "matrix",
+            "name": "rule-pages-only",
+            "expected": [
+                "exception",
+                "exception",
+                "active",
+                "exception",
+                "active"
+            ],
+            "actual": [
+                "exception",
+                "exception",
+                "active",
+                "exception",
+                "active"
+            ],
+            "pass": true
+        },
+        {
+            "phase": "matrix",
+            "name": "rule-posts-only",
+            "expected": [
+                "active",
+                "active",
+                "active",
+                "active",
+                "exception"
+            ],
+            "actual": [
+                "active",
+                "active",
+                "active",
+                "active",
+                "exception"
+            ],
+            "pass": true
+        },
+        {
+            "phase": "matrix",
+            "name": "rule-url-match",
+            "expected": [
+                "active",
+                "active",
+                "active",
+                "exception",
+                "active"
+            ],
+            "actual": [
+                "active",
+                "active",
+                "active",
+                "exception",
+                "active"
+            ],
+            "pass": true
+        },
+        {
+            "phase": "matrix",
+            "name": "rule-url-no-match",
+            "expected": [
+                "active",
+                "active",
+                "active",
+                "active",
+                "active"
+            ],
+            "actual": [
+                "active",
+                "active",
+                "active",
+                "active",
+                "active"
+            ],
+            "pass": true
+        },
+        {
+            "phase": "matrix",
+            "name": "rule-on-element-page",
+            "expected": [
+                "exception",
+                "active",
+                "active",
+                "active",
+                "active"
+            ],
+            "actual": [
+                "exception",
+                "active",
+                "active",
+                "active",
+                "active"
+            ],
+            "pass": true
+        },
+        {
+            "phase": "matrix",
+            "name": "all-rules-on-element",
+            "expected": [
+                "exception",
+                "active",
+                "exception",
+                "active",
+                "active"
+            ],
+            "actual": [
+                "exception",
+                "active",
+                "active",
+                "active",
+                "active"
+            ],
+            "pass": false
+        },
+        {
+            "phase": "matrix",
+            "name": "element-scope-excludes-anchor",
+            "expected": [
+                "active",
+                "active",
+                "active",
+                "active",
+                "active"
+            ],
+            "actual": [
+                "exception",
+                "active",
+                "active",
+                "active",
+                "active"
+            ],
+            "pass": false
+        },
+        {
+            "phase": "matrix",
+            "name": "created exception suppresses",
+            "expected": "exception",
+            "actual": "exception",
+            "pass": true
+        },
+        {
+            "phase": "matrix",
+            "name": "disable restores finding",
+            "expected": "active",
+            "actual": "active",
+            "pass": true
+        },
+        {
+            "phase": "matrix",
+            "name": "enable suppresses again",
+            "expected": "exception",
+            "actual": "exception",
+            "pass": true
+        },
+        {
+            "phase": "prepare",
+            "name": "content exception initially suppresses",
+            "expected": "exception",
+            "actual": "exception",
+            "pass": true
+        },
+        {
+            "phase": "prepare",
+            "name": "snooze initially suppresses",
+            "expected": "exception",
+            "actual": "exception",
+            "pass": true
+        },
+        {
+            "phase": "unchanged",
+            "name": "new real scan exists",
+            "expected": true,
+            "actual": true,
+            "pass": true
+        },
+        {
+            "phase": "unchanged",
+            "name": "content exception unchanged",
+            "expected": "exception",
+            "actual": "exception",
+            "pass": true
+        },
+        {
+            "phase": "unchanged",
+            "name": "next scan ends snooze",
+            "expected": "active",
+            "actual": "exception",
+            "pass": false
+        },
+        {
+            "phase": "unchanged",
+            "name": "snooze recorded expired",
+            "expected": "expired",
+            "actual": "active",
+            "pass": false
+        },
+        {
+            "phase": "unchanged",
+            "name": "permanent unrelated element remains suppressed",
+            "expected": "exception",
+            "actual": "exception",
+            "pass": true
+        },
+        {
+            "phase": "unchanged",
+            "name": "other rule remains visible",
+            "expected": "active",
+            "actual": "active",
+            "pass": true
+        },
+        {
+            "phase": "changed",
+            "name": "new real scan exists",
+            "expected": true,
+            "actual": true,
+            "pass": true
+        },
+        {
+            "phase": "changed",
+            "name": "content exception changed",
+            "expected": "active",
+            "actual": "active",
+            "pass": true
+        },
+        {
+            "phase": "changed",
+            "name": "next scan ends snooze",
+            "expected": "active",
+            "actual": "exception",
+            "pass": false
+        },
+        {
+            "phase": "changed",
+            "name": "snooze recorded expired",
+            "expected": "expired",
+            "actual": "active",
+            "pass": false
+        },
+        {
+            "phase": "changed",
+            "name": "permanent unrelated element remains suppressed",
+            "expected": "exception",
+            "actual": "exception",
+            "pass": true
+        },
+        {
+            "phase": "changed",
+            "name": "other rule remains visible",
+            "expected": "active",
+            "actual": "active",
+            "pass": true
+        }
+    ],
+    "rules": {
+        "rule-page": "e4aa4708-01f5-461e-8710-f24709eeacb1",
+        "rule-site": "4aa4bf7f-0dd8-40c7-800a-cfe6b4a725e7",
+        "rule-pages-only": "fa57a908-dfb5-4252-a8b0-b15870c558cd",
+        "rule-posts-only": "e01db648-2df5-4a6c-9182-81c8dbf36651",
+        "rule-url-match": "99232671-2dbc-4dcd-8b24-ab2c2201c313",
+        "rule-url-no-match": "1b47b3c6-3f99-4997-86d5-57df3aa982c9",
+        "rule-on-element-page": "9605f061-27a3-490d-aeb9-cd7b3b6f7a18",
+        "all-rules-on-element": "7a7f8420-4a1d-483f-9de9-32597675eb01",
+        "element-scope-excludes-anchor": "aa08a8e3-8dd3-44d1-80c1-5c5a63b04db5",
+        "toggle": "6c4a0ec7-7574-4387-a4c6-7236b5ba554e",
+        "until-content-element": "2c61cc64-6619-44a9-a1dc-c9c5752e70b2",
+        "until-next-scan": "1164eac0-2317-4c5e-91b4-0404c0a784c4",
+        "permanent-control": "e61e108c-dd23-45cb-a30d-20969d11aedd"
+    },
+    "baseline_scan": 16,
+    "unchanged_scan": 18,
+    "changed_scan": 19
+}

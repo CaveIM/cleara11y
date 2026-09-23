@@ -10,6 +10,10 @@
 
 namespace ClearA11y\Services;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 /**
  * Fingerprint Service Class
  */
@@ -247,7 +251,7 @@ class Fingerprint_Service {
 
 		// Remove common tracking parameters
 		$tracking_params = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'fbclid', 'gclid'];
-		$parsed = parse_url('http://' . $url);
+		$parsed = wp_parse_url('http://' . $url);
 
 		if (isset($parsed['query'])) {
 			parse_str($parsed['query'], $params);

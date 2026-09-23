@@ -10,17 +10,16 @@
 
 namespace ClearA11y\Services;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 use ClearA11y\Database\Job_Repository;
 use ClearA11y\Database\Scan_Repository;
 use ClearA11y\Database\Scan_Item_Repository;
 use ClearA11y\Database\PHP_Bulk_Scanner;
 use ClearA11y\Models\Job;
 use ClearA11y\Models\Scan;
-
-// Force OPcache to reload this file
-if (function_exists('opcache_invalidate')) {
-    opcache_invalidate(__FILE__, true);
-}
 
 /**
  * Scan Orchestrator Class
@@ -36,11 +35,13 @@ class Scan_Orchestrator {
 		global $wpdb;
 		$scans_table = \ClearA11y\Database\Schema::get_table_name('scans');
 
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$active_scan = $wpdb->get_var(
 			"SELECT id FROM `{$scans_table}`
 			WHERE status IN ('pending', 'in_progress', 'paused')
 			LIMIT 1"
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		return !empty($active_scan);
 	}
@@ -251,24 +252,24 @@ class Scan_Orchestrator {
 		$scan->completed_at = \current_time('mysql', true);
 		$reason = __('Scan cancelled by an administrator.', 'cleara11y');
 		global $wpdb;
-		$wpdb->query('START TRANSACTION');
+		$wpdb->query('START TRANSACTION'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
 
 		if (false === Job_Repository::cancel_by_scan_id($scan_id, $reason)) {
-			$wpdb->query('ROLLBACK');
+			$wpdb->query('ROLLBACK'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
 			return false;
 		}
 
 		if (false === Scan_Item_Repository::cancel_incomplete_by_scan_id($scan_id, $reason)) {
-			$wpdb->query('ROLLBACK');
+			$wpdb->query('ROLLBACK'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
 			return false;
 		}
 
 		if (! Scan_Repository::update($scan)) {
-			$wpdb->query('ROLLBACK');
+			$wpdb->query('ROLLBACK'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
 			return false;
 		}
 
-		$wpdb->query('COMMIT');
+		$wpdb->query('COMMIT'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
 		return true;
 	}
 

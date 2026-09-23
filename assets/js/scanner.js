@@ -55,6 +55,7 @@
 			this.overlay = document.createElement('div');
 			this.overlay.id = 'cleara11y-scanner-overlay';
 			this.overlay.className = 'cleara11y-scanner-overlay';
+			this.overlay.setAttribute('data-cleara11y-plugin', 'true');
 
 			// Create container
 			this.container = document.createElement('div');
@@ -231,7 +232,7 @@
 				// Run axe-core scan
 				this.updateProgress('Running accessibility checks...');
 
-				const results = await axe.run(document, {
+				const results = await axe.run({ exclude: [this.overlay] }, {
 					runOnly: {
 						type: 'tag',
 						values: cleara11yScanData.axeTags || ClearA11yScannerConfig.AXE_RUN_TAGS

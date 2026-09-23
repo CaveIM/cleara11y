@@ -11,6 +11,10 @@
 
 namespace ClearA11y\Services;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 use ClearA11y\Database\Issue_Repository;
 use ClearA11y\Database\Exception_Rule_Repository;
 use ClearA11y\Database\Exception_Schema;
@@ -205,9 +209,8 @@ class PHP_Bulk_Scanner {
 		}
 
 		// Fetch the rendered HTML
-		$response = wp_remote_get($url, [
+		$response = wp_safe_remote_get($url, [
 			'timeout' => 30,
-			'sslverify' => false,
 		]);
 
 		if (is_wp_error($response)) {

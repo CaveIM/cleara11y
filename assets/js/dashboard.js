@@ -313,7 +313,7 @@
 		 * Handle messages from scanner
 		 */
 		handleScannerMessage(event) {
-			if (event.data && event.data.source === 'cleara11y_scanner') {
+			if (event.origin === window.location.origin && event.data?.data && event.data.source === 'cleara11y_scanner') {
 				const msg = event.data.data;
 
 				switch (msg.type) {
@@ -390,7 +390,7 @@
 
 			} catch (error) {
 				console.error('Error loading pages:', error);
-				container.innerHTML = '<p class="cleara11y-error">Error loading pages: ' + error.message + '</p>';
+				container.innerHTML = '<p class="cleara11y-error">Error loading pages: ' + this.escapeHtml(error.message) + '</p>';
 			} finally {
 				container.dataset.loading = 'false';
 			}
@@ -688,10 +688,6 @@
 		 * Start full site scan
 		 */
 		async startFullScan() {
-			if (!confirm('This will scan all published pages and posts. The scan may take several minutes. Continue?')) {
-				return;
-			}
-
 			// Get all published pages and posts
 			try {
 				const [pages, posts] = await Promise.all([
@@ -1363,10 +1359,6 @@
 				return;
 			}
 
-			if (!confirm(`Scan ${postIds.length} selected page${postIds.length > 1 ? 's' : ''}?`)) {
-				return;
-			}
-
 			await this.addToQueue(postIds, `Bulk Scan - ${postIds.length} pages`);
 		},
 
@@ -1376,7 +1368,7 @@
 		escapeHtml(text) {
 			const div = document.createElement('div');
 			div.textContent = text;
-			return div.innerHTML;
+			return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 		},
 
 		/**

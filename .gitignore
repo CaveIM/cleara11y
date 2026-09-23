@@ -22,6 +22,18 @@ debug.log
 
 # Node modules (if we add any build tools later)
 node_modules/
+.pnpm-store/
+.next/
+.env
+.env.*
+!.env.example
+# Generated remnants of the former app workspace
+/apps/api/.phpunit.result.cache
+/apps/api/bootstrap/cache/
+/apps/api/database/*.sqlite
+/apps/api/storage/
+/services/scanner/dist/
+/apps/web/next-env.d.ts
 npm-debug.log*
 test-results/
 playwright-report/

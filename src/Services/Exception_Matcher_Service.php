@@ -10,6 +10,10 @@
 
 namespace ClearA11y\Services;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 use ClearA11y\Models\Exception_Rule;
 use ClearA11y\Models\Issue;
 use ClearA11y\Database\Exception_Rule_Repository;
@@ -73,17 +77,39 @@ class Exception_Matcher_Service {
 		Exception_Rule $rule,
 		bool $allow_legacy_reanchor = true
 	): ?array {
+		if (! self::matches_scope($issue, $rule)) {
+			return null;
+		}
+
 		// Rule-level exceptions are explicit scoped declarations and retain
 		// their existing page/site/content-type/URL-pattern behavior.
 		if ('rule' === $rule->target_type) {
-			if (! self::matches_scope($issue, $rule)) {
-				return null;
-			}
-
 			return self::matches_rule_only($issue, $rule);
 		}
 
-		// Occurrence exceptions may only suppress on an exact v2 violation
+		// An explicit all-rules target uses element identity within its scope.
+		// Still reject ambiguous observations of the current rule on that element.
+		if (
+			'element' === $rule->target_type
+			&& ! empty($rule->element_identity_v2)
+			&& ! empty($issue->element_identity_v2)
+			&& ! empty($issue->violation_identity_v2)
+			&& $rule->identity_signature_version === $issue->identity_signature_version
+			&& hash_equals($rule->element_identity_v2, $issue->element_identity_v2)
+		) {
+			$collision = Exception_Rule_Repository::count_identity_observations(
+				$issue->scan_item_id,
+				$issue->violation_identity_v2,
+				$issue->identity_signature_version
+			) > 1;
+			return [
+				'confidence' => $collision ? self::CONFIDENCE['PARTIAL'] : self::CONFIDENCE['EXACT'],
+				'matched_by' => $collision ? 'violation_identity_collision' : 'element_identity_v2',
+				'action' => $collision ? 'resembles' : 'suppressed',
+			];
+		}
+
+		// Rule-on-element exceptions require an exact v2 violation
 		// identity. Matching only the element is useful context, but must never
 		// hide a finding.
 		if (! empty($rule->violation_identity_v2)) {
@@ -163,45 +189,41 @@ class Exception_Matcher_Service {
 	 * @return bool True if matches scope.
 	 */
 	private static function matches_scope(Issue $issue, Exception_Rule $rule): bool {
+		if ('site' === ($rule->scope['scope_type'] ?? '')) {
+			return true;
+		}
+		$scan_item = self::get_scan_item_for_issue($issue);
+		return $scan_item && self::matches_page_scope(
+			$rule,
+			(string) ($scan_item->post_url ?? ''),
+			(string) ($scan_item->post_type ?? '')
+		);
+	}
+
+	/**
+	 * Match a scanned page even when it has no remaining findings.
+	 *
+	 * @param Exception_Rule $rule Exception rule.
+	 * @param string         $page_url Scanned URL.
+	 * @param string         $post_type Scanned content type.
+	 * @return bool Whether the page is in scope.
+	 */
+	public static function matches_page_scope(Exception_Rule $rule, string $page_url, string $post_type): bool {
 		$scope = $rule->scope;
-		$scope_type = $scope['scope_type'] ?? '';
-
-		switch ($scope_type) {
+		switch ($scope['scope_type'] ?? '') {
 			case 'site':
-				// All issues on site match
 				return true;
-
 			case 'page':
-				// Must match specific page URL
-				$scan_item = self::get_scan_item_for_issue($issue);
-				if (!$scan_item) {
-					return false;
-				}
-				return self::urls_match($scan_item->post_url ?? '', $scope['url'] ?? '');
-
+				return self::urls_match($page_url, $scope['url'] ?? '');
 			case 'content_type':
-				// Must match post type
-				$scan_item = self::get_scan_item_for_issue($issue);
-				if (!$scan_item) {
-					return false;
-				}
-				$post_types = $scope['post_types'] ?? [];
-				return in_array($scan_item->post_type ?? '', $post_types, true);
-
+				return in_array($post_type, $scope['post_types'] ?? [], true);
 			case 'url_pattern':
-				// Must match URL pattern
-				$scan_item = self::get_scan_item_for_issue($issue);
-				if (!$scan_item) {
-					return false;
-				}
-				$patterns = $scope['patterns'] ?? [];
-				foreach ($patterns as $pattern) {
-					if (self::url_matches_pattern($scan_item->post_url ?? '', $pattern)) {
+				foreach ($scope['patterns'] ?? [] as $pattern) {
+					if (self::url_matches_pattern($page_url, $pattern)) {
 						return true;
 					}
 				}
 				return false;
-
 			default:
 				return false;
 		}
@@ -485,12 +507,14 @@ class Exception_Matcher_Service {
 			global $wpdb;
 
 			$table = \ClearA11y\Database\Schema::get_table_name('scan_items');
+			// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 			$cache[$issue->scan_item_id] = $wpdb->get_row(
 				$wpdb->prepare(
 					"SELECT * FROM `{$table}` WHERE id = %d",
 					$issue->scan_item_id
 				)
 			);
+			// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		}
 
 		return $cache[$issue->scan_item_id];
@@ -570,27 +594,20 @@ class Exception_Matcher_Service {
 
 		$where_clause = implode(' AND ', $where);
 
-		// Count matching issues
-		// @phpstan-ignore-next-line
-		$issue_count = (int) $wpdb->get_var(
-			$wpdb->prepare(
-				"SELECT COUNT(DISTINCT i.id) FROM `{$issues_table}` i
-				INNER JOIN `{$scan_items_table}` si ON i.scan_item_id = si.id
-				WHERE {$where_clause}",
-				...$where_params
-			)
-		);
+		$issue_query = "SELECT COUNT(DISTINCT i.id) FROM `{$issues_table}` i
+			INNER JOIN `{$scan_items_table}` si ON i.scan_item_id = si.id
+			WHERE {$where_clause}";
+		$page_query = "SELECT COUNT(DISTINCT si.post_id) FROM `{$issues_table}` i
+			INNER JOIN `{$scan_items_table}` si ON i.scan_item_id = si.id
+			WHERE {$where_clause}";
 
-		// Count unique pages
-		// @phpstan-ignore-next-line
-		$page_count = (int) $wpdb->get_var(
-			$wpdb->prepare(
-				"SELECT COUNT(DISTINCT si.post_id) FROM `{$issues_table}` i
-				INNER JOIN `{$scan_items_table}` si ON i.scan_item_id = si.id
-				WHERE {$where_clause}",
-				...$where_params
-			)
-		);
+		// Site-wide impact can have no filters; prepare only when values exist.
+		if (! empty($where_params)) {
+			$issue_query = $wpdb->prepare($issue_query, ...$where_params); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- SQL is built from fixed predicates; all filter values are in the parameter list.
+			$page_query = $wpdb->prepare($page_query, ...$where_params); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- SQL is built from fixed predicates; all filter values are in the parameter list.
+		}
+		$issue_count = (int) $wpdb->get_var($issue_query); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
+		$page_count = (int) $wpdb->get_var($page_query); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
 
 		return [
 			'issues' => $issue_count,

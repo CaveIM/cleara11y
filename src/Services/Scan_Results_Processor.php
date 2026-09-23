@@ -10,6 +10,10 @@
 
 namespace ClearA11y\Services;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 use ClearA11y\Database\Issue_Repository;
 use ClearA11y\Database\Exception_Rule_Repository;
 use ClearA11y\Database\Exception_Schema;
@@ -19,11 +23,6 @@ use ClearA11y\Database\Scan_Item_Repository;
 use ClearA11y\Models\Issue;
 use ClearA11y\Models\Scan;
 use ClearA11y\Models\Scan_Item;
-
-// Force OPcache to reload this file
-if (function_exists('opcache_invalidate')) {
-    opcache_invalidate(__FILE__, true);
-}
 
 /**
  * Scan Results Processor Class
@@ -177,7 +176,8 @@ class Scan_Results_Processor {
 			Exception_Rule_Repository::downgrade_colliding_matches($scan_item_id);
 			Exception_Rule_Repository::expire_snoozes_for_url(
 				get_current_blog_id(),
-				(string) $scan_item->post_url
+				(string) $scan_item->post_url,
+				(string) $scan_item->post_type
 			);
 		}
 
@@ -218,7 +218,7 @@ class Scan_Results_Processor {
 				$observed_identities
 			);
 		} elseif (Occurrence_Repository::table_exists()) {
-			error_log(
+			\cleara11y_debug_log(
 				sprintf(
 					'ClearA11y WARNING: Occurrence resolution skipped because lifecycle evidence was incomplete. scan_item_id=%d issues=%d identities=%d recorded=%d',
 					$scan_item_id,
@@ -291,7 +291,7 @@ class Scan_Results_Processor {
 			&& \ClearA11y\Services\Fingerprint_Service::IDENTITY_SIGNATURE_VERSION === $stored->identity_signature_version;
 
 		if (! $valid) {
-			error_log(
+			\cleara11y_debug_log(
 				sprintf(
 					'ClearA11y WARNING: Evidence missing or truncated after occurrence write. issue_id=%d scan_item_id=%d rule_id=%s result_type=%s expected_bytes=%d stored_bytes=%d',
 					$issue->id,

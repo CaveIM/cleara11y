@@ -393,13 +393,13 @@
 				// Set up message listener for scan results
 				const messageHandler = (event) => {
 					// Verify origin for security
-					if (event.origin !== window.location.origin) {
+					if (event.origin !== window.location.origin || event.source !== iframe.contentWindow) {
 						return;
 					}
 
 					const data = event.data;
 
-					if (data.type === 'CLEARA11Y_SCAN_RESULT' && data.scanId === scanId) {
+					if (data && data.type === 'CLEARA11Y_SCAN_RESULT' && data.scanId === scanId) {
 						window.removeEventListener('message', messageHandler);
 
 						if (data.error) {

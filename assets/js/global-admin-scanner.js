@@ -214,7 +214,12 @@
 				// Listen for scan results via postMessage
 				messageHandler = (event) => {
 					// Verify origin (same-origin)
-					if (event.origin !== window.location.origin) {
+					if (event.origin !== window.location.origin || (
+						event.source !== this.iframe.contentWindow && !(
+							event.source === window && event.data?.type === 'CLEARA11Y_SCAN_ERROR'
+							&& event.data.jobId === this.currentJob?.jobId
+						)
+					)) {
 						return;
 					}
 
@@ -298,8 +303,9 @@
 		postMessageError(error) {
 			window.postMessage({
 				type: 'CLEARA11Y_SCAN_ERROR',
+				jobId: this.currentJob?.jobId,
 				error: error
-			}, '*');
+			}, window.location.origin);
 		}
 
 		runScan(iframeWindow) {
@@ -341,7 +347,7 @@
 								window.parent.postMessage({
 									type: type,
 									...data
-								}, '*');
+								}, window.location.origin);
 							} catch (e) {
 								console.error('[ClearA11y iframe] Failed to post message:', e);
 							}

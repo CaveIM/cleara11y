@@ -10,6 +10,10 @@
 
 namespace ClearA11y\Admin;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 /**
  * Dashboard Page Class
  */
@@ -71,7 +75,7 @@ class Dashboard_Page {
 						printf(
 							/* translators: %s: scan date */
 							esc_html__('Stats from the latest scan. Scan date: %s', 'cleara11y'),
-							esc_html(date('M j, Y g:i A', strtotime($stats['last_scan_date'])))
+							esc_html(gmdate('M j, Y g:i A', strtotime($stats['last_scan_date'])))
 						);
 						?>
 					</div>
@@ -231,6 +235,7 @@ class Dashboard_Page {
 		$stats['scan_id'] = (int) $dashboard_scan->id;
 
 		// Get issue counts by severity for the current dashboard scan only.
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$active_issues = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT severity, COUNT(*) as count
@@ -241,12 +246,14 @@ class Dashboard_Page {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		foreach ($active_issues as $row) {
 			$stats['total_' . $row['severity']] = (int) $row['count'];
 		}
 
 		// Get unique scanned pages for the current dashboard scan only.
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$scanned_pages = $wpdb->get_var(
 			$wpdb->prepare(
 				"SELECT COUNT(DISTINCT post_id)
@@ -255,10 +262,12 @@ class Dashboard_Page {
 				$dashboard_scan->id
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		$stats['total_pages'] = (int) $scanned_pages;
 		$stats['last_scan_date'] = $dashboard_scan->completed_at ?: ($dashboard_scan->started_at ?: $dashboard_scan->created_at);
 
 		// Calculate scoring from completed scan items in the current dashboard scan only.
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$scoring_data = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT
@@ -271,6 +280,7 @@ class Dashboard_Page {
 				$dashboard_scan->id
 			)
 		, ARRAY_A);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if ($scoring_data) {
 			$total_rules = (int) ($scoring_data['total_rules'] ?? 0);

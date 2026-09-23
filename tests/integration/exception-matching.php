@@ -131,6 +131,73 @@ try {
 		throw new RuntimeException('A selector-only occurrence exception was allowed to match.');
 	}
 
+	$element_rule = clone $exact_rule;
+	$element_rule->target_type = 'element';
+	$other_rule_issue = clone $issue;
+	$other_rule_issue->rule_id = 'aria-valid-attr-value';
+	$other_rule_issue->violation_identity_v2 = hash('sha256', 'another-rule-same-element');
+	$match = Exception_Matcher_Service::matches_rule($other_rule_issue, $element_rule);
+	if ('suppressed' !== ($match['action'] ?? null)) {
+		throw new RuntimeException('All-rules element target did not suppress a different rule.');
+	}
+	$match = Exception_Matcher_Service::matches_rule($collision_issue, $element_rule);
+	if ('resembles' !== ($match['action'] ?? null)) {
+		throw new RuntimeException('All-rules element target suppressed an ambiguous identity.');
+	}
+	$element_rule->scope = ['scope_type' => 'content_type', 'post_types' => ['post']];
+	if (null !== Exception_Matcher_Service::matches_rule($other_rule_issue, $element_rule)) {
+		throw new RuntimeException('Element matching ignored an excluded scope.');
+	}
+
+	// Next-scan expiry must use page scope even when the scan finds no issues.
+	$expiry_cases = [
+		[['scope_type' => 'site'], true],
+		[['scope_type' => 'page', 'url' => 'https://example.test/qa/item/'], true],
+		[['scope_type' => 'page', 'url' => 'https://example.test/other/'], false],
+		[['scope_type' => 'content_type', 'post_types' => ['page']], true],
+		[['scope_type' => 'content_type', 'post_types' => ['post']], false],
+		[['scope_type' => 'url_pattern', 'patterns' => ['*/qa/*']], true],
+		[['scope_type' => 'url_pattern', 'patterns' => ['*/other/*']], false],
+	];
+	foreach ($expiry_cases as [$scope, $should_expire]) {
+		$rule = clone $exact_rule;
+		$rule->id = wp_generate_uuid4();
+		$rule->scope = $scope;
+		$rule->duration = ['duration_type' => 'until_next_scan'];
+		$rule->system_generated = false;
+		Exception_Rule_Repository::insert($rule);
+		Exception_Rule_Repository::expire_snoozes_for_url($site_id, 'https://example.test/qa/item/', 'page');
+		$status = Exception_Rule_Repository::get_by_id($rule->id)->status;
+		if (($should_expire ? 'expired' : 'active') !== $status) {
+			throw new RuntimeException('Wrong next-scan expiry for ' . wp_json_encode($scope));
+		}
+	}
+
+	$prepare_notices = [];
+	$notice_listener = static function ($function) use (&$prepare_notices) {
+		if ('wpdb::prepare' === $function) {
+			$prepare_notices[] = $function;
+		}
+	};
+	add_action('doing_it_wrong_run', $notice_listener);
+	try {
+		$impact_rule = clone $exact_rule;
+		$impact_rule->target_type = 'rule';
+		$impact_rule->rule_ids = [];
+		$impact_rule->scope = ['scope_type' => 'site'];
+		$impact = Exception_Matcher_Service::calculate_impact($impact_rule, $site_id);
+		if ($prepare_notices || $wpdb->last_error || $impact['issues'] < 2) {
+			throw new RuntimeException('Unfiltered impact must count fixtures without invalid SQL preparation.');
+		}
+		$impact_rule->rule_ids = ['nonexistent-rule-with-quote\''];
+		$impact = Exception_Matcher_Service::calculate_impact($impact_rule, $site_id);
+		if ($prepare_notices || $wpdb->last_error || 0 !== $impact['issues']) {
+			throw new RuntimeException('Filtered impact must safely bind rule values.');
+		}
+	} finally {
+		remove_action('doing_it_wrong_run', $notice_listener);
+	}
+
 	echo "Fail-safe suppression matching integration test passed.\n";
 } finally {
 	$wpdb->query('ROLLBACK');

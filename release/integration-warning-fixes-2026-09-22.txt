@@ -1,0 +1,26 @@
+Cumulative WCAG scan configuration test passed.
+Scan timezone formatting integration test passed.
+Job lifecycle integration test passed.
+Evidence persistence integration test passed.
+Template attribution integration test passed.
+Version 2 fingerprint contract test passed.
+Fail-safe suppression matching integration test passed.
+| Mutation | Before | Retained | Lost | Spuriously new | Resolved | Retention |
+|---|---:|---:|---:|---:|---:|---:|
+| M1 | 3 | 3 | 0 | 0 | 0 | 100.00% |
+| M2 | 3 | 3 | 0 | 0 | 0 | 100.00% |
+| M3 | 3 | 3 | 0 | 0 | 0 | 100.00% |
+| M4 | 3 | 3 | 0 | 0 | 0 | 100.00% |
+| M5 | 3 | 3 | 0 | 0 | 0 | 100.00% |
+| M6 | 3 | 3 | 0 | 0 | 0 | 100.00% |
+| M7 | 3 | 3 | 0 | 0 | 0 | 100.00% |
+| M8 | 3 | 3 | 0 | 0 | 0 | 100.00% |
+| M9 | 3 | 3 | 0 | 0 | 0 | 100.00% |
+| M10 | 1 | 1 | 0 | 0 | 1 | 100.00% |
+| M11 | 1 | 0 | 0 | 0 | 1 | 100.00% |
+| M12 | 3 | 3 | 0 | 1 | 0 | 100.00% |
+Version 2 identity mutation harness passed.
+Canonical occurrence lifecycle integration test passed.
+Security boundary regression checks passed (46 protected route handlers).
+AJAX security regression checks passed.
+Highlighter security regression checks passed.

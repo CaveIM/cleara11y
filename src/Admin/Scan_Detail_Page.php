@@ -10,6 +10,10 @@
 
 namespace ClearA11y\Admin;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 use ClearA11y\Database\Scan_Item_Repository;
 use ClearA11y\Database\Scan_Repository;
 use ClearA11y\Models\Scan;
@@ -30,7 +34,7 @@ class Scan_Detail_Page {
 			wp_die(esc_html__('You do not have permission to view scan details.', 'cleara11y'));
 		}
 
-		$scan_id = isset($_GET['scan_id']) ? absint(wp_unslash($_GET['scan_id'])) : 0;
+		$scan_id = isset($_GET['scan_id']) ? absint(wp_unslash($_GET['scan_id'])) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
 		if (!$scan_id) {
 			wp_die(esc_html__('Invalid scan ID.', 'cleara11y'));
 		}
@@ -40,7 +44,7 @@ class Scan_Detail_Page {
 			wp_die(esc_html__('Scan not found.', 'cleara11y'));
 		}
 
-		$page = isset($_GET['items_page']) ? max(1, absint(wp_unslash($_GET['items_page']))) : 1;
+		$page = isset($_GET['items_page']) ? max(1, absint(wp_unslash($_GET['items_page']))) : 1; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
 		$per_page = 50;
 		$total_items = Scan_Item_Repository::get_count($scan_id);
 		$total_pages = max(1, (int) ceil($total_items / $per_page));
@@ -58,7 +62,7 @@ class Scan_Detail_Page {
 		?>
 		<div class="wrap cleara11y-scan-detail-wrap">
 			<h1 class="wp-heading-inline">
-				<?php echo esc_html(sprintf(__('Scan #%d', 'cleara11y'), $scan->id)); ?>
+				<?php /* translators: Placeholder is the scan or page identifier. */ echo esc_html(sprintf(__('Scan #%d', 'cleara11y'), $scan->id)); ?>
 			</h1>
 			<a href="<?php echo esc_url(admin_url('admin.php?page=cleara11y-scans')); ?>" class="page-title-action">
 				<?php esc_html_e('Back to Scans', 'cleara11y'); ?>
@@ -103,7 +107,7 @@ class Scan_Detail_Page {
 				<tbody>
 					<tr>
 						<th scope="row" style="width: 180px;"><?php esc_html_e('Name', 'cleara11y'); ?></th>
-						<td><?php echo esc_html($scan->scan_name ?: sprintf(__('Scan #%d', 'cleara11y'), $scan->id)); ?></td>
+						<td><?php /* translators: Placeholder is the scan or page identifier. */ echo esc_html($scan->scan_name ?: sprintf(__('Scan #%d', 'cleara11y'), $scan->id)); ?></td>
 					</tr>
 					<tr>
 						<th scope="row"><?php esc_html_e('Created', 'cleara11y'); ?></th>
@@ -158,7 +162,7 @@ class Scan_Detail_Page {
 		<h2><?php esc_html_e('Pages in This Scan', 'cleara11y'); ?></h2>
 		<div class="tablenav top">
 			<div class="tablenav-pages">
-				<span class="displaying-num"><?php echo esc_html(sprintf(_n('%d page', '%d pages', $total_items, 'cleara11y'), $total_items)); ?></span>
+				<span class="displaying-num"><?php /* translators: Placeholder is the number of items. */ echo esc_html(sprintf(_n('%d page', '%d pages', $total_items, 'cleara11y'), $total_items)); ?></span>
 				<?php self::render_pagination($scan->id, $page, $total_pages); ?>
 			</div>
 		</div>
@@ -252,7 +256,7 @@ class Scan_Detail_Page {
 		<span class="pagination-links">
 			<a class="first-page button<?php echo $page <= 1 ? ' disabled' : ''; ?>" href="<?php echo esc_url($first_url); ?>">&laquo;</a>
 			<a class="prev-page button<?php echo $page <= 1 ? ' disabled' : ''; ?>" href="<?php echo esc_url($prev_url); ?>">&lsaquo;</a>
-			<span class="paging-input"><?php echo esc_html(sprintf(__('Page %1$d of %2$d', 'cleara11y'), $page, $total_pages)); ?></span>
+			<span class="paging-input"><?php /* translators: 1: Current page number, 2: Total pages. */ echo esc_html(sprintf(__('Page %1$d of %2$d', 'cleara11y'), $page, $total_pages)); ?></span>
 			<a class="next-page button<?php echo $page >= $total_pages ? ' disabled' : ''; ?>" href="<?php echo esc_url($next_url); ?>">&rsaquo;</a>
 			<a class="last-page button<?php echo $page >= $total_pages ? ' disabled' : ''; ?>" href="<?php echo esc_url($last_url); ?>">&raquo;</a>
 		</span>

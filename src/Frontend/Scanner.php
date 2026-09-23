@@ -10,6 +10,10 @@
 
 namespace ClearA11y\Frontend;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 /**
  * Frontend Scanner Class
  */
@@ -35,9 +39,9 @@ class Scanner {
 	 * Constructor.
 	 */
 	public function __construct() {
-		if (isset($_GET[self::TOKEN_PARAM])) {
+		if (isset($_GET[self::TOKEN_PARAM])) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Scan mode uses an expiring, page-bound bearer token; URL flags alone grant no result submission authority.
 			if (! defined('DONOTCACHEPAGE')) {
-				define('DONOTCACHEPAGE', true);
+				define('DONOTCACHEPAGE', true); // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedConstantFound -- DONOTCACHEPAGE is the established WordPress page-cache integration constant.
 			}
 			add_action('send_headers', [$this, 'send_scan_headers'], PHP_INT_MAX);
 		}
@@ -54,12 +58,12 @@ class Scanner {
 	 */
 	public function detect_scan_token(): void {
 		// Check if scan token is present
-		if (!isset($_GET[self::TOKEN_PARAM])) {
+		if (!isset($_GET[self::TOKEN_PARAM])) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Scan mode uses an expiring, page-bound bearer token; URL flags alone grant no result submission authority.
 			return;
 		}
 
-		$token = sanitize_text_field(wp_unslash($_GET[self::TOKEN_PARAM]));
-		$is_background = isset($_GET['cleara11y_bg']) && $_GET['cleara11y_bg'] === '1';
+		$token = sanitize_text_field(wp_unslash($_GET[self::TOKEN_PARAM])); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Scan mode uses an expiring, page-bound bearer token; URL flags alone grant no result submission authority.
+		$is_background = isset($_GET['cleara11y_bg']) && $_GET['cleara11y_bg'] === '1'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Scan mode uses an expiring, page-bound bearer token; URL flags alone grant no result submission authority.
 
 		// Validate token
 		$token_data = \ClearA11y\Services\Scan_Token_Manager::validate_token($token);
@@ -68,18 +72,9 @@ class Scanner {
 			wp_die('Invalid or expired scan token.', 'Scan Error', 403);
 		}
 
-		// Debug: Log what we're scanning
-		$current_post_id = get_the_ID();
-		$current_url = home_url($_SERVER['REQUEST_URI']);
-
-		// Log for debugging (only in background mode or if debug is enabled)
-		if ($is_background || (defined('WP_DEBUG') && WP_DEBUG)) {
-			error_log(sprintf(
-				'ClearA11y: Scanning post_id=%d, token_post_id=%d, url=%s',
-				$current_post_id,
-				$token_data['post_id'],
-				$current_url
-			));
+		// A token may only scan the published page it was issued for.
+		if ((int) get_queried_object_id() !== (int) $token_data['post_id']) {
+			wp_die(esc_html__('This scan token belongs to a different page.', 'cleara11y'), 'Scan Error', ['response' => 403]);
 		}
 
 		// Store token data for use in enqueue_scripts
@@ -100,6 +95,7 @@ class Scanner {
 		nocache_headers();
 		header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0', true);
 		header('X-ClearA11y-Attribution: enabled', true);
+		header('Referrer-Policy: no-referrer', true);
 	}
 
 	/**
@@ -109,13 +105,13 @@ class Scanner {
 	 */
 	public function enqueue_scanner_scripts(): void {
 		// Only load if scan token is present
-		if (!isset($_GET[self::TOKEN_PARAM]) || self::$token_data === null) {
+		if (!isset($_GET[self::TOKEN_PARAM]) || self::$token_data === null) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Scan mode uses an expiring, page-bound bearer token; URL flags alone grant no result submission authority.
 			return;
 		}
 
 		// The wp-admin worker injects the scanner after the tokenized page loads.
-		$is_worker = isset($_GET['cleara11y_worker'])
-			&& '1' === sanitize_text_field(wp_unslash($_GET['cleara11y_worker']));
+		$is_worker = isset($_GET['cleara11y_worker']) // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Scan mode uses an expiring, page-bound bearer token; URL flags alone grant no result submission authority.
+			&& '1' === sanitize_text_field(wp_unslash($_GET['cleara11y_worker'])); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Scan mode uses an expiring, page-bound bearer token; URL flags alone grant no result submission authority.
 		if ($is_worker) {
 			return;
 		}
@@ -240,7 +236,7 @@ class Scanner {
 	 * @return bool
 	 */
 	public static function is_scanning(): bool {
-		return isset($_GET[self::TOKEN_PARAM]);
+		return isset($_GET[self::TOKEN_PARAM]); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Scan mode uses an expiring, page-bound bearer token; URL flags alone grant no result submission authority.
 	}
 
 	/**
@@ -249,10 +245,10 @@ class Scanner {
 	 * @return string|null
 	 */
 	public static function get_current_token(): ?string {
-		if (!isset($_GET[self::TOKEN_PARAM])) {
+		if (!isset($_GET[self::TOKEN_PARAM])) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Scan mode uses an expiring, page-bound bearer token; URL flags alone grant no result submission authority.
 			return null;
 		}
 
-		return sanitize_text_field(wp_unslash($_GET[self::TOKEN_PARAM]));
+		return sanitize_text_field(wp_unslash($_GET[self::TOKEN_PARAM])); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Scan mode uses an expiring, page-bound bearer token; URL flags alone grant no result submission authority.
 	}
 }

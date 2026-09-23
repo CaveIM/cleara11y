@@ -195,7 +195,7 @@ document.addEventListener('DOMContentLoaded', function() {
 								<div class="cleara11y-page-info">
 									<div class="cleara11y-page-title">${this.escapeHtml(page.post_title || '(Untitled)')}</div>
 									<div class="cleara11y-page-url">
-										<a href="${page.post_url}" target="_blank" rel="noopener">${this.escapeHtml(page.post_url)}</a>
+										<a href="${this.escapeHtml(page.post_url)}" target="_blank" rel="noopener">${this.escapeHtml(page.post_url)}</a>
 									</div>
 								</div>
 								<div class="cleara11y-page-issues">
@@ -248,7 +248,7 @@ document.addEventListener('DOMContentLoaded', function() {
 		escapeHtml(text) {
 			const div = document.createElement('div');
 			div.textContent = text;
-			return div.innerHTML;
+			return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 		},
 	};
 

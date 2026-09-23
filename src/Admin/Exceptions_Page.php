@@ -10,6 +10,10 @@
 
 namespace ClearA11y\Admin;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 /**
  * Exceptions Page Class
  */
@@ -50,16 +54,16 @@ class Exceptions_Page {
 		<div class="wrap cleara11y-exceptions-wrap">
 			<h1 class="wp-heading-inline"><?php esc_html_e('Exceptions', 'cleara11y'); ?></h1>
 			<a href="<?php echo esc_url(Issues_List_Page::get_url()); ?>" class="page-title-action">
-				<?php esc_html_e('Review Issues', 'cleara11y'); ?>
+				<?php esc_html_e('Open Issues Explorer', 'cleara11y'); ?>
 			</a>
 			<hr class="wp-header-end">
 			<p class="description">
-				<?php esc_html_e('Create exceptions from a detected finding so ClearA11y can preserve its rule, page, evidence, and element identity.', 'cleara11y'); ?>
+				<?php esc_html_e('Manage findings excluded from active issues. To create an exception, open a finding in Issues Explorer.', 'cleara11y'); ?>
 			</p>
 
 			<!-- Tabs Navigation -->
-			<nav class="nav-tab-wrapper wp-clearfix" style="margin: 20px 0;">
-				<a href="#" class="nav-tab nav-tab-active" data-tab="active">
+			<nav class="nav-tab-wrapper wp-clearfix" aria-label="Exception status">
+				<a href="#" class="nav-tab nav-tab-active" data-tab="active" aria-current="page">
 					<?php esc_html_e('Active', 'cleara11y'); ?>
 					<span class="count" id="cleara11y-active-count">(0)</span>
 				</a>
@@ -84,11 +88,11 @@ class Exceptions_Page {
 			<div class="cleara11y-tab-content">
 				<!-- Rules Table -->
 				<div id="tab-rules" class="tab-panel active">
-					<div class="cleara11y-exceptions-filters" style="margin: 20px 0; padding: 15px; background: #fff; border: 1px solid #c3c4c7; box-shadow: 0 1px 1px rgba(0,0,0,.04);">
+					<div class="cleara11y-exceptions-filters">
 						<div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
 							<label>
 								<input type="checkbox" id="cleara11y-hide-system-exceptions">
-								<?php esc_html_e('Hide temporary exceptions', 'cleara11y'); ?>
+								<?php esc_html_e('Hide quick snoozes', 'cleara11y'); ?>
 							</label>
 							<button type="button" class="button" id="cleara11y-refresh-exceptions">
 								<span class="dashicons dashicons-update" style="margin-top: 3px;"></span>
@@ -97,41 +101,26 @@ class Exceptions_Page {
 						</div>
 					</div>
 
-					<table class="wp-list-table widefat fixed striped" style="margin-top: 20px;">
-						<thead>
-							<tr>
-								<th scope="col" style="width: 30%;">
-									<?php esc_html_e('Exception Rule', 'cleara11y'); ?>
-								</th>
-								<th scope="col" style="width: 15%;">
-									<?php esc_html_e('Target', 'cleara11y'); ?>
-								</th>
-								<th scope="col" style="width: 15%;">
-									<?php esc_html_e('Scope', 'cleara11y'); ?>
-								</th>
-								<th scope="col" style="width: 10%;">
-									<?php esc_html_e('Duration', 'cleara11y'); ?>
-								</th>
-								<th scope="col" style="width: 10%;">
-									<?php esc_html_e('Reason', 'cleara11y'); ?>
-								</th>
-								<th scope="col" style="width: 10%;">
-									<?php esc_html_e('Created By', 'cleara11y'); ?>
-								</th>
-								<th scope="col" style="width: 10%;">
-									<?php esc_html_e('Actions', 'cleara11y'); ?>
-								</th>
-							</tr>
-						</thead>
+					<p id="cleara11y-exceptions-summary" role="status"></p>
+					<div class="cleara11y-exceptions-table-scroll" tabindex="0" role="region" aria-label="<?php esc_attr_e('Exceptions', 'cleara11y'); ?>">
+					<table class="wp-list-table widefat fixed cleara11y-exceptions-table">
+						<thead><tr>
+							<th scope="col"><?php esc_html_e('Exception', 'cleara11y'); ?></th>
+							<th scope="col"><?php esc_html_e('Applies to', 'cleara11y'); ?></th>
+							<th scope="col"><?php esc_html_e('Where', 'cleara11y'); ?></th>
+							<th scope="col"><?php esc_html_e('Duration', 'cleara11y'); ?></th>
+							<th scope="col"><?php esc_html_e('Created by', 'cleara11y'); ?></th>
+						</tr></thead>
 						<tbody id="cleara11y-exceptions-table-body">
 							<tr>
-								<td colspan="7" style="text-align: center; padding: 40px;">
+								<td colspan="5" style="text-align: center; padding: 40px;">
 									<span class="spinner is-active" style="float: none; margin: 0;"></span>
 									<?php esc_html_e('Loading exceptions...', 'cleara11y'); ?>
 								</td>
 							</tr>
 						</tbody>
 					</table>
+					</div>
 
 					<!-- Pagination -->
 					<div class="tablenav bottom" id="cleara11y-exceptions-pagination" style="display: none;">
@@ -154,7 +143,7 @@ class Exceptions_Page {
 
 				<!-- Audit Log Panel -->
 				<div id="tab-audit" class="tab-panel" style="display: none;">
-					<div class="cleara11y-audit-log-filters" style="margin: 20px 0; padding: 15px; background: #fff; border: 1px solid #c3c4c7; box-shadow: 0 1px 1px rgba(0,0,0,.04);">
+					<div class="cleara11y-audit-log-filters">
 						<div style="display: flex; gap: 15px; align-items: center;">
 							<button type="button" class="button" id="cleara11y-refresh-audit">
 								<span class="dashicons dashicons-update" style="margin-top: 3px;"></span>
@@ -198,7 +187,7 @@ class Exceptions_Page {
 			<!-- Empty States -->
 			<template id="cleara11y-empty-state-template">
 				<tr>
-					<td colspan="7" style="text-align: center; padding: 40px;">
+					<td colspan="5" style="text-align: center; padding: 40px;">
 						<div style="color: #646970;">
 							<p style="font-size: 16px; margin: 0 0 10px;">
 								<span class="dashicons dashicons-dismiss" style="font-size: 48px; width: 48px; height: 48px; display: block; margin: 0 auto 10px;"></span>
@@ -213,9 +202,9 @@ class Exceptions_Page {
 		<!-- Exception Rule Detail Modal -->
 		<div id="cleara11y-exception-detail-modal" style="display: none;">
 			<div class="cleara11y-modal-backdrop"></div>
-			<div class="cleara11y-modal-content" role="dialog" aria-modal="true" aria-labelledby="cleara11y-exception-detail-title" style="max-width: 600px;">
+			<div class="cleara11y-modal-content" role="dialog" aria-modal="true" aria-labelledby="cleara11y-exception-detail-title" tabindex="-1">
 				<div class="cleara11y-modal-header">
-					<h2 id="cleara11y-exception-detail-title"><?php esc_html_e('Exception Rule Details', 'cleara11y'); ?></h2>
+					<h2 id="cleara11y-exception-detail-title"><?php esc_html_e('Exception details', 'cleara11y'); ?></h2>
 					<button type="button" class="cleara11y-modal-close" aria-label="<?php esc_attr_e('Close exception details', 'cleara11y'); ?>">
 						<span class="dashicons dashicons-no-alt"></span>
 					</button>
@@ -228,7 +217,7 @@ class Exceptions_Page {
 						<?php esc_html_e('Close', 'cleara11y'); ?>
 					</button>
 					<button type="button" class="button button-primary cleara11y-edit-exception" id="cleara11y-edit-exception">
-						<?php esc_html_e('Edit Rule', 'cleara11y'); ?>
+						<?php esc_html_e('Edit exception', 'cleara11y'); ?>
 					</button>
 				</div>
 			</div>
@@ -247,6 +236,24 @@ class Exceptions_Page {
 	public static function get_script_strings(): array {
 		return [
 			'confirmDelete' => __('Revoke this exception? Existing findings will return to active remediation, while the review record remains in the audit log.', 'cleara11y'),
+			'management0' => __('Quick snooze', 'cleara11y'),
+			'management1' => __('System', 'cleara11y'),
+			'management2' => __('Applies to', 'cleara11y'),
+			'management3' => __('Where', 'cleara11y'),
+			'management4' => __('Status', 'cleara11y'),
+			'management5' => __('Review decision', 'cleara11y'),
+			'management6' => __('Reason', 'cleara11y'),
+			'management7' => __('Notes', 'cleara11y'),
+			'management8' => __('No notes recorded.', 'cleara11y'),
+			'management9' => __('Created by', 'cleara11y'),
+			'management10' => __('Finding context', 'cleara11y'),
+			'management11' => __('Rules', 'cleara11y'),
+			'management12' => __('All rules on this element', 'cleara11y'),
+			'management13' => __('Recorded matches', 'cleara11y'),
+			'management14' => __('History', 'cleara11y'),
+			'management15' => __('Exception details', 'cleara11y'),
+			'management16' => __('Quick snoozes are hidden. Clear the filter to include them.', 'cleara11y'),
+			'management17' => __('Create an exception from a finding in Issues Explorer.', 'cleara11y'),
 			'confirmDisable' => __('Are you sure you want to disable this exception?', 'cleara11y'),
 			'undoSuccess' => __('Exception removed.', 'cleara11y'),
 			'deleteSuccess' => __('Exception revoked.', 'cleara11y'),
@@ -260,12 +267,12 @@ class Exceptions_Page {
 			'createFailed' => __('Failed to create exception.', 'cleara11y'),
 			'step1Title' => __('What should become an exception?', 'cleara11y'),
 			'step1Desc' => __('The finding supplies the rule and element context. Choose how broadly this review decision should apply.', 'cleara11y'),
-			'ruleOnly' => __('This rule in the selected scope', 'cleara11y'),
-			'ruleOnlyDesc' => __('Apply the detected accessibility rule throughout the scope you choose next.', 'cleara11y'),
-			'elementOnly' => __('This element for any rule', 'cleara11y'),
-			'elementOnlyDesc' => __('Apply to this detected element when it is reported by any accessibility rule.', 'cleara11y'),
+			'ruleOnly' => __('This rule', 'cleara11y'),
+			'ruleOnlyDesc' => __('Apply to this accessibility rule. Choose where it applies in the next step.', 'cleara11y'),
+			'elementOnly' => __('All rules on this element', 'cleara11y'),
+			'elementOnlyDesc' => __('Apply to any accessibility issue found on this element.', 'cleara11y'),
 			'ruleOnElement' => __('This rule on this element', 'cleara11y'),
-			'ruleOnElementDesc' => __('Apply only to this detected rule and element combination (most precise).', 'cleara11y'),
+			'ruleOnElementDesc' => __('Apply only to this rule and element combination.', 'cleara11y'),
 			'step2Title' => __('Where should this apply?', 'cleara11y'),
 			'step2Desc' => __('Choose the scope for this exception.', 'cleara11y'),
 			'singlePage' => __('Single Page', 'cleara11y'),
@@ -314,14 +321,18 @@ class Exceptions_Page {
 			'cleara11y-exceptions-page',
 			CLEARA11Y_PLUGIN_URL . 'assets/css/exceptions-page.css',
 			[],
-			CLEARA11Y_VERSION
+			'local' === wp_get_environment_type()
+				? (string) filemtime(CLEARA11Y_PLUGIN_DIR . 'assets/css/exceptions-page.css')
+				: CLEARA11Y_VERSION
 		);
 
 		wp_enqueue_script(
 			'cleara11y-exceptions-page',
 			CLEARA11Y_PLUGIN_URL . 'assets/js/exceptions-page.js',
 			['jquery', 'wp-api'],
-			CLEARA11Y_VERSION,
+			'local' === wp_get_environment_type()
+				? (string) filemtime(CLEARA11Y_PLUGIN_DIR . 'assets/js/exceptions-page.js')
+				: CLEARA11Y_VERSION,
 			true
 		);
 

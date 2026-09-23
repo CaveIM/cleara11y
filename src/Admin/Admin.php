@@ -10,6 +10,10 @@
 
 namespace ClearA11y\Admin;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 /**
  * Admin Class
  */
@@ -142,6 +146,10 @@ class Admin {
 
 		$post_id = isset($_POST['post_id']) ? intval($_POST['post_id']) : 0;
 
+		if (! current_user_can('edit_post', $post_id)) {
+			wp_send_json_error(['message' => 'Permission denied'], 403);
+		}
+
 		if (!$post_id) {
 			wp_send_json_error(['message' => 'Invalid post ID']);
 		}
@@ -172,7 +180,7 @@ class Admin {
 		}
 
 		$options = $this->get_issue_view_options();
-		$options[$option] = isset($_POST['enabled']) && '1' === wp_unslash($_POST['enabled']);
+		$options[$option] = isset($_POST['enabled']) && '1' === sanitize_text_field(wp_unslash($_POST['enabled']));
 		update_user_meta(get_current_user_id(), 'cleara11y_issue_view_options', $options);
 
 		wp_send_json_success(['options' => $options]);
@@ -184,7 +192,7 @@ class Admin {
 	public function ajax_get_scan_state(): void {
 		check_ajax_referer('cleara11y-nonce', 'nonce');
 
-		if (!current_user_can('edit_posts')) {
+		if (!current_user_can('manage_options')) {
 			wp_send_json_error(['message' => 'Permission denied']);
 		}
 
@@ -193,6 +201,7 @@ class Admin {
 		$jobs_table = \ClearA11y\Database\Schema::get_table_name('scan_jobs');
 
 		// Get the most recent active or pending scan
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$scan = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT * FROM `{$scans_table}`
@@ -201,6 +210,7 @@ class Admin {
 				LIMIT 1"
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if (!$scan) {
 			wp_send_json_success([
@@ -210,6 +220,7 @@ class Admin {
 		}
 
 		// Get job statistics
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$stats = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT
@@ -223,6 +234,7 @@ class Admin {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		wp_send_json_success([
 			'active' => true,
@@ -244,59 +256,33 @@ class Admin {
 	public function ajax_save_scan_result(): void {
 		check_ajax_referer('cleara11y-nonce', 'nonce');
 
-		if (!current_user_can('edit_posts')) {
+		if (!current_user_can('manage_options')) {
 			wp_send_json_error(['message' => 'Permission denied']);
 		}
 
-		$job_id = isset($_POST['job_id']) ? intval($_POST['job_id']) : 0;
-		$result_json = isset($_POST['result_json']) ? wp_unslash($_POST['result_json']) : '';
+		$job_id = isset($_POST['job_id']) ? absint(wp_unslash($_POST['job_id'])) : 0;
+		$lease_token = isset($_POST['lease_token']) ? sanitize_text_field(wp_unslash($_POST['lease_token'])) : '';
+		// JSON evidence must retain original markup; the shared result handler validates its shape and size.
+		$result_json = isset($_POST['result_json']) && is_string($_POST['result_json']) ? wp_unslash($_POST['result_json']) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Validated by complete_job; sanitizing HTML here would corrupt evidence.
 		$error = isset($_POST['error']) ? sanitize_text_field(wp_unslash($_POST['error'])) : '';
-
-		if (!$job_id) {
-			wp_send_json_error(['message' => 'Invalid job ID']);
+		if (! $job_id || '' === $lease_token) {
+			wp_send_json_error(['message' => 'A job ID and lease token are required.'], 403);
 		}
 
-		$job = \ClearA11y\Database\Job_Repository::get_by_id($job_id);
-
-		if (!$job) {
-			wp_send_json_error(['message' => 'Job not found']);
+		$request = new \WP_REST_Request('POST', '/cleara11y/v1/jobs/complete');
+		$request->set_header('content-type', 'application/json');
+		$request->set_body(wp_json_encode([
+			'jobId' => $job_id,
+			'leaseToken' => $lease_token,
+			'status' => '' === $error ? 'done' : 'failed',
+			'resultJson' => $result_json,
+			'error' => $error,
+		]));
+		$result = (new \ClearA11y\API\REST_Controller())->complete_job($request);
+		if (is_wp_error($result)) {
+			wp_send_json_error(['message' => $result->get_error_message()], $result->get_error_data()['status'] ?? 400);
 		}
-
-		// Complete the job
-		if (empty($error)) {
-			$success = \ClearA11y\Database\Job_Repository::complete(
-				$job_id,
-				$job->lease_token ?: '',
-				'done',
-				$result_json
-			);
-
-			// Process results into scan items and issues
-			if ($success && !empty($result_json)) {
-				$results = json_decode($result_json, true);
-				if ($results) {
-					\ClearA11y\Services\Scan_Results_Processor::process_results(
-						$job->scan_id,
-						$job->post_id,
-						$results
-					);
-				}
-			}
-		} else {
-			$success = \ClearA11y\Database\Job_Repository::complete(
-				$job_id,
-				$job->lease_token ?: '',
-				'failed',
-				null,
-				$error
-			);
-		}
-
-		if ($success) {
-			wp_send_json_success(['ok' => true]);
-		} else {
-			wp_send_json_error(['message' => 'Failed to save result']);
-		}
+		wp_send_json_success($result->get_data());
 	}
 
 	/**
@@ -305,11 +291,11 @@ class Admin {
 	public function ajax_advance_scan(): void {
 		check_ajax_referer('cleara11y-nonce', 'nonce');
 
-		if (!current_user_can('edit_posts')) {
+		if (!current_user_can('manage_options')) {
 			wp_send_json_error(['message' => 'Permission denied']);
 		}
 
-		$limit = isset($_POST['limit']) ? max(1, intval($_POST['limit'])) : 1;
+		$limit = isset($_POST['limit']) ? min(10, max(1, intval($_POST['limit']))) : 1;
 		$worker_id = isset($_POST['worker_id']) ? sanitize_text_field(wp_unslash($_POST['worker_id'])) : '';
 
 		$jobs = \ClearA11y\Database\Job_Repository::lease_jobs(
@@ -330,7 +316,7 @@ class Admin {
 	public function ajax_stop_scan(): void {
 		check_ajax_referer('cleara11y-nonce', 'nonce');
 
-		if (!current_user_can('edit_posts')) {
+		if (!current_user_can('manage_options')) {
 			wp_send_json_error(['message' => 'Permission denied']);
 		}
 
@@ -344,6 +330,7 @@ class Admin {
 		global $wpdb;
 		$jobs_table = \ClearA11y\Database\Schema::get_table_name('scan_jobs');
 
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 		$updated = $wpdb->update(
 			$jobs_table,
 			[
@@ -358,6 +345,7 @@ class Admin {
 			['%s', '%s', '%s'],
 			['%d', '%s']
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 		wp_send_json_success([
 			'ok' => true,
@@ -370,6 +358,10 @@ class Admin {
 	 * This allows scanning to continue across page navigation.
 	 */
 	private function enqueue_global_scanner(): void {
+		if (! current_user_can('manage_options')) {
+			return;
+		}
+
 		// Get the correct REST API base URL
 		$rest_url = get_rest_url();
 
@@ -380,7 +372,7 @@ class Admin {
 			'nonce' => wp_create_nonce('wp_rest'),
 			'ajaxNonce' => wp_create_nonce('cleara11y-nonce'),
 			'pluginUrl' => CLEARA11Y_PLUGIN_URL,
-			'workerId' => sanitize_text_field($_COOKIE['cleara11y_worker_id'] ?? ''),
+			'workerId' => sanitize_text_field(wp_unslash($_COOKIE['cleara11y_worker_id'] ?? '')),
 			'axeTags' => \ClearA11y\Services\Scan_Results_Processor::get_wcag_tags(
 				(string) get_option('cleara11y_wcag_level', 'wcag21aa')
 			),
@@ -437,6 +429,7 @@ class Admin {
 		$scans_table = \ClearA11y\Database\Schema::get_table_name('scans');
 		$jobs_table = \ClearA11y\Database\Schema::get_table_name('scan_jobs');
 
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$scan = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT * FROM `{$scans_table}`
@@ -445,6 +438,7 @@ class Admin {
 				LIMIT 1"
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if (!$scan) {
 			// No active scan, show a simple "ClearA11y" menu item
@@ -485,6 +479,7 @@ class Admin {
 			'title' => $title,
 			'href'  => admin_url('admin.php?page=cleara11y'),
 			'meta'  => [
+				/* translators: Placeholder is scan completion as a percentage. */
 				'title' => sprintf(__('Accessibility Scan: %d%% complete', 'cleara11y'), $progress),
 				'class' => 'cleara11y-scanning',
 			],
@@ -729,6 +724,7 @@ class Admin {
 			echo '<div class="notice notice-success is-dismissible"><p>';
 			echo esc_html(
 				sprintf(
+					/* translators: 1: Jobs reset, 2: Scan items reset, 3: Resumable scans. */
 					__('Reset %1$d jobs and %2$d scan items across %3$d resumable scans.', 'cleara11y'),
 					$reset['jobs'],
 					$reset['items'],
@@ -825,10 +821,10 @@ class Admin {
 			$items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
 			$scans_table = \ClearA11y\Database\Schema::get_table_name('scans');
 
-			$pending = $wpdb->get_var("SELECT COUNT(*) FROM `{$items_table}` WHERE status = 'pending'");
-			$in_progress = $wpdb->get_var("SELECT COUNT(*) FROM `{$items_table}` WHERE status = 'in_progress'");
-			$completed = $wpdb->get_var("SELECT COUNT(*) FROM `{$items_table}` WHERE status = 'completed'");
-			$failed = $wpdb->get_var("SELECT COUNT(*) FROM `{$items_table}` WHERE status = 'failed'");
+			$pending = $wpdb->get_var("SELECT COUNT(*) FROM `{$items_table}` WHERE status = 'pending'"); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
+			$in_progress = $wpdb->get_var("SELECT COUNT(*) FROM `{$items_table}` WHERE status = 'in_progress'"); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
+			$completed = $wpdb->get_var("SELECT COUNT(*) FROM `{$items_table}` WHERE status = 'completed'"); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
+			$failed = $wpdb->get_var("SELECT COUNT(*) FROM `{$items_table}` WHERE status = 'failed'"); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 
 			echo '<ul>';
 			echo '<li>Pending: <strong>' . intval($pending) . '</strong></li>';
@@ -838,9 +834,11 @@ class Admin {
 			echo '</ul>';
 
 			// Show recent scan items with details
+			// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 			$recent_items = $wpdb->get_results(
 				"SELECT id, post_title, status, created_at, error_message FROM `{$items_table}` ORDER BY created_at DESC LIMIT 5"
 			);
+			// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			if ($recent_items) {
 				echo '<h4>Recent Scan Items:</h4>';
 				echo '<table class="wp-list-table widefat fixed striped" style="margin-top: 10px;">';
@@ -927,7 +925,9 @@ class Admin {
 				'cleara11y-exceptions-page',
 				CLEARA11Y_PLUGIN_URL . 'assets/css/exceptions-page.css',
 				[],
-				CLEARA11Y_VERSION
+				'local' === wp_get_environment_type()
+					? (string) filemtime(CLEARA11Y_PLUGIN_DIR . 'assets/css/exceptions-page.css')
+					: CLEARA11Y_VERSION
 			);
 
 			// Enqueue jQuery (required for ignores page wizard)
@@ -938,7 +938,7 @@ class Admin {
 				'cleara11y-exceptions-page',
 				CLEARA11Y_PLUGIN_URL . 'assets/js/exceptions-page.js',
 				['jquery'],
-				rand(),
+				CLEARA11Y_VERSION,
 				true
 			);
 
@@ -990,7 +990,7 @@ class Admin {
 				'cleara11y-issue-types',
 				CLEARA11Y_PLUGIN_URL . 'assets/js/issue-types.js',
 				[],
-				rand(),
+				CLEARA11Y_VERSION,
 				true
 			);
 
@@ -1013,7 +1013,7 @@ class Admin {
 				'cleara11y-issue-reference',
 				CLEARA11Y_PLUGIN_URL . 'assets/js/issue-reference.js',
 				[],
-				rand(),
+				CLEARA11Y_VERSION,
 				true
 			);
 
@@ -1036,7 +1036,7 @@ class Admin {
 				'cleara11y-exceptions-page',
 				CLEARA11Y_PLUGIN_URL . 'assets/js/exceptions-page.js',
 				['jquery', 'wp-api'],
-				rand(),
+				CLEARA11Y_VERSION,
 				true
 			);
 
@@ -1052,7 +1052,7 @@ class Admin {
 				'cleara11y-scanner-orchestrator',
 				CLEARA11Y_PLUGIN_URL . 'assets/js/scanner-orchestrator.js',
 				[],
-				rand(),
+				CLEARA11Y_VERSION,
 				true
 			);
 
@@ -1061,7 +1061,7 @@ class Admin {
 				'cleara11y-dashboard',
 				CLEARA11Y_PLUGIN_URL . 'assets/js/dashboard.js',
 				['cleara11y-scanner-orchestrator'],
-				rand(),
+				CLEARA11Y_VERSION,
 				true
 			);
 

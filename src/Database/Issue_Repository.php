@@ -10,6 +10,10 @@
 
 namespace ClearA11y\Database;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 use ClearA11y\Models\Issue;
 use ClearA11y\Database\Scan_Item_Repository;
 
@@ -101,11 +105,13 @@ class Issue_Repository {
 			'%s', '%s', '%s', '%s', '%s', '%d', // Version 2 identity
 		];
 
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 		$result = $wpdb->insert(
 			self::get_table(),
 			$data,
 			$format
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery
 
 		return $result ? $wpdb->insert_id : false;
 	}
@@ -149,6 +155,7 @@ class Issue_Repository {
 			'dismissal_comment' => $issue->dismissal_comment,
 		];
 
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 		$result = $wpdb->update(
 			self::get_table(),
 			$data,
@@ -156,6 +163,7 @@ class Issue_Repository {
 			['%d', '%d', '%s', '%s'],
 			['%d']
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 		return $result !== false;
 	}
@@ -170,12 +178,14 @@ class Issue_Repository {
 		global $wpdb;
 
 		$table = self::get_table();
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT * FROM `{$table}` WHERE id = %d",
 				$issue_id
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		return $row ? Issue::from_row($row) : null;
 	}
@@ -197,6 +207,7 @@ class Issue_Repository {
 
 		global $wpdb;
 		$table = self::get_table();
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$count = (int) $wpdb->get_var(
 			$wpdb->prepare(
 				"SELECT COUNT(*) FROM `{$table}`
@@ -208,6 +219,7 @@ class Issue_Repository {
 				$issue->identity_signature_version
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		return 1 === $count ? 'available' : 'ambiguous';
 	}
@@ -243,12 +255,14 @@ class Issue_Repository {
 
 		$table = self::get_table();
 		// @phpstan-ignore-next-line
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- Fixed filter/IN fragments contain placeholders populated by the matching parameter list.
 		$query = $wpdb->prepare(
 			"SELECT * FROM `{$table}` WHERE {$where_clause} ORDER BY {$orderby}",
 			...$where_params
 		);
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
 
-		$rows = $wpdb->get_results($query);
+		$rows = $wpdb->get_results($query); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
 
 		return array_map(fn($row) => Issue::from_row($row), $rows ?: []);
 	}
@@ -263,12 +277,14 @@ class Issue_Repository {
 		global $wpdb;
 
 		$table = self::get_table();
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT * FROM `{$table}` WHERE scan_item_id = %d ORDER BY severity DESC, id ASC",
 				$scan_item_id
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		return array_map(fn($row) => Issue::from_row($row), $rows ?: []);
 	}
@@ -289,6 +305,7 @@ class Issue_Repository {
 		// Order by scanned_at (when scan completed) not created_at (when scan started)
 		$scan_items_table = Schema::get_table_name('scan_items');
 
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$latest_scan_item = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT si.id, si.scan_id FROM `{$scan_items_table}` si
@@ -299,12 +316,14 @@ class Issue_Repository {
 				$post_id
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if (!$latest_scan_item) {
 			return [];
 		}
 
 		// Get issues only from the latest scan_item
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$rows = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT * FROM `{$table}` WHERE scan_item_id = %d AND post_id = %d ORDER BY severity DESC, id ASC",
@@ -312,6 +331,7 @@ class Issue_Repository {
 				$post_id
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		return array_map(fn($row) => Issue::from_row($row), $rows ?: []);
 	}
@@ -325,11 +345,13 @@ class Issue_Repository {
 	public static function delete(int $issue_id): bool {
 		global $wpdb;
 
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 		$result = $wpdb->delete(
 			self::get_table(),
 			['id' => $issue_id],
 			['%d']
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 		return $result !== false;
 	}
@@ -343,11 +365,13 @@ class Issue_Repository {
 	public static function delete_by_scan_id(int $scan_id): int {
 		global $wpdb;
 
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 		return $wpdb->delete(
 			self::get_table(),
 			['scan_id' => $scan_id],
 			['%d']
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 	}
 
 	/**
@@ -359,11 +383,13 @@ class Issue_Repository {
 	public static function delete_by_scan_item_id(int $scan_item_id): int {
 		global $wpdb;
 
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 		return $wpdb->delete(
 			self::get_table(),
 			['scan_item_id' => $scan_item_id],
 			['%d']
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 	}
 
 	/**
@@ -376,6 +402,7 @@ class Issue_Repository {
 		global $wpdb;
 
 		$table = self::get_table();
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$counts = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT severity, COUNT(*) as count FROM `{$table}`
@@ -385,6 +412,7 @@ class Issue_Repository {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		$result = [
 			'critical' => 0,
@@ -409,6 +437,7 @@ class Issue_Repository {
 		global $wpdb;
 
 		$table = self::get_table();
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$counts = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT rule_id, COUNT(*) as count FROM `{$table}`
@@ -418,6 +447,7 @@ class Issue_Repository {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		$result = [];
 		foreach ($counts as $row) {
@@ -447,6 +477,7 @@ class Issue_Repository {
 		// Get the latest scan_item for this post that has completed
 		// Order by scanned_at (when scan completed) not created_at (when scan started)
 		// This ensures we get the most recent COMPLETED scan results
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$latest_scan_item = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT si.id FROM `{$scan_items_table}` si
@@ -457,6 +488,7 @@ class Issue_Repository {
 				$post_id
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if (!$latest_scan_item) {
 			return [
@@ -471,6 +503,7 @@ class Issue_Repository {
 		// Get counts grouped by severity for this specific scan_item
 		// Using scan_item_id ensures we only count issues from ONE scan,
 		// preventing doubling when multiple scans exist for the same post
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$counts = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT severity, COUNT(*) as count FROM `{$table}`
@@ -480,6 +513,7 @@ class Issue_Repository {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		$result = [
 			'total' => 0,
@@ -730,6 +764,7 @@ class Issue_Repository {
 			: 'NULL AS occurrence_status, NULL AS first_seen_at, NULL AS last_seen_at, NULL AS resolved_at,
 				0 AS reappearance_count, NULL AS occurrence_state_id';
 
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT i.*, si.post_title, si.post_url, si.post_type, si.scanned_at,
@@ -766,6 +801,7 @@ class Issue_Repository {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		return $row ? self::normalize_explorer_row($row) : null;
 	}
@@ -788,6 +824,7 @@ class Issue_Repository {
 		$scans_table = Schema::get_table_name('scans');
 
 		if ('rule' === $type) {
+			// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 			return $wpdb->get_results(
 				$wpdb->prepare(
 					"SELECT rule_id AS id, MAX(COALESCE(help_text, rule_id)) AS label
@@ -800,10 +837,12 @@ class Issue_Repository {
 				),
 				ARRAY_A
 			);
+			// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		}
 
 		if ('page' === $type) {
-			return $wpdb->get_results(
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
+			return $wpdb->get_results( // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter -- Reviewed: fixed SQL fragments and schema table names; variable values are prepared.
 				$wpdb->prepare(
 					"SELECT current_item.post_id AS id,
 						COALESCE(NULLIF(current_item.post_title, ''), current_item.post_url) AS label,
@@ -824,8 +863,10 @@ class Issue_Repository {
 				),
 				ARRAY_A
 			);
+			// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		}
 
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		return $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT id, COALESCE(NULLIF(scan_name, ''), CONCAT('Scan #', id)) AS label
@@ -838,6 +879,7 @@ class Issue_Repository {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	}
 
 	/**
@@ -889,6 +931,7 @@ class Issue_Repository {
 			],
 			'scan' => [
 				'id' => (int) $row['scan_id'],
+				/* translators: Placeholder is the scan or page identifier. */
 				'name' => (string) ($row['scan_name'] ?: sprintf(__('Scan #%d', 'cleara11y'), $row['scan_id'])),
 				'status' => (string) ($row['scan_status'] ?? ''),
 				'scanned_at' => $row['scanned_at'] ?? null,
@@ -938,7 +981,7 @@ class Issue_Repository {
 	 */
 	private static function get_var_prepared(string $sql, array $params) {
 		global $wpdb;
-		return empty($params) ? $wpdb->get_var($sql) : $wpdb->get_var($wpdb->prepare($sql, ...$params));
+		return empty($params) ? $wpdb->get_var($sql) : $wpdb->get_var($wpdb->prepare($sql, ...$params)); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
 	}
 
 	/**
@@ -952,8 +995,8 @@ class Issue_Repository {
 	private static function get_results_prepared(string $sql, array $params, $output = OBJECT): array {
 		global $wpdb;
 		$results = empty($params)
-			? $wpdb->get_results($sql, $output)
-			: $wpdb->get_results($wpdb->prepare($sql, ...$params), $output);
+			? $wpdb->get_results($sql, $output) // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
+			: $wpdb->get_results($wpdb->prepare($sql, ...$params), $output); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.PreparedSQL.NotPrepared -- Reviewed: fixed SQL fragments and schema table names; variable values are prepared.
 		return $results ?: [];
 	}
 }

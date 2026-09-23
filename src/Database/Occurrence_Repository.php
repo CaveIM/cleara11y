@@ -8,6 +8,10 @@
 
 namespace ClearA11y\Database;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 use ClearA11y\Models\Issue;
 use ClearA11y\Services\Fingerprint_Service;
 
@@ -34,7 +38,7 @@ class Occurrence_Repository {
 		global $wpdb;
 
 		$table = self::get_table();
-		return $table === $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+		return $table === $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
 	}
 
 	/**
@@ -60,6 +64,7 @@ class Occurrence_Repository {
 		$table = self::get_table();
 		$site_id = get_current_blog_id();
 		$observed_at = $issue->created_at ?: current_time('mysql');
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$existing = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT id, status, reappearance_count
@@ -72,6 +77,7 @@ class Occurrence_Repository {
 				$issue->identity_signature_version
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if ($existing) {
 			$reappearance_count = (int) $existing->reappearance_count;
@@ -79,6 +85,7 @@ class Occurrence_Repository {
 				$reappearance_count++;
 			}
 
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 			$result = $wpdb->update(
 				$table,
 				[
@@ -97,7 +104,9 @@ class Occurrence_Repository {
 				['%s', '%s', '%d', '%s', '%s', '%s', '%s', '%d', '%d', '%d'],
 				['%d']
 			);
+			// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		} else {
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 			$result = $wpdb->insert(
 				$table,
 				[
@@ -118,15 +127,16 @@ class Occurrence_Repository {
 				],
 				['%d', '%s', '%s', '%d', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d']
 			);
+			// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery
 		}
 
 		if (false === $result) {
-			error_log(
+			\cleara11y_debug_log(
 				sprintf(
 					'ClearA11y ERROR: Failed recording occurrence lifecycle. issue_id=%d identity=%s database_error=%s',
 					$issue->id,
 					$issue->violation_identity_v2,
-					$wpdb->last_error
+					'Database operation failed; raw details omitted to protect scan evidence.'
 				)
 			);
 			return false;
@@ -144,18 +154,21 @@ class Occurrence_Repository {
 	 */
 	public static function resolve_absent_for_scan_item(int $scan_item_id, array $observed_identities): int {
 		global $wpdb;
+		$table = self::get_table();
 
 		if (! self::table_exists()) {
 			return 0;
 		}
 
 		$items_table = Schema::get_table_name('scan_items');
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$item = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT post_id, post_url, scanned_at FROM `{$items_table}` WHERE id = %d",
 				$scan_item_id
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		if (! $item) {
 			return 0;
 		}
@@ -182,18 +195,18 @@ class Occurrence_Repository {
 		}
 
 		$resolved_at = $item->scanned_at ?: current_time('mysql');
-		$query = "UPDATE `" . self::get_table() . "`
+		$query = "UPDATE `{$table}`
 			SET status = 'resolved', resolved_at = %s
 			WHERE " . implode(' AND ', $where);
 		$params = array_merge([$resolved_at], $params);
-		$result = $wpdb->query($wpdb->prepare($query, ...$params));
+		$result = $wpdb->query($wpdb->prepare($query, ...$params)); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
 
 		if (false === $result) {
-			error_log(
+			\cleara11y_debug_log(
 				sprintf(
 					'ClearA11y ERROR: Failed resolving absent occurrences. scan_item_id=%d database_error=%s',
 					$scan_item_id,
-					$wpdb->last_error
+					'Database operation failed; raw details omitted to protect scan evidence.'
 				)
 			);
 			return 0;

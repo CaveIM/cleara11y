@@ -10,6 +10,10 @@
 
 namespace ClearA11y\API;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 use ClearA11y\Admin\Scans_Page;
 use ClearA11y\Database\Issue_Repository;
 use ClearA11y\Database\Job_Repository;
@@ -55,9 +59,9 @@ class REST_Controller {
 	 * Handle REST API errors gracefully.
 	 */
 	public function handle_rest_errors($result) {
-		if (is_wp_error($result)) {
-			// Log the actual error for debugging
-			error_log('ClearA11y REST Error: ' . $result->get_error_message());
+		if (is_wp_error($result) && defined('WP_DEBUG') && WP_DEBUG) {
+			// Error messages from other plugins may contain private request data.
+			\cleara11y_debug_log('Cleara11y REST Error: ' . sanitize_key((string) $result->get_error_code()));
 		}
 		return $result;
 	}
@@ -217,7 +221,7 @@ class REST_Controller {
 			[
 				'methods' => 'GET',
 				'callback' => [$this, 'get_active_scan'],
-				'permission_callback' => '__return_true', // Allow from wp-admin
+				'permission_callback' => [$this, 'manage_options_permission'],
 			]
 		);
 
@@ -393,7 +397,7 @@ class REST_Controller {
 			[
 				'methods' => 'POST',
 				'callback' => [$this, 'get_next_queue_item'],
-				'permission_callback' => '__return_true',
+				'permission_callback' => [$this, 'manage_options_permission'],
 			]
 		);
 
@@ -591,7 +595,7 @@ class REST_Controller {
 			[
 				'methods' => 'POST',
 				'callback' => [$this, 'lease_jobs'],
-				'permission_callback' => '__return_true', // Allow for wp-admin orchestrator
+				'permission_callback' => [$this, 'manage_options_permission'],
 				'args' => [
 					'workerId' => [
 						'type' => 'string',
@@ -621,7 +625,7 @@ class REST_Controller {
 			[
 				'methods' => 'POST',
 				'callback' => [$this, 'job_heartbeat'],
-				'permission_callback' => '__return_true', // Allow for wp-admin orchestrator
+				'permission_callback' => [$this, 'manage_options_permission'],
 				'args' => [
 					'jobId' => [
 						'required' => true,
@@ -650,7 +654,7 @@ class REST_Controller {
 			[
 				'methods' => 'POST',
 				'callback' => [$this, 'complete_job'],
-				'permission_callback' => '__return_true', // Allow for wp-admin orchestrator
+				'permission_callback' => [$this, 'manage_options_permission'],
 				'args' => [
 					'jobId' => [
 						'required' => true,
@@ -838,7 +842,7 @@ class REST_Controller {
 		$request_bytes = strlen($request->get_body());
 
 		if ($request_bytes > self::MAX_SCAN_RESULT_REQUEST_BYTES) {
-			error_log(
+			\cleara11y_debug_log(
 				sprintf(
 					'ClearA11y ERROR: Rejected oversized scan result request. body_bytes=%d limit_bytes=%d',
 					$request_bytes,
@@ -855,7 +859,7 @@ class REST_Controller {
 		}
 
 		if (defined('WP_DEBUG') && WP_DEBUG) {
-			error_log(
+			\cleara11y_debug_log(
 				sprintf(
 					'ClearA11y REST: scan results received body_bytes=%d evidence_records=%d result_keys=%s',
 					strlen($request->get_body()),
@@ -875,7 +879,7 @@ class REST_Controller {
 		}
 
 		if (! is_array($results) || ! is_array($evidence)) {
-			error_log('ClearA11y ERROR: Rejected malformed scan result payload.');
+			\cleara11y_debug_log('ClearA11y ERROR: Rejected malformed scan result payload.');
 			return rest_ensure_response(
 				new \WP_Error(
 					'invalid_scan_results',
@@ -887,7 +891,7 @@ class REST_Controller {
 
 		$finding_nodes = self::count_finding_nodes($results);
 		if (count($evidence) < $finding_nodes) {
-			error_log(
+			\cleara11y_debug_log(
 				sprintf(
 					'ClearA11y ERROR: Rejected incomplete scan evidence. finding_nodes=%d evidence_records=%d',
 					$finding_nodes,
@@ -909,6 +913,10 @@ class REST_Controller {
 			$results,
 			$evidence
 		);
+
+		if (! empty($result['success'])) {
+			Scan_Token_Manager::delete_token($token);
+		}
 
 		return rest_ensure_response($result);
 	}
@@ -950,7 +958,7 @@ class REST_Controller {
 	 * @param \WP_REST_Request $request REST request object.
 	 * @return \WP_REST_Response
 	 */
-	public function create_scan(\WP_REST_Request $request): \WP_REST_Response {
+	public function create_scan(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
 		// Check if there's already an active scan
 		if (\ClearA11y\Services\Scan_Orchestrator::has_active_scan()) {
 			return rest_ensure_response(
@@ -990,7 +998,7 @@ class REST_Controller {
 	 * @param \WP_REST_Request $request REST request object.
 	 * @return \WP_REST_Response
 	 */
-	public function get_scan(\WP_REST_Request $request): \WP_REST_Response {
+	public function get_scan(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
 		$scan_id = (int) $request->get_param('id');
 		$scan = Scan_Repository::get_by_id($scan_id);
 
@@ -1054,7 +1062,7 @@ class REST_Controller {
 	 * @param \WP_REST_Request $request REST request object.
 	 * @return \WP_REST_Response
 	 */
-	public function get_scan_item_issues(\WP_REST_Request $request): \WP_REST_Response {
+	public function get_scan_item_issues(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
 		$scan_item_id = (int) $request->get_param('id');
 
 		// Get scan item
@@ -1081,7 +1089,7 @@ class REST_Controller {
 	 * @param \WP_REST_Request $request REST request object.
 	 * @return \WP_REST_Response
 	 */
-	public function get_scan_item(\WP_REST_Request $request): \WP_REST_Response {
+	public function get_scan_item(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
 		$scan_item_id = (int) $request->get_param('id');
 
 		// Get scan item
@@ -1104,7 +1112,7 @@ class REST_Controller {
 	 * @param \WP_REST_Request $request REST request object.
 	 * @return \WP_REST_Response
 	 */
-	public function fail_scan_item(\WP_REST_Request $request): \WP_REST_Response {
+	public function fail_scan_item(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
 		$scan_item_id = (int) $request->get_param('id');
 		$error_message = $request->get_param('error_message') ?? 'Scan timed out or failed to complete';
 
@@ -1174,6 +1182,7 @@ class REST_Controller {
 
 		if ($latest_scan) {
 			// Calculate actual issue counts from the issues table.
+			// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 			$issue_counts = $wpdb->get_results(
 				$wpdb->prepare(
 					"SELECT severity, COUNT(*) as count
@@ -1184,6 +1193,7 @@ class REST_Controller {
 				),
 				ARRAY_A
 			);
+			// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 			$counts = [
 				'total' => 0,
@@ -1198,6 +1208,7 @@ class REST_Controller {
 			}
 
 			// Get the count of unique pages scanned in the current dashboard scan.
+			// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 			$scanned_pages = $wpdb->get_var(
 				$wpdb->prepare(
 					"SELECT COUNT(DISTINCT post_id)
@@ -1206,6 +1217,7 @@ class REST_Controller {
 					$latest_scan->id
 				)
 			);
+			// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 			$stats['latest_scan'] = [
 				'id' => $latest_scan->id,
@@ -1249,7 +1261,7 @@ class REST_Controller {
 	 * @param \WP_REST_Request $request REST request object.
 	 * @return \WP_REST_Response
 	 */
-	public function add_to_queue(\WP_REST_Request $request): \WP_REST_Response {
+	public function add_to_queue(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
 		$post_ids = $request->get_param('post_ids');
 		$scan_name = $request->get_param('scan_name') ?? null;
 		$scan_type = $request->get_param('scan_type') ?? 'full';
@@ -1316,14 +1328,14 @@ class REST_Controller {
 	 * @param \WP_REST_Request $request REST request object.
 	 * @return \WP_REST_Response
 	 */
-	public function create_queue_jobs(\WP_REST_Request $request): \WP_REST_Response {
+	public function create_queue_jobs(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
 		global $wpdb;
 
 		$post_ids = $request->get_param('post_ids');
 		$scan_id = (int) $request->get_param('scan_id');
 		$priority = (int) $request->get_param('priority') ?? 10;
 
-		error_log(sprintf('[ClearA11y] create_queue_jobs called: scan_id=%d, posts=%d',
+		\cleara11y_debug_log(sprintf('[ClearA11y] create_queue_jobs called: scan_id=%d, posts=%d',
 			$scan_id, count($post_ids ?? [])));
 
 		if (empty($post_ids) || !is_array($post_ids)) {
@@ -1335,14 +1347,14 @@ class REST_Controller {
 		// Verify scan exists
 		$scan = Scan_Repository::get_by_id($scan_id);
 		if (!$scan) {
-			error_log('[ClearA11y] create_queue_jobs: Scan not found: ' . $scan_id);
+			\cleara11y_debug_log('[ClearA11y] create_queue_jobs: Scan not found: ' . $scan_id);
 			return rest_ensure_response(
 				new \WP_Error('invalid_scan', 'Scan not found.', ['status' => 404])
 			);
 		}
 
-		error_log(sprintf('[ClearA11y] create_queue_jobs: Scan found: %s (status=%s)',
-			$scan->scan_name, $scan->status));
+		\cleara11y_debug_log(sprintf('[Cleara11y] create_queue_jobs: Scan found: %d (status=%s)',
+			$scan->id, $scan->status));
 
 		$jobs_table = \ClearA11y\Database\Schema::get_table_name('scan_jobs');
 		$scans_table = \ClearA11y\Database\Schema::get_table_name('scans');
@@ -1358,6 +1370,7 @@ class REST_Controller {
 			$url = get_permalink($post_id);
 
 			// Check if job already exists for this post/scan
+			// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 			$existing = $wpdb->get_var(
 				$wpdb->prepare(
 					"SELECT id FROM `{$jobs_table}` WHERE post_id = %d AND scan_id = %d",
@@ -1365,12 +1378,14 @@ class REST_Controller {
 					$scan_id
 				)
 			);
+			// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 			if ($existing) {
 				continue; // Skip existing jobs
 			}
 
 			// Insert new job
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 			$result = $wpdb->insert(
 				$jobs_table,
 				[
@@ -1384,16 +1399,18 @@ class REST_Controller {
 				],
 				['%d', '%s', '%d', '%d', '%s', '%d', '%s']
 			);
+			// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery
 
 			if ($result) {
 				$created++;
 			}
 		}
 
-		error_log(sprintf('[ClearA11y] create_queue_jobs: Created %d new jobs', $created));
+		\cleara11y_debug_log(sprintf('[ClearA11y] create_queue_jobs: Created %d new jobs', $created));
 
 		// Update scan status to 'in_progress' and set started_at
 		if ($created > 0) {
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 			$updated = $wpdb->update(
 				$scans_table,
 				[
@@ -1404,8 +1421,9 @@ class REST_Controller {
 				['%s', '%s'],
 				['%d']
 			);
+			// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
-			error_log(sprintf('[ClearA11y] create_queue_jobs: Updated scan %d status to in_progress (result=%d)',
+			\cleara11y_debug_log(sprintf('[ClearA11y] create_queue_jobs: Updated scan %d status to in_progress (result=%d)',
 				$scan_id, $updated));
 		}
 
@@ -1472,6 +1490,7 @@ class REST_Controller {
 
 		// First, auto-reset any items stuck in "in_progress" for more than 5 minutes
 		$stuck_timeout = 5; // minutes
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Write to plugin-owned tables; no WordPress data API or cached result applies; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$wpdb->query(
 			$wpdb->prepare(
 				"UPDATE `{$table}` SET status = 'pending', error_message = 'Auto-reset due to timeout'
@@ -1480,13 +1499,16 @@ class REST_Controller {
 				$stuck_timeout
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		// Find first pending scan item
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT * FROM `{$table}` WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1",
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if (!$row) {
 			return rest_ensure_response([
@@ -1496,6 +1518,7 @@ class REST_Controller {
 		}
 
 		// Mark as in_progress
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 		$wpdb->update(
 			$table,
 			['status' => 'in_progress'],
@@ -1503,11 +1526,13 @@ class REST_Controller {
 			['%s'],
 			['%d']
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 		// Validate post exists and is published
 		$post = \get_post($row->post_id);
 		if (!$post || $post->post_status !== 'publish') {
 			// Post doesn't exist or isn't published - mark as failed
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 			$wpdb->update(
 				$table,
 				[
@@ -1518,16 +1543,20 @@ class REST_Controller {
 				['%s', '%s'],
 				['%d']
 			);
+			// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 			// Update scan status if this was the last item
 			$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
+			// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 			$pending_count = $wpdb->get_var($wpdb->prepare(
 				"SELECT COUNT(*) FROM `{$scan_items_table}` WHERE scan_id = %d AND status = 'pending'",
 				$row->scan_id
 			));
+			// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 			if ($pending_count == 0) {
 				$scans_table = \ClearA11y\Database\Schema::get_table_name('scans');
+				// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 				$wpdb->update(
 					$scans_table,
 					['status' => 'failed'],
@@ -1535,6 +1564,7 @@ class REST_Controller {
 					['%s'],
 					['%d']
 				);
+				// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 			}
 
 			return rest_ensure_response([
@@ -1547,7 +1577,7 @@ class REST_Controller {
 		// Generate a token for this item
 		$token = \wp_generate_password(32, false);
 		$expiry_seconds = (int) \get_option('cleara11y_scan_token_expiry', 300);
-		$expires_at = date('Y-m-d H:i:s', time() + $expiry_seconds);
+		$expires_at = gmdate('Y-m-d H:i:s', time() + $expiry_seconds);
 
 		// Store token data
 		$token_data = [
@@ -1590,7 +1620,7 @@ class REST_Controller {
 	 * @param \WP_REST_Request $request REST request object.
 	 * @return \WP_REST_Response
 	 */
-	public function cancel_queue_scan(\WP_REST_Request $request): \WP_REST_Response {
+	public function cancel_queue_scan(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
 		$scan_id = (int) $request->get_param('scan_id');
 
 		$scan = Scan_Repository::get_by_id($scan_id);
@@ -1665,6 +1695,7 @@ class REST_Controller {
 			] : null,
 			'page' => $page_id ? [
 				'id' => $page_id,
+				/* translators: Placeholder is the scan or page identifier. */
 				'label' => get_the_title($page_id) ?: sprintf(__('Page #%d', 'cleara11y'), $page_id),
 			] : null,
 			'scan' => $scan ? $this->format_explorer_scan_context($scan) : null,
@@ -1727,6 +1758,7 @@ class REST_Controller {
 
 		return [
 			'id' => $scan->id,
+			/* translators: Placeholder is the scan or page identifier. */
 			'label' => $scan->scan_name ?: sprintf(__('Scan #%d', 'cleara11y'), $scan->id),
 			'status' => $scan->status,
 			'date' => $scan->completed_at ?: ($scan->started_at ?: $scan->created_at),
@@ -1744,12 +1776,14 @@ class REST_Controller {
 	private function get_rule_label(string $rule_id): string {
 		global $wpdb;
 		$table = \ClearA11y\Database\Schema::get_table_name('issues');
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$label = $wpdb->get_var(
 			$wpdb->prepare(
 				"SELECT help_text FROM `{$table}` WHERE rule_id = %s AND help_text IS NOT NULL ORDER BY id DESC LIMIT 1",
 				$rule_id
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		return $label ?: $rule_id;
 	}
 
@@ -1769,8 +1803,8 @@ class REST_Controller {
 		$severity = $request->get_param('severity');
 		$status = $request->get_param('status') ?? 'active';
 		$search = $request->get_param('search');
-		$page = (int) $request->get_param('page') ?? 1;
-		$per_page = (int) $request->get_param('per_page') ?? 20;
+		$page = max(1, (int) ($request->get_param('page') ?? 1));
+		$per_page = max(1, min(100, (int) ($request->get_param('per_page') ?? 20)));
 		$offset = ($page - 1) * $per_page;
 
 		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
@@ -1824,8 +1858,8 @@ class REST_Controller {
 					   WHERE {$where_clause}";
 		// @phpstan-ignore-next-line
 		$total = !empty($where_params)
-			? (int) $wpdb->get_var($wpdb->prepare($count_query, ...$where_params))
-			: (int) $wpdb->get_var($count_query);
+			? (int) $wpdb->get_var($wpdb->prepare($count_query, ...$where_params)) // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
+			: (int) $wpdb->get_var($count_query); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.PreparedSQL.NotPrepared -- Reviewed: fixed SQL fragments and schema table names; variable values are prepared.
 
 		// Get issues
 		$query = "SELECT i.*, si.post_title, si.post_url,
@@ -1841,7 +1875,7 @@ class REST_Controller {
 		$where_params[] = $offset;
 
 		// @phpstan-ignore-next-line
-		$issues = $wpdb->get_results($wpdb->prepare($query, ...$where_params));
+		$issues = $wpdb->get_results($wpdb->prepare($query, ...$where_params)); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
 
 		return rest_ensure_response([
 			'data' => $issues,
@@ -1879,6 +1913,7 @@ class REST_Controller {
 			) active_exceptions ON i.id = active_exceptions.violation_id";
 
 		// Get raw and actionable counts while keeping scan evidence unchanged.
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$counts = $wpdb->get_results(
 			"SELECT
 				SUM(CASE WHEN i.severity = 'critical' AND active_exceptions.violation_id IS NULL THEN 1 ELSE 0 END) as critical,
@@ -1891,6 +1926,7 @@ class REST_Controller {
 			{$active_exception_join}",
 			ARRAY_A
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		$stats = $counts[0] ?? [
 			'critical' => 0,
@@ -1924,8 +1960,8 @@ class REST_Controller {
 		$search = $request->get_param('search');
 		$orderby = $request->get_param('orderby') ?? 'scanned_date';
 		$order = $request->get_param('order') ?? 'desc';
-		$page = (int) $request->get_param('page') ?? 1;
-		$per_page = (int) $request->get_param('per_page') ?? 20;
+		$page = max(1, (int) ($request->get_param('page') ?? 1));
+		$per_page = max(1, min(100, (int) ($request->get_param('per_page') ?? 20)));
 		$offset = ($page - 1) * $per_page;
 
 		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
@@ -1934,8 +1970,8 @@ class REST_Controller {
 		$posts_table = $wpdb->posts;
 
 		// Build WHERE clause
-		$where = ["p.post_type = '{$post_type}'", "p.post_status = 'publish'"];
-		$where_params = [];
+		$where = ['p.post_type = %s', "p.post_status = 'publish'"];
+		$where_params = [$post_type];
 
 		// Filter by scan status
 		if ($status === 'scanned') {
@@ -1962,9 +1998,9 @@ class REST_Controller {
 					   WHERE {$where_clause}";
 
 		if (!empty($where_params)) {
-			$total = (int) $wpdb->get_var($wpdb->prepare($count_query, ...$where_params));
+			$total = (int) $wpdb->get_var($wpdb->prepare($count_query, ...$where_params)); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
 		} else {
-			$total = (int) $wpdb->get_var($count_query);
+			$total = (int) $wpdb->get_var($count_query); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
 		}
 
 		// Get pages with latest scan_item info
@@ -1986,9 +2022,9 @@ class REST_Controller {
 		$params = [...$where_params, $per_page, $offset];
 
 		if (!empty($params)) {
-			$pages = $wpdb->get_results($wpdb->prepare($pages_query, ...$params));
+			$pages = $wpdb->get_results($wpdb->prepare($pages_query, ...$params)); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
 		} else {
-			$pages = $wpdb->get_results($pages_query);
+			$pages = $wpdb->get_results($pages_query); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
 		}
 
 		// Calculate score and format results
@@ -2004,7 +2040,8 @@ class REST_Controller {
 
 			if ($page->scan_item_id && $page->scan_status === 'completed') {
 				// Count issues from the latest scan_item.
-				error_log('ClearA11y Pages List: Querying issues for post_id: ' . $page->post_id . ', scan_item_id: ' . $page->scan_item_id);
+				\cleara11y_debug_log('ClearA11y Pages List: Querying issues for post_id: ' . $page->post_id . ', scan_item_id: ' . $page->scan_item_id);
+				// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 				$issue_counts = $wpdb->get_results(
 					$wpdb->prepare(
 						"SELECT severity, COUNT(*) as count
@@ -2015,11 +2052,12 @@ class REST_Controller {
 					),
 					ARRAY_A
 				);
+				// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 				foreach ($issue_counts as $row) {
 					$counts[$row['severity']] = (int) $row['count'];
 					$counts['total'] += (int) $row['count'];
-			error_log(sprintf('ClearA11y Pages List: post_id %d, scan_item_id %d, counts: total=%d critical=%d moderate=%d minor=%d',
+			\cleara11y_debug_log(sprintf('ClearA11y Pages List: post_id %d, scan_item_id %d, counts: total=%d critical=%d moderate=%d minor=%d',
 				$page->post_id, $page->scan_item_id, $counts['total'], $counts['critical'], $counts['moderate'], $counts['minor']));
 				}
 			}
@@ -2164,10 +2202,10 @@ class REST_Controller {
 			GROUP BY rule_id, rule_type, severity, message
 			ORDER BY FIELD(severity, 'critical', 'moderate', 'minor'), issue_count DESC";
 		if (!empty($where_params)) {
-			$query = $wpdb->prepare($query, ...$where_params);
+			$query = $wpdb->prepare($query, ...$where_params); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Reviewed: fixed SQL fragments and schema table names; variable values are prepared.
 		}
 
-		$issue_types = $wpdb->get_results($query);
+		$issue_types = $wpdb->get_results($query); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
 
 		// Get counts for status tabs
 		$count_query = "SELECT
@@ -2175,10 +2213,10 @@ class REST_Controller {
 			FROM `{$issues_table}`
 			{$where_clause}";
 		if (!empty($where_params)) {
-			$count_query = $wpdb->prepare($count_query, ...$where_params);
+			$count_query = $wpdb->prepare($count_query, ...$where_params); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Reviewed: fixed SQL fragments and schema table names; variable values are prepared.
 		}
 
-		$counts = $wpdb->get_row($count_query, ARRAY_A);
+		$counts = $wpdb->get_row($count_query, ARRAY_A); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
 
 		return rest_ensure_response([
 			'issue_types' => $issue_types,
@@ -2198,14 +2236,15 @@ class REST_Controller {
 		global $wpdb;
 
 		$rule_id = $request->get_param('rule_id');
-		$page = (int) $request->get_param('page') ?? 1;
-		$per_page = (int) $request->get_param('per_page') ?? 20;
+		$page = max(1, (int) ($request->get_param('page') ?? 1));
+		$per_page = max(1, min(100, (int) ($request->get_param('per_page') ?? 20)));
 		$offset = ($page - 1) * $per_page;
 
 		$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
 		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
 
 		// Get total count
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$total = $wpdb->get_var(
 			$wpdb->prepare(
 				"SELECT COUNT(DISTINCT i.post_id)
@@ -2214,8 +2253,10 @@ class REST_Controller {
 				$rule_id
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		// Get pages with this issue
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$pages = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT
@@ -2235,6 +2276,7 @@ class REST_Controller {
 				$offset
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		return rest_ensure_response([
 			'pages' => $pages,
@@ -2257,13 +2299,13 @@ class REST_Controller {
 		$lease_seconds = (int) ($request->get_param('leaseSeconds') ?? 180);
 		$site_id = get_current_blog_id();
 
-		error_log(sprintf('[ClearA11y] lease_jobs called: worker=%s, limit=%d, site=%d',
+		\cleara11y_debug_log(sprintf('[ClearA11y] lease_jobs called: worker=%s, limit=%d, site=%d',
 			$worker_id, $limit, $site_id));
 
 		// Expire stuck jobs first
 		$expired = Job_Repository::expire_stuck_jobs();
 		if ($expired > 0) {
-			error_log('[ClearA11y] lease_jobs: Expired ' . $expired . ' stuck jobs');
+			\cleara11y_debug_log('[ClearA11y] lease_jobs: Expired ' . $expired . ' stuck jobs');
 		}
 
 		// Lease pending jobs
@@ -2271,7 +2313,7 @@ class REST_Controller {
 		foreach ($jobs as &$job) {
 			$scan_item = Scan_Item_Repository::get_by_scan_and_post((int) $job['scan_id'], (int) $job['post_id']);
 			if (! $scan_item) {
-				error_log(
+				\cleara11y_debug_log(
 					sprintf(
 						'ClearA11y ERROR: Cannot create attribution token for leased job. job_id=%d scan_id=%d post_id=%d',
 						(int) $job['id'],
@@ -2292,7 +2334,7 @@ class REST_Controller {
 		}
 		unset($job);
 
-		error_log(sprintf('[ClearA11y] lease_jobs: Leased %d jobs for worker %s',
+		\cleara11y_debug_log(sprintf('[ClearA11y] lease_jobs: Leased %d jobs for worker %s',
 			count($jobs), $worker_id));
 
 		return rest_ensure_response([
@@ -2308,7 +2350,7 @@ class REST_Controller {
 	 * @param \WP_REST_Request $request REST request object.
 	 * @return \WP_REST_Response
 	 */
-	public function job_heartbeat(\WP_REST_Request $request): \WP_REST_Response {
+	public function job_heartbeat(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
 		$job_id = (int) $request->get_param('jobId');
 		$lease_token = $request->get_param('leaseToken');
 		$lease_seconds = (int) ($request->get_param('leaseSeconds') ?? 180);
@@ -2341,7 +2383,7 @@ class REST_Controller {
 		$request_bytes = strlen($request->get_body());
 
 		if ($request_bytes > self::MAX_SCAN_RESULT_REQUEST_BYTES) {
-			error_log(
+			\cleara11y_debug_log(
 				sprintf(
 					'ClearA11y ERROR: Rejected oversized job result. job_id=%d body_bytes=%d limit_bytes=%d',
 					$job_id,
@@ -2381,7 +2423,7 @@ class REST_Controller {
 				|| ! is_array($results['incomplete'])
 				|| ! is_array($evidence)
 			) {
-				error_log(
+				\cleara11y_debug_log(
 					sprintf(
 						'ClearA11y ERROR: Rejected malformed job result. job_id=%d json_error=%s',
 						$job_id,
@@ -2398,7 +2440,7 @@ class REST_Controller {
 			}
 
 			if (count($evidence) < $finding_nodes) {
-				error_log(
+				\cleara11y_debug_log(
 					sprintf(
 						'ClearA11y ERROR: Rejected incomplete job evidence. job_id=%d finding_nodes=%d evidence_records=%d',
 						$job_id,
@@ -2426,6 +2468,7 @@ class REST_Controller {
 		}
 
 		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$scan_item = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT * FROM `{$scan_items_table}` WHERE post_id = %d AND scan_id = %d LIMIT 1",
@@ -2434,6 +2477,7 @@ class REST_Controller {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		// Additional processing for completed jobs.
 		if ($status === 'done' && $result_json && $scan_item) {
@@ -2494,6 +2538,7 @@ class REST_Controller {
 		$scans_table = \ClearA11y\Database\Schema::get_table_name('scans');
 
 		// Check if there are any pending or active jobs
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$pending_count = $wpdb->get_var(
 			$wpdb->prepare(
 				"SELECT COUNT(*) FROM `{$jobs_table}`
@@ -2502,9 +2547,11 @@ class REST_Controller {
 				$scan_id
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if ($pending_count == 0) {
 			// All jobs are complete - update scan status
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 			$updated = $wpdb->update(
 				$scans_table,
 				[
@@ -2518,9 +2565,10 @@ class REST_Controller {
 				['%s', '%s'],
 				['%d', '%s']
 			);
+			// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 			if ($updated) {
-				error_log(sprintf('[ClearA11y] Scan %d marked as completed', $scan_id));
+				\cleara11y_debug_log(sprintf('[ClearA11y] Scan %d marked as completed', $scan_id));
 			}
 		}
 	}
@@ -2538,6 +2586,7 @@ class REST_Controller {
 		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
 
 		// Get scan item counts
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$counts = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT
@@ -2554,6 +2603,7 @@ class REST_Controller {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if ($counts) {
 			$total = (int) $counts['total'];
@@ -2562,6 +2612,7 @@ class REST_Controller {
 			$finished = $completed + $failed;
 
 			// Update scan with progress
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 			$wpdb->update(
 				$scans_table,
 				[
@@ -2577,6 +2628,7 @@ class REST_Controller {
 				['%d', '%d', '%d', '%d', '%d', '%s', '%s'],
 				['%d']
 			);
+			// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 		}
 	}
 
@@ -2608,7 +2660,7 @@ class REST_Controller {
 	 * @param \WP_REST_Request $request REST request object.
 	 * @return \WP_REST_Response
 	 */
-	public function get_scan_stats(\WP_REST_Request $request): \WP_REST_Response {
+	public function get_scan_stats(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
 		$scan_id = (int) $request->get_param('id');
 
 		if (!$scan_id) {
@@ -2636,10 +2688,11 @@ class REST_Controller {
 		$jobs_table = \ClearA11y\Database\Schema::get_table_name('scan_jobs');
 
 		// Log the request for debugging
-		error_log('[ClearA11y] get_active_scan called');
+		\cleara11y_debug_log('[ClearA11y] get_active_scan called');
 
 		// Get the most recent scan with 'in_progress' status
 		// This is more reliable - just check scan status, not job status
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$scan = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT s.* FROM `{$scans_table}` s
@@ -2648,9 +2701,10 @@ class REST_Controller {
 				LIMIT 1"
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if (!$scan) {
-			error_log('[ClearA11y] get_active_scan: No active scan found');
+			\cleara11y_debug_log('[ClearA11y] get_active_scan: No active scan found');
 			return rest_ensure_response([
 				'active' => false,
 				'scan_id' => null,
@@ -2660,9 +2714,8 @@ class REST_Controller {
 		// Get job statistics for this scan
 		$stats = Job_Repository::get_stats_by_scan((int) $scan->id);
 
-		error_log(sprintf('[ClearA11y] get_active_scan: Found scan %d (%s) - jobs: pending=%d, active=%d, done=%d',
+		\cleara11y_debug_log(sprintf('[ClearA11y] get_active_scan: Found scan %d - jobs: pending=%d, active=%d, done=%d',
 			$scan->id,
-			$scan->scan_name,
 			$stats['pending'],
 			$stats['active'],
 			$stats['completed']
@@ -2732,6 +2785,7 @@ class REST_Controller {
 		];
 
 		if ($latest_scan) {
+			// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 			$issue_counts = $wpdb->get_results(
 				$wpdb->prepare(
 					"SELECT severity, COUNT(*) as count
@@ -2742,6 +2796,7 @@ class REST_Controller {
 				),
 				ARRAY_A
 			);
+			// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 			foreach ($issue_counts as $row) {
 				$severity = (string) $row['severity'];
@@ -2750,6 +2805,7 @@ class REST_Controller {
 				}
 			}
 
+			// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 			$stats['total_pages'] = (int) $wpdb->get_var(
 				$wpdb->prepare(
 					"SELECT COUNT(DISTINCT post_id)
@@ -2758,6 +2814,7 @@ class REST_Controller {
 					$latest_scan->id
 				)
 			);
+			// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		}
 
 		return rest_ensure_response($stats);

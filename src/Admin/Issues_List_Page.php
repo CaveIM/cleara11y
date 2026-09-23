@@ -8,6 +8,10 @@
 
 namespace ClearA11y\Admin;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 /**
  * Issues Explorer Page Class.
  */
@@ -95,11 +99,11 @@ class Issues_List_Page {
 				</div>
 				<?php
 				// Check if any entity filters are active (ruleId, pageId, scanId)
-				$has_active_entity_filters = isset($_GET['ruleId'])
-					|| isset($_GET['pageId'])
-					|| isset($_GET['scanId'])
-					|| isset($_GET['findingType'])
-					|| isset($_GET['includeExceptions']);
+				$has_active_entity_filters = isset($_GET['ruleId']) // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+					|| isset($_GET['pageId']) // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+					|| isset($_GET['scanId']) // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+					|| isset($_GET['findingType']) // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+					|| isset($_GET['includeExceptions']); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
 				?>
 				<details class="cleara11y-more-filters"<?php echo $has_active_entity_filters ? ' open' : ''; ?>>
 					<summary><?php esc_html_e('More filters', 'cleara11y'); ?></summary>
@@ -157,7 +161,7 @@ class Issues_List_Page {
 				aria-autocomplete="list"
 				aria-expanded="false"
 				aria-controls="cleara11y-<?php echo esc_attr($type); ?>-options"
-				placeholder="<?php echo esc_attr(sprintf(__('Find a %s…', 'cleara11y'), strtolower($label))); ?>"
+				placeholder="<?php /* translators: Placeholder is the type of filter option. */ echo esc_attr(sprintf(__('Find a %s…', 'cleara11y'), strtolower($label))); ?>"
 			>
 			<ul id="cleara11y-<?php echo esc_attr($type); ?>-options" class="cleara11y-entity-options" role="listbox" hidden></ul>
 		</div>

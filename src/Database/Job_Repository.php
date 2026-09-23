@@ -10,13 +10,12 @@
 
 namespace ClearA11y\Database;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 use ClearA11y\Models\Job;
 use ClearA11y\Models\Scan_Item;
-
-// Force OPcache to reload this file
-if (function_exists('opcache_invalidate')) {
-	opcache_invalidate(__FILE__, true);
-}
 
 /**
  * Job Repository Class
@@ -58,11 +57,13 @@ class Job_Repository {
 			'created_at' => $job->created_at ?: current_time('mysql', true),
 		];
 
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 		$result = $wpdb->insert(
 			self::get_table(),
 			$data,
 			['%d', '%s', '%d', '%d', '%s', '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s']
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery
 
 		return $result ? $wpdb->insert_id : false;
 	}
@@ -88,6 +89,7 @@ class Job_Repository {
 			'result_json' => $job->result_json,
 		];
 
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 		$result = $wpdb->update(
 			self::get_table(),
 			$data,
@@ -95,6 +97,7 @@ class Job_Repository {
 			['%s', '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s'],
 			['%d']
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 		return $result !== false;
 	}
@@ -109,12 +112,14 @@ class Job_Repository {
 		global $wpdb;
 
 		$table = self::get_table();
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$row = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT * FROM `{$table}` WHERE id = %d",
 				$job_id
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		return $row ? Job::from_row($row) : null;
 	}
@@ -156,9 +161,9 @@ class Job_Repository {
 		$where_params[] = $offset;
 
 		// @phpstan-ignore-next-line
-		$query = $wpdb->prepare($query, ...$where_params);
+		$query = $wpdb->prepare($query, ...$where_params); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Reviewed: fixed SQL fragments and schema table names; variable values are prepared.
 
-		$rows = $wpdb->get_results($query);
+		$rows = $wpdb->get_results($query); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
 
 		return array_map(fn($row) => Job::from_row($row), $rows ?: []);
 	}
@@ -179,6 +184,7 @@ class Job_Repository {
 		$expires_at = gmdate('Y-m-d H:i:s', time() + $lease_seconds);
 
 		// Find pending or expired jobs, ordered by priority
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$jobs = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT * FROM `{$table}`
@@ -191,6 +197,7 @@ class Job_Repository {
 				$limit
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if (empty($jobs)) {
 			return [];
@@ -205,6 +212,7 @@ class Job_Repository {
 			// Lease the job
 			$job->lease($lease_token, $lease_seconds);
 			// Update in database
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 			$updated = $wpdb->update(
 				$table,
 				[
@@ -218,6 +226,7 @@ class Job_Repository {
 				['%s', '%s', '%s', '%d', '%s'],
 				['%d']
 			);
+			// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 			if ($updated !== false) {
 				$leased[] = [
@@ -250,6 +259,7 @@ class Job_Repository {
 		$new_expires = gmdate('Y-m-d H:i:s', time() + $lease_seconds);
 
 		// Verify lease token and update expiration
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 		$updated = $wpdb->update(
 			$table,
 			['lease_expires_at' => $new_expires],
@@ -261,6 +271,7 @@ class Job_Repository {
 			['%s'],
 			['%d', '%s', '%s']
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 		if ($updated === false) {
 			return false;
@@ -317,6 +328,7 @@ class Job_Repository {
 
 		$where_format = ['%d', '%s'];
 
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 		$updated = $wpdb->update(
 			$table,
 			$data,
@@ -324,6 +336,7 @@ class Job_Repository {
 			$data_format,
 			$where_format
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 		// Update scan progress if job completed successfully
 		if ($updated !== false && $status === 'done') {
@@ -352,6 +365,7 @@ class Job_Repository {
 
 		$table = self::get_table();
 
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$stats = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT
@@ -366,6 +380,7 @@ class Job_Repository {
 			),
 			ARRAY_A
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		return [
 			'total' => (int) ($stats['total'] ?? 0),
@@ -386,6 +401,7 @@ class Job_Repository {
 
 		$table = self::get_table();
 
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$stats = $wpdb->get_row(
 			"SELECT
 				SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
@@ -395,6 +411,7 @@ class Job_Repository {
 			FROM `{$table}`",
 			ARRAY_A
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		return [
 			'pending' => (int) ($stats['pending'] ?? 0),
@@ -419,12 +436,14 @@ class Job_Repository {
 		$scans_table = \ClearA11y\Database\Schema::get_table_name('scans');
 
 		// Delete completed jobs from scans that are marked as completed
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Write to plugin-owned tables; no WordPress data API or cached result applies; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$deleted = $wpdb->query(
 			"DELETE j FROM `{$table}` j
 			INNER JOIN `{$scans_table}` s ON j.scan_id = s.id
 			WHERE j.status = 'done'
 			AND s.status = 'completed'"
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		return (int) $deleted;
 	}
@@ -442,6 +461,7 @@ class Job_Repository {
 
 		if ($force_all) {
 			// Force expire ALL active jobs (useful for cleanup)
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 			$updated = $wpdb->update(
 				$table,
 				[
@@ -453,11 +473,13 @@ class Job_Repository {
 				['%s', '%s', '%s'],
 				['%s']
 			);
-			error_log(sprintf('[ClearA11y] Force expired %d active jobs', $updated));
+			// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			\cleara11y_debug_log(sprintf('[ClearA11y] Force expired %d active jobs', $updated));
 			return (int) $updated;
 		}
 
 		// Reset expired active jobs to pending
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 		$updated = $wpdb->update(
 			$table,
 			[
@@ -472,8 +494,10 @@ class Job_Repository {
 			['%s', '%s', '%s'],
 			['%s', '%s']
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 		// Also handle explicitly expired jobs
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Write to plugin-owned tables; no WordPress data API or cached result applies; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$updated_expired = $wpdb->query(
 			$wpdb->prepare(
 				"UPDATE `{$table}`
@@ -485,10 +509,11 @@ class Job_Repository {
 				current_time('mysql', true)
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		$total = (int) $updated + (int) $updated_expired;
 		if ($total > 0) {
-			error_log(sprintf('[ClearA11y] Expired %d stuck jobs', $total));
+			\cleara11y_debug_log(sprintf('[ClearA11y] Expired %d stuck jobs', $total));
 		}
 
 		return $total;
@@ -502,10 +527,12 @@ class Job_Repository {
 	 */
 	public static function reset_active_by_scan_id(int $scan_id): int|false {
 		global $wpdb;
+		$table = self::get_table();
 
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Write to plugin-owned tables; no WordPress data API or cached result applies; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		return $wpdb->query(
 			$wpdb->prepare(
-				"UPDATE `" . self::get_table() . "`
+				"UPDATE `{$table}`
 				SET status = 'pending', lease_token = NULL, lease_expires_at = NULL,
 					last_error = %s
 				WHERE scan_id = %d AND status = 'active'",
@@ -513,6 +540,7 @@ class Job_Repository {
 				$scan_id
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	}
 
 	/**
@@ -524,10 +552,12 @@ class Job_Repository {
 	 */
 	public static function cancel_by_scan_id(int $scan_id, string $reason): int|false {
 		global $wpdb;
+		$table = self::get_table();
 
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Write to plugin-owned tables; no WordPress data API or cached result applies; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		return $wpdb->query(
 			$wpdb->prepare(
-				"UPDATE `" . self::get_table() . "`
+				"UPDATE `{$table}`
 				SET status = 'cancelled', lease_token = NULL, lease_expires_at = NULL,
 					last_finished_at = %s, last_error = %s
 				WHERE scan_id = %d AND status IN ('pending', 'active')",
@@ -536,6 +566,7 @@ class Job_Repository {
 				$scan_id
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	}
 
 	/**
@@ -547,11 +578,13 @@ class Job_Repository {
 	public static function delete_by_scan_id(int $scan_id): int {
 		global $wpdb;
 
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 		return (int) $wpdb->delete(
 			self::get_table(),
 			['scan_id' => $scan_id],
 			['%d']
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 	}
 
 	/**
@@ -576,6 +609,7 @@ class Job_Repository {
 	 */
 	public static function get_count(?string $status = null, ?int $scan_id = null): int {
 		global $wpdb;
+		$table = self::get_table();
 
 		$where = [];
 		$where_params = [];
@@ -594,12 +628,12 @@ class Job_Repository {
 
 		// @phpstan-ignore-next-line
 		if (!empty($where_params)) {
-			$query = $wpdb->prepare("SELECT COUNT(*) FROM `" . self::get_table() . "` $where_clause", ...$where_params);
+			$query = $wpdb->prepare("SELECT COUNT(*) FROM `{$table}` $where_clause", ...$where_params); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- Fixed filter/IN fragments contain placeholders populated by the matching parameter list.
 		} else {
-			$query = "SELECT COUNT(*) FROM `" . self::get_table() . "` $where_clause";
+			$query = "SELECT COUNT(*) FROM `{$table}` $where_clause";
 		}
 
-		$count = $wpdb->get_var($query);
+		$count = $wpdb->get_var($query); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
 
 		return (int) $count;
 	}

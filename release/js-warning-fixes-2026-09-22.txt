@@ -1,0 +1,95 @@
+TAP version 13
+# Subtest: builds WordPress collection URLs for plain permalinks
+ok 1 - builds WordPress collection URLs for plain permalinks
+  ---
+  duration_ms: 3.477791
+  ...
+# Subtest: builds WordPress collection URLs for pretty permalinks
+ok 2 - builds WordPress collection URLs for pretty permalinks
+  ---
+  duration_ms: 0.6745
+  ...
+# Subtest: builds ClearA11y API URLs for plain permalinks
+ok 3 - builds ClearA11y API URLs for plain permalinks
+  ---
+  duration_ms: 0.511458
+  ...
+# Subtest: normalizes missing and failed job counters without NaN
+ok 4 - normalizes missing and failed job counters without NaN
+  ---
+  duration_ms: 2.377917
+  ...
+# Subtest: serializes parent axe configuration into the isolated scan iframe
+ok 5 - serializes parent axe configuration into the isolated scan iframe
+  ---
+  duration_ms: 0.904291
+  ...
+# Subtest: workers accept results only from their own iframe and scope parent errors to their job
+ok 6 - workers accept results only from their own iframe and scope parent errors to their job
+  ---
+  duration_ms: 0.282625
+  ...
+# Subtest: defaults to active live issues grouped by page
+ok 7 - defaults to active live issues grouped by page
+  ---
+  duration_ms: 1.2655
+  ...
+# Subtest: page and scan scopes default to rule grouping
+ok 8 - page and scan scopes default to rule grouping
+  ---
+  duration_ms: 0.121875
+  ...
+# Subtest: invalid enums and identifiers recover safely
+ok 9 - invalid enums and identifiers recover safely
+  ---
+  duration_ms: 0.362791
+  ...
+# Subtest: serialization preserves WordPress page slug and meaningful state
+ok 10 - serialization preserves WordPress page slug and meaningful state
+  ---
+  duration_ms: 0.521125
+  ...
+# Subtest: API parameters translate browser state and per-user pagination
+ok 11 - API parameters translate browser state and per-user pagination
+  ---
+  duration_ms: 0.233041
+  ...
+# Subtest: API pagination is clamped to the supported range
+ok 12 - API pagination is clamped to the supported range
+  ---
+  duration_ms: 0.085
+  ...
+# Subtest: REST URLs preserve plain-permalink routes and append endpoint parameters
+ok 13 - REST URLs preserve plain-permalink routes and append endpoint parameters
+  ---
+  duration_ms: 0.405917
+  ...
+# Subtest: REST URLs append endpoints to pretty-permalink paths
+ok 14 - REST URLs append endpoints to pretty-permalink paths
+  ---
+  duration_ms: 0.21525
+  ...
+# Subtest: explorer encodes quotes and markup in attribute values
+ok 15 - explorer encodes quotes and markup in attribute values
+  ---
+  duration_ms: 3.42625
+  ...
+# Subtest: explorer rejects executable URLs and preserves ordinary links
+ok 16 - explorer rejects executable URLs and preserves ordinary links
+  ---
+  duration_ms: 1.963291
+  ...
+# Subtest: frontend help links reject executable URL schemes
+ok 17 - frontend help links reject executable URL schemes
+  ---
+  duration_ms: 2.262375
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 70.329458

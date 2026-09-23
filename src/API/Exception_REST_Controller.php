@@ -10,6 +10,10 @@
 
 namespace ClearA11y\API;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 use ClearA11y\Database\Exception_Rule_Repository;
 use ClearA11y\Database\Exception_Schema;
 use ClearA11y\Database\Issue_Repository;
@@ -268,14 +272,14 @@ class Exception_REST_Controller {
 
 		// Get counts for tabs
 		$counts = [
-			'active' => Exception_Rule_Repository::get_count_by_status($site_id, 'active'),
-			'disabled' => Exception_Rule_Repository::get_count_by_status($site_id, 'disabled'),
-			'expired' => Exception_Rule_Repository::get_count_by_status($site_id, 'expired'),
-			'revoked' => Exception_Rule_Repository::get_count_by_status($site_id, 'revoked'),
-			'all' => Exception_Rule_Repository::get_count_by_status($site_id, 'active')
-				+ Exception_Rule_Repository::get_count_by_status($site_id, 'disabled')
-				+ Exception_Rule_Repository::get_count_by_status($site_id, 'expired')
-				+ Exception_Rule_Repository::get_count_by_status($site_id, 'revoked'),
+			'active' => Exception_Rule_Repository::get_count_by_status($site_id, 'active', $system_generated),
+			'disabled' => Exception_Rule_Repository::get_count_by_status($site_id, 'disabled', $system_generated),
+			'expired' => Exception_Rule_Repository::get_count_by_status($site_id, 'expired', $system_generated),
+			'revoked' => Exception_Rule_Repository::get_count_by_status($site_id, 'revoked', $system_generated),
+			'all' => Exception_Rule_Repository::get_count_by_status($site_id, 'active', $system_generated)
+				+ Exception_Rule_Repository::get_count_by_status($site_id, 'disabled', $system_generated)
+				+ Exception_Rule_Repository::get_count_by_status($site_id, 'expired', $system_generated)
+				+ Exception_Rule_Repository::get_count_by_status($site_id, 'revoked', $system_generated),
 		];
 		$total = 'all' === $status ? $counts['all'] : ($counts[$status] ?? 0);
 
@@ -408,12 +412,14 @@ class Exception_REST_Controller {
 		// Get scan item for URL
 		global $wpdb;
 		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$scan_item = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT * FROM `{$scan_items_table}` WHERE id = %d",
 				$violation->scan_item_id
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if (!$scan_item) {
 			return new \WP_Error('scan_item_not_found', 'Scan item not found.', ['status' => 404]);
@@ -754,7 +760,8 @@ class Exception_REST_Controller {
 		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
 
 		// Get violations that have exception matches
-		$rows = $wpdb->get_results(
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
+		$rows = $wpdb->get_results( // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter -- Reviewed: fixed SQL fragments and schema table names; variable values are prepared.
 			$wpdb->prepare(
 				"SELECT DISTINCT i.*, ir.id as exception_rule_id, ir.reason_category, ir.note, ir.created_by, ir.created_at as exception_applied_at
 				FROM `{$issues_table}` i
@@ -765,6 +772,7 @@ class Exception_REST_Controller {
 				$scan_item_id
 			)
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		$violations = [];
 		foreach ($rows as $row) {
@@ -975,12 +983,15 @@ class Exception_REST_Controller {
 		}
 
 		global $wpdb;
+		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$scan_item = $wpdb->get_row(
 			$wpdb->prepare(
-				'SELECT post_url FROM `' . \ClearA11y\Database\Schema::get_table_name('scan_items') . '` WHERE id = %d',
+				"SELECT post_url FROM `{$scan_items_table}` WHERE id = %d",
 				$violation->scan_item_id
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		if (! $scan_item) {
 			return new \WP_Error('scan_item_not_found', 'Scan item not found.', ['status' => 404]);
 		}
@@ -1072,12 +1083,14 @@ class Exception_REST_Controller {
 			$issues_table = \ClearA11y\Database\Schema::get_table_name('issues');
 
 			$placeholders = implode(',', array_fill(0, count($guardrail_rule_ids), '%s'));
+			// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Fixed filter/IN fragments contain placeholders populated by the matching parameter list.
 			$has_critical = $wpdb->get_var(
 				$wpdb->prepare(
 					"SELECT COUNT(*) FROM `{$issues_table}` WHERE rule_id IN ({$placeholders}) AND severity = 'critical' LIMIT 1",
 					...$guardrail_rule_ids
 				)
 			);
+			// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare
 
 			if ($has_critical) {
 				$warnings[] = 'This exception may remove critical accessibility issues from active remediation counts. Marking an exception does not fix the underlying problem.';
@@ -1108,7 +1121,7 @@ class Exception_REST_Controller {
 
 			case 'until_content_changes':
 				// This is tracked separately, set to far future
-				return date('Y-m-d H:i:s', time() + YEAR_IN_SECONDS);
+				return gmdate('Y-m-d H:i:s', time() + YEAR_IN_SECONDS);
 
 			default:
 				return null;
@@ -1152,14 +1165,13 @@ class Exception_REST_Controller {
 
 		// Get matching violations
 		// @phpstan-ignore-next-line
-		$violations = $wpdb->get_results(
-			$wpdb->prepare(
-			"SELECT i.* FROM `{$issues_table}` i
-				INNER JOIN `{$scan_items_table}` si ON i.scan_item_id = si.id
-				WHERE {$where_clause}",
-				...$where_params
-			)
-		);
+		$query = "SELECT i.* FROM `{$issues_table}` i
+			INNER JOIN `{$scan_items_table}` si ON i.scan_item_id = si.id
+			WHERE {$where_clause}";
+		if ($where_params) {
+			$query = $wpdb->prepare($query, ...$where_params); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- Reviewed: fixed SQL fragments and schema table names; variable values are prepared.
+		}
+		$violations = $wpdb->get_results($query); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state.
 
 		// Create matches
 		foreach ($violations as $violation_row) {

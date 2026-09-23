@@ -10,6 +10,10 @@
 
 namespace ClearA11y\Admin;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 use ClearA11y\Database\Issue_Repository;
 
 /**
@@ -198,6 +202,7 @@ class Metabox {
 
 		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
 
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$date = $wpdb->get_var(
 			$wpdb->prepare(
 				"SELECT scanned_at FROM `{$scan_items_table}`
@@ -207,6 +212,7 @@ class Metabox {
 				$post_id
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if ($date) {
 			$timestamp = strtotime($date);
@@ -256,6 +262,10 @@ class Metabox {
 		$post_id = isset($_POST['post_id']) ? intval($_POST['post_id']) : 0;
 		$scan_id = isset($_POST['scan_id']) ? intval($_POST['scan_id']) : 0;
 
+		if (! current_user_can('edit_post', $post_id)) {
+			wp_send_json_error(['message' => 'Permission denied'], 403);
+		}
+
 		if (!$post_id) {
 			wp_send_json_error(['message' => 'Invalid post ID']);
 		}
@@ -274,12 +284,14 @@ class Metabox {
 		if ($scan_id) {
 			global $wpdb;
 			$scans_table = \ClearA11y\Database\Schema::get_table_name('scans');
+			// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 			$scan_status = $wpdb->get_var(
 				$wpdb->prepare(
 					"SELECT status FROM `{$scans_table}` WHERE id = %d",
 					$scan_id
 				)
 			);
+			// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			// Default to completed if no scan found
 			if (!$scan_status) {
 				$scan_status = 'completed';
@@ -308,13 +320,17 @@ class Metabox {
 
 		$post_id = isset($_POST['post_id']) ? intval($_POST['post_id']) : 0;
 
+		if (! current_user_can('edit_post', $post_id)) {
+			wp_send_json_error(['message' => 'Permission denied'], 403);
+		}
+
 		if (!$post_id) {
 			wp_send_json_error(['message' => 'Invalid post ID']);
 		}
 
 		// Check if tables exist
 		if (!\ClearA11y\Database\Schema::tables_exist()) {
-			error_log('[ClearA11y Metabox] Tables do not exist, creating...');
+			\cleara11y_debug_log('[ClearA11y Metabox] Tables do not exist, creating...');
 			\ClearA11y\Database\Schema::create_tables();
 		}
 
@@ -336,7 +352,7 @@ class Metabox {
 		$scan_id = \ClearA11y\Database\Scan_Repository::insert($scan);
 
 		if (!$scan_id) {
-			error_log('[ClearA11y Metabox] Failed to create scan');
+			\cleara11y_debug_log('[ClearA11y Metabox] Failed to create scan');
 			wp_send_json_error(['message' => 'Failed to create scan']);
 		}
 
@@ -354,7 +370,7 @@ class Metabox {
 		$scan_item_id = \ClearA11y\Database\Scan_Item_Repository::insert($scan_item);
 
 		if (!$scan_item_id) {
-			error_log('[ClearA11y Metabox] Failed to create scan item');
+			\cleara11y_debug_log('[ClearA11y Metabox] Failed to create scan item');
 			wp_send_json_error(['message' => 'Failed to create scan item']);
 		}
 
@@ -363,6 +379,7 @@ class Metabox {
 		$jobs_table = \ClearA11y\Database\Schema::get_table_name('scan_jobs');
 		$url = get_permalink($post_id);
 
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 		$result = $wpdb->insert(
 			$jobs_table,
 			[
@@ -376,13 +393,15 @@ class Metabox {
 			],
 			['%d', '%s', '%d', '%d', '%s', '%d', '%s']
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery
 
 		if (!$result) {
-			error_log('[ClearA11y Metabox] Failed to create job');
+			\cleara11y_debug_log('[ClearA11y Metabox] Failed to create job');
 			wp_send_json_error(['message' => 'Failed to queue scan']);
 		}
 
 		// Update scan status to in_progress
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 		$wpdb->update(
 			\ClearA11y\Database\Schema::get_table_name('scans'),
 			[
@@ -393,8 +412,9 @@ class Metabox {
 			['%s', '%s'],
 			['%d']
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
-		error_log('[ClearA11y Metabox] Scan queued successfully - scan_id: ' . $scan_id);
+		\cleara11y_debug_log('[ClearA11y Metabox] Scan queued successfully - scan_id: ' . $scan_id);
 
 		$response_data = [
 			'queued' => true,
@@ -404,7 +424,7 @@ class Metabox {
 			'message' => 'Scan added to queue',
 		];
 
-		error_log('[ClearA11y Metabox] Response data: ' . wp_json_encode($response_data));
+		\cleara11y_debug_log('[ClearA11y Metabox] Response data: ' . wp_json_encode($response_data));
 
 		wp_send_json_success($response_data);
 	}
@@ -422,6 +442,10 @@ class Metabox {
 		}
 
 		$post_id = isset($_POST['post_id']) ? intval($_POST['post_id']) : 0;
+
+		if (! current_user_can('edit_post', $post_id)) {
+			wp_send_json_error(['message' => 'Permission denied'], 403);
+		}
 
 		if (!$post_id) {
 			wp_send_json_error(['message' => 'Invalid post ID']);

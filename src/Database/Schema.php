@@ -10,6 +10,10 @@
 
 namespace ClearA11y\Database;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 /**
  * Schema Class
  */
@@ -268,7 +272,7 @@ class Schema {
 		];
 
 		foreach ($tables as $table) {
-			$wpdb->query("DROP TABLE IF EXISTS `$table`");
+			$wpdb->query("DROP TABLE IF EXISTS `$table`"); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 		}
 
 		delete_option('cleara11y_db_version');
@@ -304,7 +308,7 @@ class Schema {
 		];
 
 		foreach ($tables as $table) {
-			$result = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table));
+			$result = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $wpdb->esc_like($table))); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin-owned schema operation; read current database state during migrations.
 			if ($result !== $table) {
 				return false;
 			}
@@ -324,12 +328,16 @@ class Schema {
 		$table = self::get_table_name('issues');
 
 		// Check if selector_score column exists (if yes, evidence columns already added)
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin-owned schema operation; read current database state during migrations.
 		$column_exists = $wpdb->get_var(
-			"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-			WHERE TABLE_SCHEMA = DATABASE()
-			AND TABLE_NAME = '{$table}'
-			AND COLUMN_NAME = 'selector_score'"
+			$wpdb->prepare(
+				'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+				WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+				$table,
+				'selector_score'
+			)
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 		if ($column_exists) {
 			return true; // Already migrated
@@ -353,9 +361,9 @@ class Schema {
 		];
 
 		foreach ($columns as $column) {
-			$result = $wpdb->query("ALTER TABLE `{$table}` ADD COLUMN {$column}");
+			$result = $wpdb->query("ALTER TABLE `{$table}` ADD COLUMN {$column}"); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 			if ($result === false) {
-				error_log("ClearA11y: Failed to add column {$column} to {$table}");
+				\cleara11y_debug_log("ClearA11y: Failed to add column {$column} to {$table}");
 				return false;
 			}
 		}
@@ -370,11 +378,13 @@ class Schema {
 			// Check if index exists first
 			$index_name = preg_match('/INDEX\s+(\w+)/', $index, $matches) ? $matches[1] : '';
 			if ($index_name) {
+				// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 				$index_exists = $wpdb->get_var(
-					"SHOW INDEX FROM `{$table}` WHERE Key_name = '{$index_name}'"
+					$wpdb->prepare("SHOW INDEX FROM `{$table}` WHERE Key_name = %s", $index_name)
 				);
+				// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 				if (!$index_exists) {
-					$wpdb->query("ALTER TABLE `{$table}` {$index}");
+					$wpdb->query("ALTER TABLE `{$table}` {$index}"); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 				}
 			}
 		}
@@ -393,12 +403,16 @@ class Schema {
 		$table = self::get_table_name('issues');
 
 		// Check if dismissed_global column exists
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin-owned schema operation; read current database state during migrations.
 		$column_exists = $wpdb->get_var(
-			"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-			WHERE TABLE_SCHEMA = DATABASE()
-			AND TABLE_NAME = '{$table}'
-			AND COLUMN_NAME = 'dismissed_global'"
+			$wpdb->prepare(
+				'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+				WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+				$table,
+				'dismissed_global'
+			)
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 		if ($column_exists) {
 			return true; // Already migrated
@@ -413,15 +427,15 @@ class Schema {
 		];
 
 		foreach ($columns as $column) {
-			$result = $wpdb->query("ALTER TABLE `{$table}` ADD COLUMN {$column}");
+			$result = $wpdb->query("ALTER TABLE `{$table}` ADD COLUMN {$column}"); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 			if ($result === false) {
-				error_log("ClearA11y: Failed to add column {$column} to {$table}");
+				\cleara11y_debug_log("ClearA11y: Failed to add column {$column} to {$table}");
 				return false;
 			}
 		}
 
 		// Add index for dismissed_global
-		$wpdb->query("ALTER TABLE `{$table}` ADD INDEX dismissed_global (dismissed_global)");
+		$wpdb->query("ALTER TABLE `{$table}` ADD INDEX dismissed_global (dismissed_global)"); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 
 		return true;
 	}
@@ -437,9 +451,11 @@ class Schema {
 		$table_name = self::get_table_name('scan_jobs');
 
 		// Check if table already exists
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin-owned schema operation; read current database state during migrations.
 		$table_exists = $wpdb->get_var(
-			$wpdb->prepare("SHOW TABLES LIKE %s", $table_name)
+			$wpdb->prepare("SHOW TABLES LIKE %s", $wpdb->esc_like($table_name))
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 		if ($table_exists === $table_name) {
 			return true; // Already exists
@@ -476,9 +492,11 @@ class Schema {
 		dbDelta($query);
 
 		// Verify table was created
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin-owned schema operation; read current database state during migrations.
 		$created = $wpdb->get_var(
-			$wpdb->prepare("SHOW TABLES LIKE %s", $table_name)
+			$wpdb->prepare("SHOW TABLES LIKE %s", $wpdb->esc_like($table_name))
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 		return $created === $table_name;
 	}
@@ -514,9 +532,9 @@ class Schema {
 		];
 
 		foreach ($columns as $column) {
-			$result = $wpdb->query("ALTER TABLE `{$table}` ADD COLUMN {$column}");
+			$result = $wpdb->query("ALTER TABLE `{$table}` ADD COLUMN {$column}"); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 			if ($result === false) {
-				error_log("ClearA11y: Failed to add column {$column} to {$table}");
+				\cleara11y_debug_log("ClearA11y: Failed to add column {$column} to {$table}");
 				return false;
 			}
 		}
@@ -531,11 +549,13 @@ class Schema {
 			// Check if index exists first
 			$index_name = preg_match('/INDEX\s+(\w+)/', $index, $matches) ? $matches[1] : '';
 			if ($index_name) {
+				// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 				$index_exists = $wpdb->get_var(
-					"SHOW INDEX FROM `{$table}` WHERE Key_name = '{$index_name}'"
+					$wpdb->prepare("SHOW INDEX FROM `{$table}` WHERE Key_name = %s", $index_name)
 				);
+				// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 				if (!$index_exists) {
-					$wpdb->query("ALTER TABLE `{$table}` {$index}");
+					$wpdb->query("ALTER TABLE `{$table}` {$index}"); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 				}
 			}
 		}
@@ -553,12 +573,16 @@ class Schema {
 
 		$table = self::get_table_name('scan_items');
 
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin-owned schema operation; read current database state during migrations.
 		$column_exists = $wpdb->get_var(
-			"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-			WHERE TABLE_SCHEMA = DATABASE()
-			AND TABLE_NAME = '{$table}'
-			AND COLUMN_NAME = 'pass_percentage'"
+			$wpdb->prepare(
+				'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+				WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+				$table,
+				'pass_percentage'
+			)
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 		return !empty($column_exists);
 	}
@@ -580,6 +604,7 @@ class Schema {
 		$issues_table = self::get_table_name('issues');
 
 		// Get all completed scan items that don't have scoring data yet
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 		$scan_items = $wpdb->get_results(
 			"SELECT * FROM `{$scan_items_table}`
 			WHERE status = 'completed'
@@ -587,6 +612,7 @@ class Schema {
 			ORDER BY id ASC
 			LIMIT 500"
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if (empty($scan_items)) {
 			return [
@@ -603,12 +629,14 @@ class Schema {
 			$processed++;
 
 			// Get all issues for this scan item, grouped by rule_id
+			// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 			$issues = $wpdb->get_results($wpdb->prepare(
 				"SELECT rule_id, severity FROM `{$issues_table}`
 				WHERE scan_item_id = %d
 				GROUP BY rule_id",
 				$item->id
 			));
+			// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 			$failed_rules = [];
 			foreach ($issues as $issue) {
@@ -633,6 +661,7 @@ class Schema {
 			$grade = self::calculate_grade_from_percentage($pass_percentage);
 
 			// Update scan item
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin-owned schema operation; read current database state during migrations.
 			$update_result = $wpdb->update(
 				$scan_items_table,
 				[
@@ -649,6 +678,7 @@ class Schema {
 				['%d', '%d', '%d', '%d', '%f', '%f', '%s', '%s'],
 				['%d']
 			);
+			// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 			if ($update_result !== false) {
 				$updated++;
@@ -686,10 +716,12 @@ class Schema {
 
 		foreach ($indexes as $table => $table_indexes) {
 			foreach ($table_indexes as $name => $columns) {
+				// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 				$exists = $wpdb->get_var(
 					$wpdb->prepare("SHOW INDEX FROM `{$table}` WHERE Key_name = %s", $name)
 				);
-				if (! $exists && false === $wpdb->query("ALTER TABLE `{$table}` ADD INDEX `{$name}` {$columns}")) {
+				// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+				if (! $exists && false === $wpdb->query("ALTER TABLE `{$table}` ADD INDEX `{$name}` {$columns}")) { // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 					return false;
 				}
 			}
@@ -707,31 +739,39 @@ class Schema {
 		global $wpdb;
 
 		$table = self::get_table_name('issues');
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin-owned schema operation; read current database state during migrations.
 		$column_exists = $wpdb->get_var(
-			"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-			WHERE TABLE_SCHEMA = DATABASE()
-			AND TABLE_NAME = '{$table}'
-			AND COLUMN_NAME = 'result_type'"
+			$wpdb->prepare(
+				'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+				WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s AND COLUMN_NAME = %s',
+				$table,
+				'result_type'
+			)
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 		if (! $column_exists) {
+			// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 			$result = $wpdb->query(
 				"ALTER TABLE `{$table}`
 				ADD COLUMN result_type VARCHAR(20) NOT NULL DEFAULT 'violation' AFTER rule_type"
 			);
+			// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			if (false === $result) {
-				error_log('ClearA11y: Failed to add result_type to issues table.');
+				\cleara11y_debug_log('ClearA11y: Failed to add result_type to issues table.');
 				return false;
 			}
 		}
 
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 		$index_exists = $wpdb->get_var(
 			"SHOW INDEX FROM `{$table}` WHERE Key_name = 'result_type'"
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 		if (! $index_exists) {
-			$result = $wpdb->query("ALTER TABLE `{$table}` ADD INDEX result_type (result_type)");
+			$result = $wpdb->query("ALTER TABLE `{$table}` ADD INDEX result_type (result_type)"); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 			if (false === $result) {
-				error_log('ClearA11y: Failed to index issues.result_type.');
+				\cleara11y_debug_log('ClearA11y: Failed to index issues.result_type.');
 				return false;
 			}
 		}
@@ -758,14 +798,14 @@ class Schema {
 
 		foreach ($columns as $column => $definition) {
 			if (! self::column_exists($table, $column)) {
-				$result = $wpdb->query("ALTER TABLE `{$table}` ADD COLUMN `{$column}` {$definition}");
+				$result = $wpdb->query("ALTER TABLE `{$table}` ADD COLUMN `{$column}` {$definition}"); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 				if (false === $result) {
-					error_log(
+					\cleara11y_debug_log(
 						sprintf(
 							'ClearA11y ERROR: Failed adding source-attribution column. table=%s column=%s database_error=%s',
 							$table,
 							$column,
-							$wpdb->last_error
+							'Database operation failed; raw details omitted to protect scan evidence.'
 						)
 					);
 					return false;
@@ -775,14 +815,14 @@ class Schema {
 
 		foreach (['source_key', 'owner_type'] as $index) {
 			if (! self::index_exists($table, $index)) {
-				$result = $wpdb->query("ALTER TABLE `{$table}` ADD INDEX `{$index}` (`{$index}`)");
+				$result = $wpdb->query("ALTER TABLE `{$table}` ADD INDEX `{$index}` (`{$index}`)"); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 				if (false === $result) {
-					error_log(
+					\cleara11y_debug_log(
 						sprintf(
 							'ClearA11y ERROR: Failed adding source-attribution index. table=%s index=%s database_error=%s',
 							$table,
 							$index,
-							$wpdb->last_error
+							'Database operation failed; raw details omitted to protect scan evidence.'
 						)
 					);
 					return false;
@@ -813,14 +853,14 @@ class Schema {
 
 		foreach ($columns as $column => $definition) {
 			if (! self::column_exists($table, $column)) {
-				$result = $wpdb->query("ALTER TABLE `{$table}` ADD COLUMN `{$column}` {$definition}");
+				$result = $wpdb->query("ALTER TABLE `{$table}` ADD COLUMN `{$column}` {$definition}"); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 				if (false === $result) {
-					error_log(
+					\cleara11y_debug_log(
 						sprintf(
 							'ClearA11y ERROR: Failed adding v2 identity column. table=%s column=%s database_error=%s',
 							$table,
 							$column,
-							$wpdb->last_error
+							'Database operation failed; raw details omitted to protect scan evidence.'
 						)
 					);
 					return false;
@@ -835,14 +875,14 @@ class Schema {
 		];
 		foreach ($indexes as $index => $definition) {
 			if (! self::index_exists($table, $index)) {
-				$result = $wpdb->query("ALTER TABLE `{$table}` ADD INDEX `{$index}` ({$definition})");
+				$result = $wpdb->query("ALTER TABLE `{$table}` ADD INDEX `{$index}` ({$definition})"); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 				if (false === $result) {
-					error_log(
+					\cleara11y_debug_log(
 						sprintf(
 							'ClearA11y ERROR: Failed adding v2 identity index. table=%s index=%s database_error=%s',
 							$table,
 							$index,
-							$wpdb->last_error
+							'Database operation failed; raw details omitted to protect scan evidence.'
 						)
 					);
 					return false;
@@ -895,13 +935,13 @@ class Schema {
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		dbDelta($query);
 
-		$created = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+		$created = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($table))); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin-owned schema operation; read current database state during migrations.
 		if ($created !== $table) {
-			error_log(
+			\cleara11y_debug_log(
 				sprintf(
 					'ClearA11y ERROR: Failed creating occurrence state table. table=%s database_error=%s',
 					$table,
-					$wpdb->last_error
+					'Database operation failed; raw details omitted to protect scan evidence.'
 				)
 			);
 			return false;
@@ -920,6 +960,7 @@ class Schema {
 	private static function column_exists(string $table, string $column): bool {
 		global $wpdb;
 
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin-owned schema operation; read current database state during migrations.
 		return (bool) $wpdb->get_var(
 			$wpdb->prepare(
 				'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
@@ -930,6 +971,7 @@ class Schema {
 				$column
 			)
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 	}
 
 	/**
@@ -942,6 +984,7 @@ class Schema {
 	private static function index_exists(string $table, string $index): bool {
 		global $wpdb;
 
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin-owned schema operation; read current database state during migrations.
 		return (bool) $wpdb->get_var(
 			$wpdb->prepare(
 				'SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
@@ -952,6 +995,7 @@ class Schema {
 				$index
 			)
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 	}
 
 	/**
@@ -988,14 +1032,14 @@ class Schema {
 			return true;
 		}
 
-		$result = $wpdb->query("ALTER TABLE `{$table}` ADD COLUMN `template` VARCHAR(255) DEFAULT NULL");
+		$result = $wpdb->query("ALTER TABLE `{$table}` ADD COLUMN `template` VARCHAR(255) DEFAULT NULL"); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 
 		if (false === $result) {
-			error_log(
+			\cleara11y_debug_log(
 				sprintf(
 					'ClearA11y ERROR: Failed adding template column. table=%s database_error=%s',
 					$table,
-					$wpdb->last_error
+					'Database operation failed; raw details omitted to protect scan evidence.'
 				)
 			);
 			return false;
@@ -1013,6 +1057,7 @@ class Schema {
 		global $wpdb;
 
 		$table = self::get_table_name('scan_items');
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin-owned schema operation; read current database state during migrations.
 		$column = $wpdb->get_var(
 			$wpdb->prepare(
 				'SELECT COLUMN_NAME
@@ -1024,6 +1069,7 @@ class Schema {
 				'template'
 			)
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 		return 'template' === $column;
 	}

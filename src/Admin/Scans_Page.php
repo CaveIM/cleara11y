@@ -10,6 +10,10 @@
 
 namespace ClearA11y\Admin;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 use ClearA11y\Database\Scan_Repository;
 use ClearA11y\Models\Scan;
 
@@ -29,7 +33,7 @@ class Scans_Page {
 		}
 
 		$filters = self::get_filters();
-		$page = isset($_GET['paged']) ? max(1, absint(wp_unslash($_GET['paged']))) : 1;
+		$page = isset($_GET['paged']) ? max(1, absint(wp_unslash($_GET['paged']))) : 1; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
 		$per_page = 20;
 		$total = Scan_Repository::count_filtered($filters);
 		$total_pages = max(1, (int) ceil($total / $per_page));
@@ -101,7 +105,7 @@ class Scans_Page {
 			<div class="tablenav top">
 				<div class="tablenav-pages">
 					<span class="displaying-num">
-						<?php echo esc_html(sprintf(_n('%d scan', '%d scans', $total, 'cleara11y'), $total)); ?>
+						<?php /* translators: Placeholder is the number of items. */ echo esc_html(sprintf(_n('%d scan', '%d scans', $total, 'cleara11y'), $total)); ?>
 					</span>
 					<?php self::render_pagination($page, $total_pages, $filters); ?>
 				</div>
@@ -160,17 +164,17 @@ class Scans_Page {
 	 * @return array
 	 */
 	private static function get_filters(): array {
-		$status = isset($_GET['scan_status']) ? sanitize_key(wp_unslash($_GET['scan_status'])) : '';
-		$type = isset($_GET['scan_type']) ? sanitize_key(wp_unslash($_GET['scan_type'])) : '';
-		$orderby = isset($_GET['orderby']) ? sanitize_key(wp_unslash($_GET['orderby'])) : 'created_at';
-		$order = isset($_GET['order']) ? sanitize_key(wp_unslash($_GET['order'])) : 'desc';
+		$status = isset($_GET['scan_status']) ? sanitize_key(wp_unslash($_GET['scan_status'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+		$type = isset($_GET['scan_type']) ? sanitize_key(wp_unslash($_GET['scan_type'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+		$orderby = isset($_GET['orderby']) ? sanitize_key(wp_unslash($_GET['orderby'])) : 'created_at'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+		$order = isset($_GET['order']) ? sanitize_key(wp_unslash($_GET['order'])) : 'desc'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
 
 		return [
 			'status' => in_array($status, Scan::STATUSES, true) ? $status : '',
 			'scan_type' => in_array($type, Scan::SCAN_TYPES, true) ? $type : '',
-			'search' => isset($_GET['s']) ? sanitize_text_field(wp_unslash($_GET['s'])) : '',
-			'date_from' => self::sanitize_date($_GET['date_from'] ?? ''),
-			'date_to' => self::sanitize_date($_GET['date_to'] ?? ''),
+			'search' => isset($_GET['s']) ? sanitize_text_field(wp_unslash($_GET['s'])) : '', // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+			'date_from' => self::sanitize_date(sanitize_text_field(wp_unslash($_GET['date_from'] ?? ''))), // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+			'date_to' => self::sanitize_date(sanitize_text_field(wp_unslash($_GET['date_to'] ?? ''))), // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
 			'orderby' => $orderby,
 			'order' => strtolower($order) === 'asc' ? 'ASC' : 'DESC',
 		];
@@ -183,6 +187,7 @@ class Scans_Page {
 	 * @return void
 	 */
 	private static function render_scan_row(Scan $scan): void {
+		/* translators: Placeholder is the scan or page identifier. */
 		$name = $scan->scan_name ?: sprintf(__('Scan #%d', 'cleara11y'), $scan->id);
 		$progress = $scan->total_items > 0 ? sprintf('%d / %d', $scan->scanned_items, $scan->total_items) : (string) $scan->scanned_items;
 		?>
@@ -241,16 +246,18 @@ class Scans_Page {
 	 * @return void
 	 */
 	public static function render_action_notice(): void {
-		$notice = isset($_GET['cleara11y_scan_notice']) ? sanitize_key(wp_unslash($_GET['cleara11y_scan_notice'])) : '';
-		$scan_id = isset($_GET['cancelled_scan_id']) ? absint(wp_unslash($_GET['cancelled_scan_id'])) : 0;
+		$notice = isset($_GET['cleara11y_scan_notice']) ? sanitize_key(wp_unslash($_GET['cleara11y_scan_notice'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+		$scan_id = isset($_GET['cancelled_scan_id']) ? absint(wp_unslash($_GET['cancelled_scan_id'])) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
 		if (! $notice || ! $scan_id) {
 			return;
 		}
 
 		if ('cancelled' === $notice) {
+			/* translators: Placeholder is the scan or page identifier. */
 			$message = sprintf(__('Scan #%d was cancelled. Completed results were kept.', 'cleara11y'), $scan_id);
 			$class = 'notice notice-success is-dismissible';
 		} else {
+			/* translators: Placeholder is the scan or page identifier. */
 			$message = sprintf(__('Scan #%d could not be cancelled.', 'cleara11y'), $scan_id);
 			$class = 'notice notice-error';
 		}
@@ -281,7 +288,7 @@ class Scans_Page {
 		<span class="pagination-links">
 			<a class="first-page button<?php echo $page <= 1 ? ' disabled' : ''; ?>" href="<?php echo esc_url($first_url); ?>">&laquo;</a>
 			<a class="prev-page button<?php echo $page <= 1 ? ' disabled' : ''; ?>" href="<?php echo esc_url($prev_url); ?>">&lsaquo;</a>
-			<span class="paging-input"><?php echo esc_html(sprintf(__('Page %1$d of %2$d', 'cleara11y'), $page, $total_pages)); ?></span>
+			<span class="paging-input"><?php /* translators: 1: Current page number, 2: Total pages. */ echo esc_html(sprintf(__('Page %1$d of %2$d', 'cleara11y'), $page, $total_pages)); ?></span>
 			<a class="next-page button<?php echo $page >= $total_pages ? ' disabled' : ''; ?>" href="<?php echo esc_url($next_url); ?>">&rsaquo;</a>
 			<a class="last-page button<?php echo $page >= $total_pages ? ' disabled' : ''; ?>" href="<?php echo esc_url($last_url); ?>">&raquo;</a>
 		</span>

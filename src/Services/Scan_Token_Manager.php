@@ -10,13 +10,12 @@
 
 namespace ClearA11y\Services;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 use ClearA11y\Database\Scan_Repository;
 use ClearA11y\Database\Scan_Item_Repository;
-
-// Force OPcache to reload this file (temporary workaround for persistent cache)
-if (function_exists('opcache_invalidate')) {
-    opcache_invalidate(__FILE__, true);
-}
 
 /**
  * Scan Token Manager Class
@@ -49,7 +48,7 @@ class Scan_Token_Manager {
 	public static function generate_existing_token(int $scan_id, int $scan_item_id, int $post_id, string $url): array {
 		$token = \wp_generate_password(32, false);
 		$expiry_seconds = (int) \get_option('cleara11y_scan_token_expiry', self::TOKEN_EXPIRY);
-		$expires_at = date('Y-m-d H:i:s', time() + $expiry_seconds);
+		$expires_at = gmdate('Y-m-d H:i:s', time() + $expiry_seconds);
 		$token_data = [
 			'scan_id' => $scan_id,
 			'scan_item_id' => $scan_item_id,
@@ -93,7 +92,7 @@ class Scan_Token_Manager {
 		$token = \wp_generate_password(32, false);
 
 		$expiry_seconds = (int) \get_option('cleara11y_scan_token_expiry', self::TOKEN_EXPIRY);
-		$expires_at = date('Y-m-d H:i:s', time() + $expiry_seconds);
+		$expires_at = gmdate('Y-m-d H:i:s', time() + $expiry_seconds);
 
 		// Create or update scan
 		$scan = new \ClearA11y\Models\Scan();
@@ -188,14 +187,18 @@ class Scan_Token_Manager {
 	 * }
 	 */
 	public static function validate_token(string $token): array|false {
+		if (! preg_match('/^[a-zA-Z0-9]{32}$/D', $token)) {
+			return false;
+		}
+
 		$token_data = \get_option(self::TOKEN_OPTION_PREFIX . $token);
 
-		if (!$token_data) {
+		if (! is_array($token_data) || empty($token_data['expires_at'])) {
 			return false;
 		}
 
 		// Check if token has expired
-		$current_time = \current_time('mysql');
+		$current_time = gmdate('Y-m-d H:i:s');
 		if ($current_time > $token_data['expires_at']) {
 			self::delete_token($token);
 			return false;
@@ -258,7 +261,7 @@ class Scan_Token_Manager {
 
 			$token = \wp_generate_password(32, false);
 			$expiry_seconds = (int) \get_option('cleara11y_scan_token_expiry', self::TOKEN_EXPIRY);
-			$expires_at = date('Y-m-d H:i:s', time() + $expiry_seconds);
+			$expires_at = gmdate('Y-m-d H:i:s', time() + $expiry_seconds);
 
 			// Create scan item
 			$scan_item = new \ClearA11y\Models\Scan_Item();
@@ -314,13 +317,17 @@ class Scan_Token_Manager {
 	public static function cleanup_expired(): int {
 		global $wpdb;
 
-		$current_time = \current_time('mysql');
+		$current_time = gmdate('Y-m-d H:i:s');
 
 		// Get all token options
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Prefix-based token cleanup has no bulk options API; do not cache expiring tokens.
 		$options = $wpdb->get_results(
-			"SELECT option_name, option_value FROM {$wpdb->options}
-			WHERE option_name LIKE '" . self::TOKEN_OPTION_PREFIX . "%'"
+			$wpdb->prepare(
+				"SELECT option_name, option_value FROM {$wpdb->options} WHERE option_name LIKE %s",
+				$wpdb->esc_like(self::TOKEN_OPTION_PREFIX) . '%'
+			)
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 		$cleaned = 0;
 		foreach ($options as $option) {

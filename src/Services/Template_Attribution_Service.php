@@ -218,7 +218,7 @@ class Template_Attribution_Service {
 			$html,
 			[
 				'source_type' => 'widget',
-				'source_ref' => 'sidebar:' . $buffer['index'],
+				'source_ref' => 'sidebar:' . $buffer['index'], // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Descriptor is normalized by register_source; original widget HTML must remain unchanged.
 				'owner_type' => 'unknown',
 				'owner_name' => '',
 			]

@@ -1011,9 +1011,10 @@
 			tooltipHtml += '<span class="cleara11y-tooltip-severity severity-' + issue.severity + '">' + issue.severity + '</span>';
 			tooltipHtml += '</div>';
 			tooltipHtml += '<div class="cleara11y-tooltip-message">' + this.escapeHtml(issue.message || issue.help_text || '') + '</div>';
-			if (issue.help_url) {
+			var helpUrl = this.safeHelpUrl(issue.help_url);
+			if (helpUrl) {
 				tooltipHtml += '<div class="cleara11y-tooltip-footer">';
-				tooltipHtml += '<a href="' + this.escapeHtml(issue.help_url) + '" target="_blank" rel="noopener" class="cleara11y-tooltip-help">Learn more →</a>';
+				tooltipHtml += '<a href="' + this.escapeAttribute(helpUrl) + '" target="_blank" rel="noopener" class="cleara11y-tooltip-help">Learn more →</a>';
 				tooltipHtml += '</div>';
 			}
 
@@ -1072,11 +1073,21 @@
 			}, 250);
 		},
 
+		safeHelpUrl: function(value) {
+			if (!value) return '';
+			try {
+				var url = new URL(value, window.location.href);
+				return ['https:', 'http:'].indexOf(url.protocol) !== -1 ? url.href : '';
+			} catch (error) {
+				return '';
+			}
+		},
+
 		escapeHtml: function(text) {
 			if (!text) return '';
 			var div = document.createElement('div');
 			div.textContent = text;
-			return div.innerHTML;
+			return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 		},
 
 		bindDragEvents: function() {

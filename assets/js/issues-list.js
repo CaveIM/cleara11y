@@ -29,9 +29,17 @@
 	const escapeHtml = value => {
 		const node = document.createElement('span');
 		node.textContent = value === null || value === undefined ? '' : String(value);
-		return node.innerHTML;
+		return node.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 	};
 	const escapeAttribute = value => escapeHtml(value).replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+	const safeUrl = value => {
+		try {
+			const url = new URL(value, window.location.href);
+			return ['https:', 'http:'].includes(url.protocol) ? escapeAttribute(url.href) : '';
+		} catch (error) {
+			return '';
+		}
+	};
 	const formatDate = value => value ? new Date(value.replace(' ', 'T') + (value.includes('Z') ? '' : 'Z')).toLocaleString() : '';
 
 	function init() {
@@ -433,12 +441,12 @@
 	}
 
 	function pageActions(page) {
-		return `<a class="button button-small" href="${escapeHtml(page.url)}" target="_blank" rel="noopener noreferrer">View</a>` +
-			(page.edit_url ? `<a class="button button-small" href="${escapeHtml(page.edit_url)}">Edit</a>` : '');
+		return `<a class="button button-small" href="${safeUrl(page.url)}" target="_blank" rel="noopener noreferrer">View</a>` +
+			(page.edit_url ? `<a class="button button-small" href="${safeUrl(page.edit_url)}">Edit</a>` : '');
 	}
 
 	function ruleActions(rule) {
-		return `<a class="button button-small" href="${escapeHtml(rule.reference_url)}" aria-label="${escapeAttribute('View issue reference for ' + rule.id)}">Issue reference</a>`;
+		return `<a class="button button-small" href="${safeUrl(rule.reference_url)}" aria-label="${escapeAttribute('View issue reference for ' + rule.id)}">Issue reference</a>`;
 	}
 
 	function renderOccurrenceRow(item) {
@@ -718,7 +726,7 @@
 				<section><h3>Observation</h3>
 					<dl><dt>Rule ID</dt><dd><code>${escapeHtml(item.rule.id)}</code></dd>
 						<dt>Occurrence ID</dt><dd>${item.id}</dd>
-						<dt>Scan</dt><dd><a data-scan-explorer-url href="${escapeHtml(explorerUrl({scanId: item.scan.id, groupBy: 'rule'}))}">${escapeHtml(item.scan.name)}</a> (${escapeHtml(item.scan.status)})</dd>
+						<dt>Scan</dt><dd><a data-scan-explorer-url href="${safeUrl(explorerUrl({scanId: item.scan.id, groupBy: 'rule'}))}">${escapeHtml(item.scan.name)}</a> (${escapeHtml(item.scan.status)})</dd>
 						<dt>Captured</dt><dd>${escapeHtml(formatDate(item.scan.scanned_at) || 'Unavailable')}</dd></dl>
 				</section>
 			</div>
@@ -746,8 +754,8 @@
 				</section>
 				<section><h3>Rule reference</h3>
 					${item.rule.wcag_criterion ? `<p><strong>WCAG criterion:</strong> ${escapeHtml(item.rule.wcag_criterion)}</p>` : ''}
-					<p><a href="${escapeHtml(item.rule.reference_url)}">View the ClearA11y issue reference</a></p>
-					${item.rule.help_url ? `<p><a href="${escapeHtml(item.rule.help_url)}" target="_blank" rel="noopener noreferrer">Learn more about this rule <span class="screen-reader-text">(opens in a new tab)</span></a></p>` : ''}
+					<p><a href="${safeUrl(item.rule.reference_url)}">View the ClearA11y issue reference</a></p>
+					${item.rule.help_url ? `<p><a href="${safeUrl(item.rule.help_url)}" target="_blank" rel="noopener noreferrer">Learn more about this rule <span class="screen-reader-text">(opens in a new tab)</span></a></p>` : ''}
 				</section>
 			</div>
 			${detailToolbar(item)}`;
@@ -793,7 +801,7 @@
 				newTab: true,
 				menuLabel: 'More viewing options'
 			})
-			: `<a class="button button-primary" href="${escapeHtml(item.page.url)}" target="_blank" rel="noopener noreferrer">View page</a>`;
+			: `<a class="button button-primary" href="${safeUrl(item.page.url)}" target="_blank" rel="noopener noreferrer">View page</a>`;
 		const specificEditUrl = item.source?.edit_url || '';
 		const specificEditLabel = item.source?.edit_label || (item.source?.owner_name ? `Edit ${item.source.owner_name}` : 'Edit identified source');
 		const editAction = specificEditUrl && item.page.edit_url && specificEditUrl !== item.page.edit_url
@@ -806,8 +814,8 @@
 				menuLabel: 'More editing options'
 			})
 			: (specificEditUrl
-				? `<a class="button" href="${escapeHtml(specificEditUrl)}">${escapeHtml(specificEditLabel)}</a>`
-				: (item.page.edit_url ? `<a class="button" href="${escapeHtml(item.page.edit_url)}">Edit page</a>` : ''));
+				? `<a class="button" href="${safeUrl(specificEditUrl)}">${escapeHtml(specificEditLabel)}</a>`
+				: (item.page.edit_url ? `<a class="button" href="${safeUrl(item.page.edit_url)}">Edit page</a>` : ''));
 		const exceptionAction = item.status === 'exception'
 			? '<span class="cleara11y-toolbar__exception-status">Current exception</span>'
 			: `<div class="cleara11y-split-action">
@@ -829,11 +837,11 @@
 		const primaryClass = options.primary ? ' button-primary' : '';
 		const target = options.newTab ? ' target="_blank" rel="noopener noreferrer"' : '';
 		return `<div class="cleara11y-split-action">
-			<a class="button${primaryClass}" href="${escapeHtml(options.primaryUrl)}"${target}>${escapeHtml(options.primaryLabel)}</a>
+			<a class="button${primaryClass}" href="${safeUrl(options.primaryUrl)}"${target}>${escapeHtml(options.primaryLabel)}</a>
 			<div class="cleara11y-split-action__dropdown">
 				<button type="button" class="button${primaryClass}" data-action-menu-toggle aria-expanded="false" aria-controls="${escapeHtml(options.id)}" aria-label="${escapeHtml(options.menuLabel)}"><span aria-hidden="true">▾</span></button>
 				<div id="${escapeHtml(options.id)}" class="cleara11y-split-action__menu is-align-left" hidden>
-					<a href="${escapeHtml(options.secondaryUrl)}"${target}>${escapeHtml(options.secondaryLabel)}</a>
+					<a href="${safeUrl(options.secondaryUrl)}"${target}>${escapeHtml(options.secondaryLabel)}</a>
 				</div>
 			</div>
 		</div>`;

@@ -10,6 +10,10 @@
 
 namespace ClearA11y\Frontend;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 /**
  * Frontend Highlighter Class
  */
@@ -42,6 +46,9 @@ class Highlighter {
 	 * @var string
 	 */
 	private const NONCE_PARAM = 'edac_nonce';
+
+	/** Authorized issue for this page request. */
+	private ?\ClearA11y\Models\Issue $highlight_issue = null;
 
 	/**
 	 * Constructor.
@@ -92,7 +99,7 @@ class Highlighter {
 	 */
 	private function should_load_frontend_assets(): bool {
 		// Don't load frontend assets when scanning (prevents panel elements from being flagged as violations)
-		if (isset($_GET[self::SCANNING_PARAM]) || isset($_GET[self::SCAN_TOKEN_PARAM])) {
+		if (isset($_GET[self::SCANNING_PARAM]) || isset($_GET[self::SCAN_TOKEN_PARAM])) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Presence-only scan-mode check hides plugin UI; it does not read findings or change stored data.
 			return false;
 		}
 
@@ -254,7 +261,7 @@ class Highlighter {
 			$settings[$option] = $value;
 		} elseif (array_key_exists($option, $this->get_panel_setting_defaults())) {
 			// Boolean setting (highlight_all/pulse/tooltips).
-			$settings[$option] = isset($_POST['enabled']) && '1' === wp_unslash($_POST['enabled']);
+			$settings[$option] = isset($_POST['enabled']) && '1' === sanitize_text_field(wp_unslash($_POST['enabled']));
 		} else {
 			wp_send_json_error(['message' => __('Invalid panel setting.', 'cleara11y')], 400);
 		}
@@ -270,6 +277,8 @@ class Highlighter {
 	 * @return void
 	 */
 	public function detect_highlight_request(): void {
+		$this->highlight_issue = null;
+
 		// Check if highlight parameters are present
 		if (!isset($_GET[self::HIGHLIGHT_PARAM], $_GET[self::NONCE_PARAM])) {
 			return;
@@ -291,51 +300,12 @@ class Highlighter {
 		// Get issue details
 		$issue = \ClearA11y\Database\Issue_Repository::get_by_id($issue_id);
 
-		if (!$issue) {
+		if (! $issue || ! current_user_can('edit_post', $issue->post_id)
+			|| (int) get_queried_object_id() !== $issue->post_id) {
 			return;
 		}
 
-		// Store issue data for highlighting
-		$this->setup_highlight_data($issue);
-
-		add_action('wp_enqueue_scripts', [$this, 'enqueue_highlighter_scripts']);
-	}
-
-	/**
-	 * Set up highlight data for JavaScript.
-	 *
-	 * @param \ClearA11y\Models\Issue $issue Issue to highlight.
-	 * @return void
-	 */
-	private function setup_highlight_data(\ClearA11y\Models\Issue $issue): void {
-		wp_localize_script('cleara11y-highlighter', 'cleara11yHighlightData', [
-			'selector' => $issue->selector,
-			'ruleId' => $issue->rule_id,
-			'message' => $issue->message,
-			'severity' => $issue->severity,
-		]);
-	}
-
-	/**
-	 * Enqueue highlighter scripts and styles.
-	 *
-	 * @return void
-	 */
-	public function enqueue_highlighter_scripts(): void {
-		wp_enqueue_script(
-			'cleara11y-highlighter',
-			CLEARA11Y_PLUGIN_URL . 'assets/js/highlighter.js',
-			[],
-			CLEARA11Y_VERSION,
-			true
-		);
-
-		wp_enqueue_style(
-			'cleara11y-highlighter',
-			CLEARA11Y_PLUGIN_URL . 'assets/css/highlighter.css',
-			[],
-			CLEARA11Y_VERSION
-		);
+		$this->highlight_issue = $issue;
 	}
 
 	/**
@@ -344,16 +314,8 @@ class Highlighter {
 	 * @return void
 	 */
 	public function inject_highlighter_script(): void {
-		if (!isset($_GET[self::HIGHLIGHT_PARAM])) {
-			return;
-		}
-
-		$issue_id = absint($_GET[self::HIGHLIGHT_PARAM]);
-
-		// Get issue data
-		$issue = \ClearA11y\Database\Issue_Repository::get_by_id($issue_id);
-
-		if (!$issue || !$issue->selector) {
+		$issue = $this->highlight_issue;
+		if (! $issue || ! $issue->selector) {
 			return;
 		}
 
@@ -361,7 +323,16 @@ class Highlighter {
 		<script>
 		document.addEventListener('DOMContentLoaded', function() {
 			try {
-				var element = document.querySelector(<?php echo wp_json_encode($issue->selector); ?>);
+				var issue = <?php echo wp_json_encode(
+					[
+						'selector' => $issue->selector,
+						'severity' => $issue->severity,
+						'ruleId' => $issue->rule_id,
+						'message' => $issue->message,
+					],
+					JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+				); ?>;
+				var element = document.querySelector(issue.selector);
 
 				if (element) {
 					element.classList.add('cleara11y-highlight-issue');
@@ -370,14 +341,15 @@ class Highlighter {
 
 					// Add info panel
 					var panel = document.createElement('div');
-					panel.className = 'cleara11y-highlight-panel cleara11y-severity-<?php echo esc_attr($issue->severity); ?>';
+					panel.className = 'cleara11y-highlight-panel cleara11y-severity-' + issue.severity;
 					panel.setAttribute('data-cleara11y-plugin', 'true');
 					panel.setAttribute('aria-hidden', 'true');
-					panel.innerHTML = `
-						<strong><?php echo esc_html($issue->rule_id); ?></strong><br>
-						<?php echo esc_html($issue->message); ?>
-						<button class="cleara11y-close-panel">&times;</button>
-					`;
+					var title = document.createElement('strong');
+					title.textContent = issue.ruleId;
+					var close = document.createElement('button');
+					close.className = 'cleara11y-close-panel';
+					close.textContent = '×';
+					panel.append(title, document.createElement('br'), document.createTextNode(issue.message || ''), close);
 					document.body.appendChild(panel);
 
 					// Close button handler

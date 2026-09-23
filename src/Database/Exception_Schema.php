@@ -10,6 +10,10 @@
 
 namespace ClearA11y\Database;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 /**
  * Exception Schema Class
  */
@@ -157,13 +161,13 @@ class Exception_Schema {
 					continue;
 				}
 
-				if (false === $wpdb->query("ALTER TABLE `{$table}` ADD COLUMN `{$column}` {$definition}")) {
-					error_log(
+				if (false === $wpdb->query("ALTER TABLE `{$table}` ADD COLUMN `{$column}` {$definition}")) { // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
+					\cleara11y_debug_log(
 						sprintf(
 							'ClearA11y ERROR: Failed adding v2 suppression field. table=%s column=%s database_error=%s',
 							$table,
 							$column,
-							$wpdb->last_error
+							'Database operation failed; raw details omitted to protect scan evidence.'
 						)
 					);
 					return false;
@@ -179,24 +183,26 @@ class Exception_Schema {
 		foreach ($indexes as $index => $definition) {
 			if (
 				! self::index_exists($rules_table, $index)
-				&& false === $wpdb->query("ALTER TABLE `{$rules_table}` ADD INDEX `{$index}` ({$definition})")
+				&& false === $wpdb->query("ALTER TABLE `{$rules_table}` ADD INDEX `{$index}` ({$definition})") // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 			) {
-				error_log(
+				\cleara11y_debug_log(
 					sprintf(
 						'ClearA11y ERROR: Failed adding v2 suppression index. index=%s database_error=%s',
 						$index,
-						$wpdb->last_error
+						'Database operation failed; raw details omitted to protect scan evidence.'
 					)
 				);
 				return false;
 			}
 		}
 
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 		$wpdb->query(
 			"UPDATE `{$rules_table}`
 			SET legacy_reanchor_status = 'not_required'
 			WHERE target_type = 'rule' AND legacy_reanchor_status = 'pending'"
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		update_option('cleara11y_exception_db_version', '3.0');
 
@@ -213,6 +219,7 @@ class Exception_Schema {
 	private static function column_exists(string $table, string $column): bool {
 		global $wpdb;
 
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin-owned schema operation; read current database state during migrations.
 		return (bool) $wpdb->get_var(
 			$wpdb->prepare(
 				'SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
@@ -221,6 +228,7 @@ class Exception_Schema {
 				$column
 			)
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 	}
 
 	/**
@@ -233,6 +241,7 @@ class Exception_Schema {
 	private static function index_exists(string $table, string $index): bool {
 		global $wpdb;
 
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin-owned schema operation; read current database state during migrations.
 		return (bool) $wpdb->get_var(
 			$wpdb->prepare(
 				'SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS
@@ -241,6 +250,7 @@ class Exception_Schema {
 				$index
 			)
 		);
+		// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 	}
 
 	/**
@@ -264,11 +274,11 @@ class Exception_Schema {
 		foreach ($pairs as $legacy_suffix => $current_suffix) {
 			$legacy = self::get_table_name($legacy_suffix);
 			$current = self::get_table_name($current_suffix);
-			$legacy_exists = $legacy === $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $legacy));
-			$current_exists = $current === $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $current));
+			$legacy_exists = $legacy === $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($legacy))); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin-owned schema operation; read current database state during migrations.
+			$current_exists = $current === $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($current))); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin-owned schema operation; read current database state during migrations.
 
 			if ($legacy_exists && $current_exists) {
-				error_log(
+				\cleara11y_debug_log(
 					sprintf(
 						'ClearA11y ERROR: Exception table migration stopped because both legacy and current tables exist. legacy=%s current=%s',
 						$legacy,
@@ -278,13 +288,13 @@ class Exception_Schema {
 				return false;
 			}
 
-			if ($legacy_exists && false === $wpdb->query("RENAME TABLE `{$legacy}` TO `{$current}`")) {
-				error_log(
+			if ($legacy_exists && false === $wpdb->query("RENAME TABLE `{$legacy}` TO `{$current}`")) { // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
+				\cleara11y_debug_log(
 					sprintf(
 						'ClearA11y ERROR: Failed to rename exception table. legacy=%s current=%s database_error=%s',
 						$legacy,
 						$current,
-						$wpdb->last_error
+						'Database operation failed; raw details omitted to protect scan evidence.'
 					)
 				);
 				return false;
@@ -299,15 +309,17 @@ class Exception_Schema {
 			if (
 				self::column_exists($table, 'ignore_rule_id')
 				&& ! self::column_exists($table, 'exception_rule_id')
+				// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 				&& false === $wpdb->query(
 					"ALTER TABLE `{$table}` CHANGE `ignore_rule_id` `exception_rule_id` varchar(36) NOT NULL"
 				)
+				// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 			) {
-				error_log(
+				\cleara11y_debug_log(
 					sprintf(
 						'ClearA11y ERROR: Failed renaming legacy exception relation column. table=%s database_error=%s',
 						$table,
-						$wpdb->last_error
+						'Database operation failed; raw details omitted to protect scan evidence.'
 					)
 				);
 				return false;
@@ -339,7 +351,7 @@ class Exception_Schema {
 		];
 
 		foreach ($tables as $table) {
-			$result = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $table));
+			$result = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $wpdb->esc_like($table))); // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Plugin-owned schema operation; read current database state during migrations.
 			if ($result !== $table) {
 				return false;
 			}
@@ -364,7 +376,7 @@ class Exception_Schema {
 		];
 
 		foreach ($tables as $table) {
-			$wpdb->query("DROP TABLE IF EXISTS `$table`");
+			$wpdb->query("DROP TABLE IF EXISTS `$table`"); // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.DirectDatabaseQuery.SchemaChange, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Plugin-owned schema operation; read current database state during migrations; Identifiers and DDL fragments come from the fixed plugin schema; values use placeholders.
 		}
 
 		delete_option('cleara11y_exception_db_version');

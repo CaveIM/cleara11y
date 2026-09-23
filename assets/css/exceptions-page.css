@@ -290,13 +290,23 @@
 
 /* Wizard Modal */
 .cleara11y-wizard-content {
-	top: 50%;
+	top: 16px;
+	box-sizing: border-box;
 	bottom: auto;
 	width: calc(100% - 32px);
 	max-width: 760px;
 	max-height: calc(100vh - 32px);
-	transform: translate(-50%, -50%);
-	transition: height 180ms ease;
+	transform: translateX(-50%);
+}
+
+.cleara11y-wizard-content > .cleara11y-modal-header,
+.cleara11y-wizard-progress {
+	flex: 0 0 auto;
+}
+
+.cleara11y-scope-option > .cleara11y-wizard-reveal-section {
+	margin: 0;
+	padding: 0 12px 12px 40px;
 }
 
 /* Wizard Progress */
@@ -347,6 +357,7 @@
 .cleara11y-wizard-body {
 	flex: 1 1 auto;
 	max-height: none;
+	overflow-anchor: none;
 	overflow-y: auto;
 	padding: 16px 20px 20px;
 }
@@ -474,6 +485,24 @@
 .cleara11y-radio-card:has(input[type="radio"]:checked) {
 	border-color: #2271b1;
 	box-shadow: 0 0 0 1px #2271b1;
+}
+
+.cleara11y-scope-option {
+	border: 1px solid #c3c4c7;
+	border-radius: 2px;
+	background: #fff;
+}
+
+.cleara11y-scope-option:has(input[name="scope_type"]:checked) {
+	border-color: #2271b1;
+	box-shadow: 0 0 0 1px #2271b1;
+}
+
+.cleara11y-scope-option > .cleara11y-radio-card,
+.cleara11y-scope-option > .cleara11y-radio-card:has(input[type="radio"]:checked) {
+	border: 0;
+	background: transparent;
+	box-shadow: none;
 }
 
 .cleara11y-radio-card-content strong {
@@ -682,6 +711,7 @@
 
 .cleara11y-wizard-footer__actions {
 	display: flex;
+	margin-left: auto;
 	align-items: center;
 	justify-content: flex-end;
 	gap: 8px;
@@ -709,6 +739,7 @@
 /* Responsive */
 @media (max-width: 782px) {
 	.cleara11y-wizard-content {
+		top: 8px;
 		width: calc(100% - 16px);
 		max-width: none;
 		max-height: calc(100vh - 16px);
@@ -747,3 +778,48 @@
 		transition: none;
 	}
 }
+
+/* Management list follows the Issues Explorer's compact filter/table layout. */
+.cleara11y-exceptions-wrap { max-width: 1600px; }
+.cleara11y-exceptions-wrap .nav-tab-wrapper { margin: 20px 0 12px; }
+.cleara11y-exceptions-wrap .cleara11y-tab-content { background: transparent; border: 0; box-shadow: none; }
+.cleara11y-exceptions-wrap .tab-panel { padding: 0; }
+.cleara11y-exceptions-filters,
+.cleara11y-audit-log-filters { padding: 12px; border: 1px solid #c3c4c7; background: #fff; }
+#cleara11y-exceptions-summary { margin: 12px 0 8px; color: #50575e; }
+.cleara11y-exceptions-table-scroll { overflow-x: auto; }
+.cleara11y-exceptions-wrap .cleara11y-exceptions-table { min-width: 760px; }
+.cleara11y-exceptions-table th:first-child { width: 28%; }
+.cleara11y-exceptions-table th:nth-child(3) { width: 24%; }
+.cleara11y-exceptions-wrap .cleara11y-exceptions-table td { padding: 16px 12px; vertical-align: top; border-bottom: 1px solid #dcdcde; overflow-wrap: anywhere; }
+.cleara11y-exceptions-wrap .cleara11y-exceptions-table th { padding: 12px; background: #f6f7f7; }
+.cleara11y-exceptions-table tr:last-child td { border-bottom: 0; }
+.cleara11y-exception-title { text-align: left; font-weight: 600; line-height: 1.5; }
+.cleara11y-exception-meta { margin-top: 4px; color: #646970; font-size: 12px; }
+.cleara11y-exception-selector { display: block; margin: 8px 0 0; overflow-wrap: anywhere; }
+.cleara11y-exceptions-wrap .cleara11y-exceptions-empty { text-align: center; padding: 48px 24px; }
+#cleara11y-exception-detail-modal .cleara11y-modal-content { inset: 32px 0 0 auto; transform: none; width: min(600px, 100%); max-height: none; height: calc(100dvh - 32px); box-sizing: border-box; border-radius: 0; }
+#cleara11y-exception-detail-modal .cleara11y-modal-header,
+#cleara11y-exception-detail-modal .cleara11y-modal-footer { flex-shrink: 0; }
+#cleara11y-exception-detail-modal .cleara11y-modal-body { flex: 1; }
+#cleara11y-exception-detail-modal .cleara11y-modal-header .cleara11y-modal-close { width: 36px; height: 36px; }
+#cleara11y-exception-detail-modal .cleara11y-modal-footer { flex-wrap: wrap; justify-content: flex-start; }
+#cleara11y-exception-detail-modal .cleara11y-revoke-exception { margin-left: auto; color: #b32d2e; border-color: #b32d2e; }
+#cleara11y-exception-detail-modal .cleara11y-detail-section { margin-top: 28px; }
+#cleara11y-exception-detail-modal .cleara11y-detail-section:first-of-type { margin-top: 16px; }
+#cleara11y-exception-detail-modal .cleara11y-detail-row { border-color: #dcdcde; gap: 16px; }
+#cleara11y-exception-detail-modal .cleara11y-detail-value { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+#cleara11y-exception-detail-modal pre { padding: 12px; background: #f0f0f1; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cleara11y-exception-history { margin: 0; padding-left: 20px; }
+.cleara11y-exception-history li { padding: 8px 0; }
+@media (max-width: 782px) {
+	#cleara11y-exception-detail-modal .cleara11y-modal-content { top: 0; height: 100dvh; }
+	#cleara11y-exception-detail-modal .cleara11y-detail-label { width: 100px; }
+	.cleara11y-exceptions-wrap .nav-tab { margin: 0 4px 4px 0; }
+}
+#cleara11y-exception-detail-modal .cleara11y-modal-footer > .button { padding: 0 12px; min-height: 36px; }
+#cleara11y-exception-detail-modal .cleara11y-modal-body { overscroll-behavior: contain; }
+.cleara11y-exceptions-table-scroll:focus-visible { outline: 2px solid #2271b1; outline-offset: 2px; }
+#cleara11y-exception-detail-modal .cleara11y-modal-footer > .cleara11y-modal-close { width: auto; height: auto; }
+.cleara11y-exceptions-wrap #tab-audit td { overflow-wrap: anywhere; }
+.cleara11y-exceptions-wrap #tab-audit pre { white-space: pre-wrap; }

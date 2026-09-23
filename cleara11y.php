@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name: ClearA11y
+ * Plugin Name: Cleara11y
  * Plugin URI: https://github.com/caveim/cleara11y
  * Description: WordPress accessibility plugin that scans published content for WCAG 2.1 AA compliance issues using hybrid client-side (axe-core) and server-side (PHP) scanning.
  * Version: 1.6.1
@@ -9,7 +9,6 @@
  * License: GPL-2.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: cleara11y
- * Domain Path: /languages
  * Requires at least: 6.0
  * Requires PHP: 8.0
  *
@@ -58,6 +57,23 @@ spl_autoload_register(function ($class) {
 		require_once $file;
 	}
 });
+
+/**
+ * Write plugin diagnostics only when site debugging is explicitly enabled.
+ *
+ * Callers must pass operational metadata, never tokens or raw scan evidence.
+ *
+ * @param string $message Diagnostic message.
+ * @return void
+ */
+function cleara11y_debug_log(string $message): void {
+	if (! defined('WP_DEBUG') || ! WP_DEBUG) {
+		return;
+	}
+
+	// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Intentional diagnostic sink, disabled unless WP_DEBUG is enabled.
+	error_log($message);
+}
 
 /**
  * Main plugin class.
@@ -112,8 +128,6 @@ class ClearA11y_Plugin {
 		add_action('admin_init', [$this, 'run_database_migrations']);
 		add_action('admin_init', [$this, 'check_tables_exist'], 20);
 		add_action('admin_post_cleara11y_migrate_db', [$this, 'handle_manual_migration']);
-		// Test runner (development only)
-		add_action('admin_init', [$this, 'run_test_if_requested']);
 	}
 
 	/**
@@ -124,8 +138,8 @@ class ClearA11y_Plugin {
 			return;
 		}
 
-		$table_action = isset($_GET['cleara11y_tables'])
-			? sanitize_key(wp_unslash($_GET['cleara11y_tables']))
+		$table_action = isset($_GET['cleara11y_tables']) // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+			? sanitize_key(wp_unslash($_GET['cleara11y_tables'])) // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
 			: '';
 
 		if ('recreated' === $table_action && \ClearA11y\Database\Schema::tables_exist()) {
@@ -353,10 +367,10 @@ class ClearA11y_Plugin {
 
 		if ($result) {
 			update_option('cleara11y_db_version', '1.1.0');
-			wp_redirect(admin_url('admin.php?page=cleara11y&migrated=1'));
+			wp_safe_redirect(admin_url('admin.php?page=cleara11y&migrated=1'));
 			exit;
 		} else {
-			wp_redirect(admin_url('admin.php?page=cleara11y&migration_failed=1'));
+			wp_safe_redirect(admin_url('admin.php?page=cleara11y&migration_failed=1'));
 			exit;
 		}
 	}
@@ -369,9 +383,6 @@ class ClearA11y_Plugin {
 		if (! $this->check_requirements()) {
 			return;
 		}
-
-		// Load text domain for translations
-		load_plugin_textdomain('cleara11y', false, dirname(CLEARA11Y_PLUGIN_BASENAME) . '/languages');
 
 		// Initialize admin components
 		if (is_admin()) {
@@ -546,14 +557,15 @@ class ClearA11y_Plugin {
 
 		// Check if automated scanning is enabled
 		if (!get_option('cleara11y_automated_enabled', 0)) {
-			error_log('[ClearA11y] Automated scan is disabled, skipping.');
+			\cleara11y_debug_log('[ClearA11y] Automated scan is disabled, skipping.');
 			return;
 		}
 
-		error_log('[ClearA11y] Starting automated scan cron callback...');
+		\cleara11y_debug_log('[ClearA11y] Starting automated scan cron callback...');
 
 		// Check for active scans to prevent conflicts
 		$scans_table = \ClearA11y\Database\Schema::get_table_name('scans');
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$active_scan = $wpdb->get_row(
 			$wpdb->prepare(
 				"SELECT id, scan_name, status FROM `{$scans_table}`
@@ -562,17 +574,17 @@ class ClearA11y_Plugin {
 				LIMIT 1"
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if ($active_scan) {
-			error_log(sprintf('[ClearA11y] Automated scan skipped - active scan found: %d (%s - %s)',
+			\cleara11y_debug_log(sprintf('[ClearA11y] Automated scan skipped - active scan found: %d (%s)',
 				$active_scan->id,
-				$active_scan->scan_name,
 				$active_scan->status
 			));
 			return;
 		}
 
-		error_log('[ClearA11y] No active scans found, proceeding with automated scan...');
+		\cleara11y_debug_log('[ClearA11y] No active scans found, proceeding with automated scan...');
 
 		// Get post types to scan
 		$post_types = get_option('cleara11y_scan_post_types', ['page', 'post']);
@@ -586,15 +598,16 @@ class ClearA11y_Plugin {
 		]);
 
 		if (empty($posts)) {
-			error_log('[ClearA11y] Automated scan skipped - no posts found to scan.');
+			\cleara11y_debug_log('[ClearA11y] Automated scan skipped - no posts found to scan.');
 			return;
 		}
 
-		error_log(sprintf('[ClearA11y] Found %d posts for automated scan.', count($posts)));
+		\cleara11y_debug_log(sprintf('[ClearA11y] Found %d posts for automated scan.', count($posts)));
 
 		// Create a new automated scan record using existing repository
 		$scan = new \ClearA11y\Models\Scan();
 		$scan->scan_type = 'scheduled'; // Distinguish from manual scans
+		/* translators: Placeholder is the formatted scan date and time. */
 		$scan->scan_name = sprintf(__('Automated Scan %s', 'cleara11y'), current_time('mysql'));
 		$scan->status = 'pending';
 		$scan->total_items = count($posts);
@@ -604,11 +617,11 @@ class ClearA11y_Plugin {
 		$scan_id = \ClearA11y\Database\Scan_Repository::insert($scan);
 
 		if (!$scan_id) {
-			error_log('[ClearA11y] Automated scan failed - could not create scan record.');
+			\cleara11y_debug_log('[ClearA11y] Automated scan failed - could not create scan record.');
 			return;
 		}
 
-		error_log(sprintf('[ClearA11y] Created automated scan record ID: %d', $scan_id));
+		\cleara11y_debug_log(sprintf('[ClearA11y] Created automated scan record ID: %d', $scan_id));
 
 		// Create scan items and jobs for each post
 		$jobs_table = \ClearA11y\Database\Schema::get_table_name('scan_jobs');
@@ -640,13 +653,14 @@ class ClearA11y_Plugin {
 			$scan_item_id = \ClearA11y\Database\Scan_Item_Repository::insert($scan_item);
 
 			if (!$scan_item_id) {
-				error_log(sprintf('[ClearA11y] Failed to create scan item for post %d', $post_id));
+				\cleara11y_debug_log(sprintf('[ClearA11y] Failed to create scan item for post %d', $post_id));
 				continue;
 			}
 
 			$created_items++;
 
 			// Check if job already exists for this post/scan
+			// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 			$existing = $wpdb->get_var(
 				$wpdb->prepare(
 					"SELECT id FROM `{$jobs_table}` WHERE post_id = %d AND scan_id = %d",
@@ -654,12 +668,14 @@ class ClearA11y_Plugin {
 					$scan_id
 				)
 			);
+			// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 			if ($existing) {
 				continue; // Skip existing jobs
 			}
 
 			// Insert job using existing pattern
+			// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 			$result = $wpdb->insert(
 				$jobs_table,
 				[
@@ -673,6 +689,7 @@ class ClearA11y_Plugin {
 				],
 				['%d', '%s', '%d', '%d', '%s', '%d', '%s']
 			);
+			// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery
 
 			if ($result) {
 				$created_jobs++;
@@ -680,16 +697,16 @@ class ClearA11y_Plugin {
 		}
 
 		if ($created_items === 0) {
-			error_log('[ClearA11y] Automated scan failed - no scan items created.');
+			\cleara11y_debug_log('[ClearA11y] Automated scan failed - no scan items created.');
 			return;
 		}
 
 		if ($created_jobs === 0) {
-			error_log('[ClearA11y] Automated scan failed - no jobs created.');
+			\cleara11y_debug_log('[ClearA11y] Automated scan failed - no jobs created.');
 			return;
 		}
 
-		error_log(sprintf('[ClearA11y] Created %d scan items and %d jobs for automated scan %d', $created_items, $created_jobs, $scan_id));
+		\cleara11y_debug_log(sprintf('[ClearA11y] Created %d scan items and %d jobs for automated scan %d', $created_items, $created_jobs, $scan_id));
 
 		// Update scan status to in_progress using existing repository
 		$scan->id = $scan_id;
@@ -699,11 +716,11 @@ class ClearA11y_Plugin {
 		$update_result = \ClearA11y\Database\Scan_Repository::update($scan);
 
 		if ($update_result) {
-			error_log(sprintf('[ClearA11y] Automated scan %d started successfully with %d jobs',
+			\cleara11y_debug_log(sprintf('[ClearA11y] Automated scan %d started successfully with %d jobs',
 				$scan_id, $created_jobs
 			));
 		} else {
-			error_log('[ClearA11y] Automated scan started but status update failed.');
+			\cleara11y_debug_log('[ClearA11y] Automated scan started but status update failed.');
 		}
 	}
 
@@ -741,22 +758,6 @@ class ClearA11y_Plugin {
 		}
 	}
 
-		/**
-		 * Run test if requested via URL parameter (development only).
-		 */
-		public function run_test_if_requested(): void {
-			// Only run if specific parameter is set and user is admin
-			if (!isset($_GET['cleara11y_test_quick_exception']) || !current_user_can('manage_options')) {
-				return;
-			}
-
-			// Require test file
-			$test_file = CLEARA11Y_PLUGIN_DIR . 'tests/test-quick-ignore.php';
-			if (file_exists($test_file)) {
-				require_once $test_file;
-				exit;
-			}
-		}
 }
 
 /**

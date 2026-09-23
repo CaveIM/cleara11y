@@ -10,12 +10,11 @@
 
 namespace ClearA11y\Services;
 
-use ClearA11y\Database\Issue_Repository;
-
-// Force OPcache to reload this file
-if (function_exists('opcache_invalidate')) {
-	opcache_invalidate(__FILE__, true);
+if (! defined('ABSPATH')) {
+	exit;
 }
+
+use ClearA11y\Database\Issue_Repository;
 
 /**
  * Severity Update Utility Class
@@ -40,10 +39,12 @@ class Severity_Update_Utility {
 		$map = Rule_Severity_Map::get_severity_map();
 
 		// Get all issues
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$issues = $wpdb->get_results(
 			"SELECT id, rule_id, severity FROM {$table}",
 			ARRAY_A
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if (empty($issues)) {
 			return [
@@ -71,6 +72,7 @@ class Severity_Update_Utility {
 
 			// Only update if severity changed
 			if ($new_severity !== $old_severity) {
+				// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Write to plugin-owned tables; no WordPress data API or cached result applies.
 				$wpdb->update(
 					$table,
 					['severity' => $new_severity],
@@ -78,6 +80,7 @@ class Severity_Update_Utility {
 					['%s'],
 					['%d']
 				);
+				// phpcs:enable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
 
 				$updated++;
 
@@ -122,10 +125,12 @@ class Severity_Update_Utility {
 		$table = Issue_Repository::get_table();
 
 		// Get all issues
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$issues = $wpdb->get_results(
 			"SELECT id, rule_id, severity FROM {$table}",
 			ARRAY_A
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		$changes = [];
 		$severity_counts = [

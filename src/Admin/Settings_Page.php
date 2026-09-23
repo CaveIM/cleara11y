@@ -10,6 +10,10 @@
 
 namespace ClearA11y\Admin;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 /**
  * Settings Page Class
  */
@@ -54,12 +58,12 @@ class Settings_Page {
 
 		// Verify nonce
 		if (!check_admin_referer('cleara11y_clear_database')) {
-			wp_die(__('Security check failed.', 'cleara11y'));
+			wp_die(esc_html__('Security check failed.', 'cleara11y'));
 		}
 
 		// Check permissions
 		if (!current_user_can('manage_options')) {
-			wp_die(__('You do not have permission to perform this action.', 'cleara11y'));
+			wp_die(esc_html__('You do not have permission to perform this action.', 'cleara11y'));
 		}
 
 		// Clear the database by dropping and recreating tables
@@ -95,12 +99,12 @@ class Settings_Page {
 
 		// Verify nonce
 		if (!check_admin_referer('cleara11y_automated_settings')) {
-			wp_die(__('Security check failed.', 'cleara11y'));
+			wp_die(esc_html__('Security check failed.', 'cleara11y'));
 		}
 
 		// Check permissions
 		if (!current_user_can('manage_options')) {
-			wp_die(__('You do not have permission to perform this action.', 'cleara11y'));
+			wp_die(esc_html__('You do not have permission to perform this action.', 'cleara11y'));
 		}
 
 		// Get and sanitize settings
@@ -180,10 +184,10 @@ class Settings_Page {
 		$scan_jobs_table = \ClearA11y\Database\Schema::get_table_name('scan_jobs');
 
 		return [
-			'scans' => (int) $wpdb->get_var("SELECT COUNT(*) FROM `{$scans_table}`"),
-			'scan_items' => (int) $wpdb->get_var("SELECT COUNT(*) FROM `{$scan_items_table}`"),
-			'issues' => (int) $wpdb->get_var("SELECT COUNT(*) FROM `{$issues_table}`"),
-			'scan_jobs' => (int) $wpdb->get_var("SELECT COUNT(*) FROM `{$scan_jobs_table}`"),
+			'scans' => (int) $wpdb->get_var("SELECT COUNT(*) FROM `{$scans_table}`"), // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
+			'scan_items' => (int) $wpdb->get_var("SELECT COUNT(*) FROM `{$scan_items_table}`"), // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
+			'issues' => (int) $wpdb->get_var("SELECT COUNT(*) FROM `{$issues_table}`"), // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
+			'scan_jobs' => (int) $wpdb->get_var("SELECT COUNT(*) FROM `{$scan_jobs_table}`"), // phpcs:ignore PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		];
 	}
 
@@ -288,6 +292,7 @@ class Settings_Page {
 												<small>
 													<?php
 													echo esc_html(sprintf(
+														/* translators: Placeholder is the formatted scan date and time. */
 														__('Next scan: %s', 'cleara11y'),
 														date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $next_scheduled)
 													));

@@ -10,6 +10,10 @@
 
 namespace ClearA11y\Admin;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 use ClearA11y\Database\Issue_Repository;
 
 /**
@@ -67,20 +71,20 @@ class Page_Report {
 	 * @return void
 	 */
 	public function render_page(): void {
-		$post_id = isset($_GET['post_id']) ? intval($_GET['post_id']) : 0;
+		$post_id = isset($_GET['post_id']) ? intval($_GET['post_id']) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
 
 		if (!$post_id) {
-			wp_die(__('Invalid post ID.', 'cleara11y'));
+			wp_die(esc_html__('Invalid post ID.', 'cleara11y'));
 		}
 
 		$post = get_post($post_id);
 
 		if (!$post) {
-			wp_die(__('Post not found.', 'cleara11y'));
+			wp_die(esc_html__('Post not found.', 'cleara11y'));
 		}
 
 		if (!current_user_can('edit_post', $post_id)) {
-			wp_die(__('You do not have permission to view this report.', 'cleara11y'));
+			wp_die(esc_html__('You do not have permission to view this report.', 'cleara11y'));
 		}
 
 		// Get issues for this post
@@ -101,7 +105,7 @@ class Page_Report {
 		<div class="wrap cleara11y-page-report-wrap">
 
 			<h1 class="wp-heading-inline">
-				<?php printf(__('Accessibility Report: %s', 'cleara11y'), esc_html($post->post_title)); ?>
+				<?php /* translators: Placeholder is the post title. */ echo esc_html(sprintf(__('Accessibility Report: %s', 'cleara11y'), $post->post_title)); ?>
 			</h1>
 
 			<?php if ($scan_date): ?>
@@ -167,7 +171,8 @@ class Page_Report {
 						<h2>
 							<?php
 							if ($total_issues > 0) {
-								printf(_n('%d Issue Found', '%d Issues Found', $total_issues, 'cleara11y'), $total_issues);
+								/* translators: Placeholder is the number of items. */
+								echo esc_html(sprintf(_n('%d Issue Found', '%d Issues Found', $total_issues, 'cleara11y'), $total_issues));
 							} else {
 								esc_html_e('No Issues Found', 'cleara11y');
 							}
@@ -279,6 +284,7 @@ class Page_Report {
 
 		$scan_items_table = \ClearA11y\Database\Schema::get_table_name('scan_items');
 
+		// phpcs:disable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Live scan/exception state in custom tables; caching can return stale worker or suppression state; Schema-owned identifiers and fixed SQL fragments; variable values are prepared separately.
 		$date = $wpdb->get_var(
 			$wpdb->prepare(
 				"SELECT scanned_at FROM `{$scan_items_table}`
@@ -288,8 +294,10 @@ class Page_Report {
 				$post_id
 			)
 		);
+		// phpcs:enable PluginCheck.Security.DirectDB.UnescapedDBParameter, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if ($date) {
+			/* translators: Placeholder is the formatted scan date and time. */
 			return sprintf(__('Scanned on %s', 'cleara11y'), date_i18n(get_option('date_format') . ' ' . get_option('time_format'), strtotime($date)));
 		}
 
@@ -325,7 +333,9 @@ class Page_Report {
 			'cleara11y-exceptions-page',
 			CLEARA11Y_PLUGIN_URL . 'assets/css/exceptions-page.css',
 			[],
-			CLEARA11Y_VERSION
+			'local' === wp_get_environment_type()
+				? (string) filemtime(CLEARA11Y_PLUGIN_DIR . 'assets/css/exceptions-page.css')
+				: CLEARA11Y_VERSION
 		);
 		wp_enqueue_script(
 			'cleara11y-exceptions-page',

@@ -10,6 +10,10 @@
 
 namespace ClearA11y\Models;
 
+if (! defined('ABSPATH')) {
+	exit;
+}
+
 /**
  * Exception Rule Model Class
  */
@@ -424,7 +428,7 @@ class Exception_Rule {
 
 			case 'until_date':
 				$date = isset($this->duration['expires_at'])
-					? date('Y-m-d', strtotime($this->duration['expires_at']))
+					? gmdate('Y-m-d', strtotime($this->duration['expires_at']))
 					: 'unknown date';
 				return sprintf('Until %s', $date);
 

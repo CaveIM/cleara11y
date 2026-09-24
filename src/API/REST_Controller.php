@@ -51,19 +51,6 @@ class REST_Controller {
 	public function __construct() {
 		add_action('rest_api_init', [$this, 'register_routes']);
 
-		// Add error handling for REST API
-		add_filter('rest_authentication_errors', [$this, 'handle_rest_errors'], 999);
-	}
-
-	/**
-	 * Handle REST API errors gracefully.
-	 */
-	public function handle_rest_errors($result) {
-		if (is_wp_error($result) && defined('WP_DEBUG') && WP_DEBUG) {
-			// Error messages from other plugins may contain private request data.
-			\cleara11y_debug_log('Cleara11y REST Error: ' . sanitize_key((string) $result->get_error_code()));
-		}
-		return $result;
 	}
 
 	/**
@@ -155,6 +142,10 @@ class REST_Controller {
 					'methods' => 'POST',
 					'callback' => [$this, 'create_scan'],
 					'permission_callback' => [$this, 'manage_options_permission'],
+					'args' => [
+						'scan_type' => ['type' => 'string', 'enum' => \ClearA11y\Models\Scan::SCAN_TYPES, 'default' => 'full'],
+						'scan_name' => ['type' => 'string', 'sanitize_callback' => 'sanitize_text_field'],
+					],
 				],
 			]
 		);
@@ -290,6 +281,7 @@ class REST_Controller {
 					],
 					'error_message' => [
 						'type' => 'string',
+						'sanitize_callback' => 'sanitize_textarea_field',
 						'description' => 'Error message',
 					],
 				],
@@ -318,6 +310,8 @@ class REST_Controller {
 					'limit' => [
 						'type' => 'integer',
 						'default' => 10,
+						'minimum' => 1,
+						'maximum' => 100,
 						'description' => 'Number of recent scans to return.',
 					],
 				],
@@ -341,6 +335,7 @@ class REST_Controller {
 					],
 					'scan_name' => [
 						'type' => 'string',
+						'sanitize_callback' => 'sanitize_text_field',
 						'description' => 'Name for this scan batch.',
 					],
 					'scan_type' => [
@@ -599,6 +594,7 @@ class REST_Controller {
 				'args' => [
 					'workerId' => [
 						'type' => 'string',
+						'sanitize_callback' => 'sanitize_text_field',
 						'description' => 'Unique identifier for the worker instance.',
 					],
 					'limit' => [
@@ -678,6 +674,7 @@ class REST_Controller {
 					],
 					'error' => [
 						'type' => 'string',
+						'sanitize_callback' => 'sanitize_textarea_field',
 						'description' => 'Error message (for failed status).',
 					],
 				],
@@ -889,6 +886,13 @@ class REST_Controller {
 			);
 		}
 
+		$results['evidence'] = $evidence;
+		$results = \ClearA11y\Services\Scan_Result_Sanitizer::sanitize(wp_json_encode($results));
+		if (is_wp_error($results)) {
+			return $results;
+		}
+		$evidence = $results['evidence'];
+
 		$finding_nodes = self::count_finding_nodes($results);
 		if (count($evidence) < $finding_nodes) {
 			\cleara11y_debug_log(
@@ -969,11 +973,15 @@ class REST_Controller {
 			);
 		}
 
-		$params = $request->get_json_params();
+		$scan_type = $request->get_param('scan_type') ?? 'full';
+		$scan_name = $request->get_param('scan_name');
+		if (! in_array($scan_type, \ClearA11y\Models\Scan::SCAN_TYPES, true) || (null !== $scan_name && ! is_string($scan_name))) {
+			return new \WP_Error('invalid_scan', 'Invalid scan type or name.', ['status' => 400]);
+		}
 
 		$scan = new \ClearA11y\Models\Scan();
-		$scan->scan_type = $params['scan_type'] ?? 'full';
-		$scan->scan_name = $params['scan_name'] ?? null;
+		$scan->scan_type = $scan_type;
+		$scan->scan_name = null === $scan_name ? null : sanitize_text_field($scan_name);
 		$scan->status = 'pending';
 		$scan->total_items = 0;
 		$scan->created_at = current_time('mysql', true);
@@ -1114,7 +1122,7 @@ class REST_Controller {
 	 */
 	public function fail_scan_item(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
 		$scan_item_id = (int) $request->get_param('id');
-		$error_message = $request->get_param('error_message') ?? 'Scan timed out or failed to complete';
+		$error_message = sanitize_textarea_field($request->get_param('error_message') ?? 'Scan timed out or failed to complete');
 
 		// Get scan item
 		$scan_item = Scan_Item_Repository::get_by_id($scan_item_id);
@@ -1263,7 +1271,8 @@ class REST_Controller {
 	 */
 	public function add_to_queue(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
 		$post_ids = $request->get_param('post_ids');
-		$scan_name = $request->get_param('scan_name') ?? null;
+		$scan_name = $request->get_param('scan_name');
+		$scan_name = is_string($scan_name) ? sanitize_text_field($scan_name) : null;
 		$scan_type = $request->get_param('scan_type') ?? 'full';
 
 		if (empty($post_ids) || !is_array($post_ids)) {
@@ -2294,7 +2303,7 @@ class REST_Controller {
 	 * @return \WP_REST_Response
 	 */
 	public function lease_jobs(\WP_REST_Request $request): \WP_REST_Response {
-		$worker_id = $request->get_param('workerId') ?? wp_generate_uuid_v4();
+		$worker_id = sanitize_text_field($request->get_param('workerId') ?? wp_generate_uuid_v4());
 		$limit = (int) ($request->get_param('limit') ?? 2);
 		$lease_seconds = (int) ($request->get_param('leaseSeconds') ?? 180);
 		$site_id = get_current_blog_id();
@@ -2380,6 +2389,10 @@ class REST_Controller {
 		$status = $request->get_param('status'); // 'done' or 'failed'
 		$result_json = $request->get_param('resultJson');
 		$error = $request->get_param('error');
+		$error = is_string($error) ? sanitize_textarea_field($error) : null;
+		if (! in_array($status, ['done', 'failed'], true) || ! is_string($lease_token)) {
+			return new \WP_Error('invalid_job_result', 'Invalid job result status or lease token.', ['status' => 400]);
+		}
 		$request_bytes = strlen($request->get_body());
 
 		if ($request_bytes > self::MAX_SCAN_RESULT_REQUEST_BYTES) {
@@ -2411,7 +2424,11 @@ class REST_Controller {
 
 		$results = null;
 		if ('done' === $status) {
-			$results = is_string($result_json) ? json_decode($result_json, true) : null;
+			$results = \ClearA11y\Services\Scan_Result_Sanitizer::sanitize($result_json);
+			if (is_wp_error($results)) {
+				return $results;
+			}
+			$result_json = wp_json_encode($results, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 			$evidence = is_array($results) ? ($results['evidence'] ?? null) : null;
 			$finding_nodes = is_array($results) ? self::count_finding_nodes($results) : 0;
 
@@ -2827,7 +2844,7 @@ class REST_Controller {
 	 * @return \WP_REST_Response
 	 */
 	public function get_recent_scans(\WP_REST_Request $request): \WP_REST_Response {
-		$limit = $request->get_param('limit') ?? 10;
+		$limit = min(100, max(1, (int) ($request->get_param('limit') ?? 10)));
 
 		$scans = Scan_Repository::get_all([
 			'limit' => $limit,

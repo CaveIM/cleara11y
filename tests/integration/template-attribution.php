@@ -37,7 +37,7 @@ $source_map = ob_get_clean();
 
 if (
 	! str_contains($source_map, 'cleara11y-attribution-map')
-	|| ! str_contains($source_map, '"source_type"')
+	|| ! str_contains($source_map, '&quot;source_type&quot;')
 ) {
 	throw new RuntimeException('Attribution source map was not emitted safely.');
 }

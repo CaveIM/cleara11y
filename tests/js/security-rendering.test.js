@@ -49,3 +49,14 @@ test('frontend help links reject executable URL schemes', () => {
 	}
 	assert.equal(panel.safeHelpUrl('https://dequeuniversity.com/rules/axe/4.10/button-name'), 'https://dequeuniversity.com/rules/axe/4.10/button-name');
 });
+
+test('frontend severity metadata cannot inject attributes or HTML', () => {
+	const ctx = context();
+	vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../assets/js/frontend.js'), 'utf8'), ctx);
+	const panel = ctx.window.ClearA11yFrontend;
+	panel.getElementPresentation = () => ({text: 'Button'});
+	const html = panel.buildIssueCard({severity: '\" onclick=\"probe()\"><svg>', rule_id: 'button-name'}, 0);
+	assert.ok(!html.includes('<svg>'));
+	assert.ok(!html.includes(' onclick="probe()'));
+	assert.ok(html.includes('&quot;'));
+});

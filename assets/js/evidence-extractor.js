@@ -123,7 +123,7 @@ function buildAttributionIndex(rootDoc) {
 
   if (mapElement) {
     try {
-      payload = JSON.parse(mapElement.textContent || "{}");
+      payload = JSON.parse(mapElement.getAttribute("data-sources") || mapElement.textContent || "{}");
     } catch (error) {
       throw new Error("Template attribution source map is malformed.");
     }

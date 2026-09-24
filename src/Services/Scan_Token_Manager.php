@@ -89,6 +89,11 @@ class Scan_Token_Manager {
 	 * }
 	 */
 	public static function generate_token(int $post_id, string $scan_type = 'individual'): array {
+		$post = \get_post($post_id);
+		if (! $post || 'publish' !== $post->post_status) {
+			return ['error' => 'Post not found or not published.'];
+		}
+
 		$token = \wp_generate_password(32, false);
 
 		$expiry_seconds = (int) \get_option('cleara11y_scan_token_expiry', self::TOKEN_EXPIRY);
@@ -112,12 +117,6 @@ class Scan_Token_Manager {
 		}
 
 		// Create scan item
-		$post = \get_post($post_id);
-		if (!$post) {
-			return [
-				'error' => 'Post not found.',
-			];
-		}
 
 		$scan_item = new \ClearA11y\Models\Scan_Item();
 		$scan_item->scan_id = $scan_id;

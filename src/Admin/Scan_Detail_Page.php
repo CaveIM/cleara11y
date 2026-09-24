@@ -34,7 +34,7 @@ class Scan_Detail_Page {
 			wp_die(esc_html__('You do not have permission to view scan details.', 'cleara11y'));
 		}
 
-		$scan_id = isset($_GET['scan_id']) ? absint(wp_unslash($_GET['scan_id'])) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+		$scan_id = isset($_GET['scan_id']) && is_scalar($_GET['scan_id']) ? absint(wp_unslash($_GET['scan_id'])) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
 		if (!$scan_id) {
 			wp_die(esc_html__('Invalid scan ID.', 'cleara11y'));
 		}
@@ -44,7 +44,7 @@ class Scan_Detail_Page {
 			wp_die(esc_html__('Scan not found.', 'cleara11y'));
 		}
 
-		$page = isset($_GET['items_page']) ? max(1, absint(wp_unslash($_GET['items_page']))) : 1; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+		$page = isset($_GET['items_page']) && is_scalar($_GET['items_page']) ? max(1, absint(wp_unslash($_GET['items_page']))) : 1; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
 		$per_page = 50;
 		$total_items = Scan_Item_Repository::get_count($scan_id);
 		$total_pages = max(1, (int) ceil($total_items / $per_page));

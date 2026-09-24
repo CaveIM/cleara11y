@@ -71,7 +71,7 @@ class Admin {
 			wp_die(esc_html__('You do not have permission to cancel scans.', 'cleara11y'));
 		}
 
-		$scan_id = isset($_POST['scan_id']) ? absint(wp_unslash($_POST['scan_id'])) : 0;
+		$scan_id = isset($_POST['scan_id']) && is_scalar($_POST['scan_id']) ? absint(wp_unslash($_POST['scan_id'])) : 0;
 		if (!$scan_id) {
 			wp_die(esc_html__('Invalid scan ID.', 'cleara11y'));
 		}
@@ -101,8 +101,8 @@ class Admin {
 			wp_send_json_error(['message' => 'Permission denied']);
 		}
 
-		$post_type = isset($_POST['post_type']) ? sanitize_text_field(wp_unslash($_POST['post_type'])) : 'page';
-		$page = isset($_POST['page']) ? max(1, intval($_POST['page'])) : 1;
+		$post_type = isset($_POST['post_type']) && is_scalar($_POST['post_type']) ? sanitize_text_field(wp_unslash($_POST['post_type'])) : 'page';
+		$page = isset($_POST['page']) && is_scalar($_POST['page']) ? max(1, intval($_POST['page'])) : 1;
 		$per_page = 20;
 
 		$args = [
@@ -144,7 +144,7 @@ class Admin {
 			wp_send_json_error(['message' => 'Permission denied']);
 		}
 
-		$post_id = isset($_POST['post_id']) ? intval($_POST['post_id']) : 0;
+		$post_id = isset($_POST['post_id']) && is_scalar($_POST['post_id']) ? intval($_POST['post_id']) : 0;
 
 		if (! current_user_can('edit_post', $post_id)) {
 			wp_send_json_error(['message' => 'Permission denied'], 403);
@@ -173,7 +173,7 @@ class Admin {
 			wp_send_json_error(['message' => __('Permission denied.', 'cleara11y')], 403);
 		}
 
-		$option = isset($_POST['option']) ? sanitize_key(wp_unslash($_POST['option'])) : '';
+		$option = isset($_POST['option']) && is_scalar($_POST['option']) ? sanitize_key(wp_unslash($_POST['option'])) : '';
 		$allowed = array_keys($this->get_issue_view_option_defaults());
 		if (! in_array($option, $allowed, true)) {
 			wp_send_json_error(['message' => __('Invalid display option.', 'cleara11y')], 400);
@@ -260,11 +260,20 @@ class Admin {
 			wp_send_json_error(['message' => 'Permission denied']);
 		}
 
-		$job_id = isset($_POST['job_id']) ? absint(wp_unslash($_POST['job_id'])) : 0;
-		$lease_token = isset($_POST['lease_token']) ? sanitize_text_field(wp_unslash($_POST['lease_token'])) : '';
-		// JSON evidence must retain original markup; the shared result handler validates its shape and size.
-		$result_json = isset($_POST['result_json']) && is_string($_POST['result_json']) ? wp_unslash($_POST['result_json']) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Validated by complete_job; sanitizing HTML here would corrupt evidence.
-		$error = isset($_POST['error']) ? sanitize_text_field(wp_unslash($_POST['error'])) : '';
+		$job_id = isset($_POST['job_id']) && is_scalar($_POST['job_id']) ? absint(wp_unslash($_POST['job_id'])) : 0;
+		$lease_token = isset($_POST['lease_token']) && is_scalar($_POST['lease_token']) ? sanitize_text_field(wp_unslash($_POST['lease_token'])) : '';
+		// The shared sanitizer validates source evidence without stripping audited markup.
+		$result_json = isset($_POST['result_json']) && is_string($_POST['result_json']) ? wp_unslash($_POST['result_json']) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Passed immediately to Scan_Result_Sanitizer below; HTML evidence is validated as source data.
+		$error = isset($_POST['error']) && is_scalar($_POST['error']) ? sanitize_text_field(wp_unslash($_POST['error'])) : '';
+		if ('' === $error) {
+			$results = \ClearA11y\Services\Scan_Result_Sanitizer::sanitize($result_json);
+			if (is_wp_error($results)) {
+				wp_send_json_error(['message' => $results->get_error_message()], 400);
+			}
+			$result_json = wp_json_encode($results, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+		} else {
+			$result_json = null;
+		}
 		if (! $job_id || '' === $lease_token) {
 			wp_send_json_error(['message' => 'A job ID and lease token are required.'], 403);
 		}
@@ -295,8 +304,8 @@ class Admin {
 			wp_send_json_error(['message' => 'Permission denied']);
 		}
 
-		$limit = isset($_POST['limit']) ? min(10, max(1, intval($_POST['limit']))) : 1;
-		$worker_id = isset($_POST['worker_id']) ? sanitize_text_field(wp_unslash($_POST['worker_id'])) : '';
+		$limit = isset($_POST['limit']) && is_scalar($_POST['limit']) ? min(10, max(1, intval($_POST['limit']))) : 1;
+		$worker_id = isset($_POST['worker_id']) && is_scalar($_POST['worker_id']) ? sanitize_text_field(wp_unslash($_POST['worker_id'])) : '';
 
 		$jobs = \ClearA11y\Database\Job_Repository::lease_jobs(
 			$limit,
@@ -320,7 +329,7 @@ class Admin {
 			wp_send_json_error(['message' => 'Permission denied']);
 		}
 
-		$scan_id = isset($_POST['scan_id']) ? intval($_POST['scan_id']) : 0;
+		$scan_id = isset($_POST['scan_id']) && is_scalar($_POST['scan_id']) ? intval($_POST['scan_id']) : 0;
 
 		if (!$scan_id) {
 			wp_send_json_error(['message' => 'Invalid scan ID']);
@@ -372,7 +381,7 @@ class Admin {
 			'nonce' => wp_create_nonce('wp_rest'),
 			'ajaxNonce' => wp_create_nonce('cleara11y-nonce'),
 			'pluginUrl' => CLEARA11Y_PLUGIN_URL,
-			'workerId' => sanitize_text_field(wp_unslash($_COOKIE['cleara11y_worker_id'] ?? '')),
+			'workerId' => sanitize_text_field(wp_unslash(is_scalar($_COOKIE['cleara11y_worker_id'] ?? null) ? $_COOKIE['cleara11y_worker_id'] : '')),
 			'axeTags' => \ClearA11y\Services\Scan_Results_Processor::get_wcag_tags(
 				(string) get_option('cleara11y_wcag_level', 'wcag21aa')
 			),
@@ -387,10 +396,9 @@ class Admin {
 		);
 
 		// Enqueue global scanner FIRST (it initializes cleara11yData)
-		$cache_buster = 'v4_' . time();
 		wp_enqueue_script(
 			'cleara11y-global-scanner',
-			CLEARA11Y_PLUGIN_URL . 'assets/js/global-admin-scanner.js?' . $cache_buster . '=1',
+			CLEARA11Y_PLUGIN_URL . 'assets/js/global-admin-scanner.js',
 			[],
 			CLEARA11Y_VERSION,
 			true
@@ -696,9 +704,13 @@ class Admin {
 	 * Render debug tools page.
 	 */
 	public function render_debug_page(): void {
+		if (! current_user_can('manage_options')) {
+			wp_die(esc_html__('You do not have permission to perform this action.', 'cleara11y'));
+		}
+
 		// Handle test scan request - redirect to page with scan token
 		if (isset($_POST['cleara11y_test_scan']) && check_admin_referer('cleara11y_test_scan')) {
-			$post_id = intval($_POST['test_post_id'] ?? 0);
+			$post_id = absint(is_scalar($_POST['test_post_id'] ?? null) ? wp_unslash($_POST['test_post_id']) : 0);
 			if ($post_id > 0) {
 				// Generate a temporary scan token
 				$token = \ClearA11y\Services\Scan_Token_Manager::generate_token($post_id, 'test');
@@ -711,7 +723,9 @@ class Admin {
 						get_permalink($post_id)
 					);
 					echo '<p>Redirecting to scan page... <a href="' . esc_url($scan_url) . '">Click here if not redirected</a></p>';
-					echo '<script>window.location.href = ' . wp_json_encode($scan_url) . ';</script>';
+					wp_register_script('cleara11y-debug-redirect', false, [], CLEARA11Y_VERSION, true);
+					wp_enqueue_script('cleara11y-debug-redirect');
+					wp_add_inline_script('cleara11y-debug-redirect', 'window.location.href = ' . wp_json_encode(esc_url_raw($scan_url), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) . ';');
 					return;
 				}
 			}
@@ -882,6 +896,19 @@ class Admin {
 			CLEARA11Y_VERSION
 		);
 
+		foreach (['settings', 'issue-types', 'issue-reference'] as $page) {
+			if ('cleara11y_page_cleara11y-' . $page === $hook_suffix) {
+				wp_enqueue_style('cleara11y-' . $page, CLEARA11Y_PLUGIN_URL . 'assets/css/' . $page . '.css', [], CLEARA11Y_VERSION);
+			}
+		}
+		if ('cleara11y_page_cleara11y-settings' === $hook_suffix) {
+			wp_enqueue_script('cleara11y-settings', CLEARA11Y_PLUGIN_URL . 'assets/js/settings.js', [], CLEARA11Y_VERSION, true);
+			wp_localize_script('cleara11y-settings', 'cleara11ySettings', [
+				'confirmClear' => __('Are you sure you want to clear the scan database? This action cannot be undone and will delete all scan data.', 'cleara11y'),
+				'confirmFinal' => __('This is your last chance! Click OK to permanently delete all scan data, or Cancel to keep your data.', 'cleara11y'),
+			]);
+		}
+
 		// Get the correct REST API base URL
 		$rest_url = get_rest_url();
 
@@ -1008,11 +1035,12 @@ class Admin {
 				],
 			]);
 		} elseif ($is_issue_reference_page) {
+			wp_enqueue_script('axe-core', CLEARA11Y_PLUGIN_URL . 'assets/js/axe.min.js', [], '4.10.2', true);
 			// Enqueue issue reference JavaScript
 			wp_enqueue_script(
 				'cleara11y-issue-reference',
 				CLEARA11Y_PLUGIN_URL . 'assets/js/issue-reference.js',
-				[],
+				['axe-core'],
 				CLEARA11Y_VERSION,
 				true
 			);

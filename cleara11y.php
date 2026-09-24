@@ -3,7 +3,7 @@
  * Plugin Name: Cleara11y
  * Plugin URI: https://github.com/caveim/cleara11y
  * Description: WordPress accessibility plugin that scans published content for WCAG 2.1 AA compliance issues using hybrid client-side (axe-core) and server-side (PHP) scanning.
- * Version: 1.6.1
+ * Version: 1.6.2
  * Author: caveim
  * Author URI: https://github.com/caveim
  * License: GPL-2.0-or-later
@@ -21,7 +21,7 @@ if (! defined('ABSPATH')) {
 }
 
 // Plugin version constant.
-define('CLEARA11Y_VERSION', '1.6.1');
+define('CLEARA11Y_VERSION', '1.6.2');
 
 // Plugin directory path constant.
 define('CLEARA11Y_PLUGIN_DIR', plugin_dir_path(__FILE__));
@@ -138,6 +138,12 @@ class ClearA11y_Plugin {
 			return;
 		}
 
+		// Database action notices belong on the plugin's own screens.
+		$page = sanitize_key(wp_unslash(is_scalar($_GET['page'] ?? null) ? $_GET['page'] : '')); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only notice scope.
+		if (0 !== strpos($page, 'cleara11y')) {
+			return;
+		}
+
 		$table_action = isset($_GET['cleara11y_tables']) // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
 			? sanitize_key(wp_unslash($_GET['cleara11y_tables'])) // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
 			: '';
@@ -175,7 +181,7 @@ class ClearA11y_Plugin {
 	 * Usage: /wp-admin/admin.php?page=cleara11y&cleara11y_recreate_tables=1
 	 */
 	public function handle_manual_recreate_tables(): void {
-		$recreate = isset($_GET['cleara11y_recreate_tables'])
+		$recreate = isset($_GET['cleara11y_recreate_tables']) && is_scalar($_GET['cleara11y_recreate_tables'])
 			? sanitize_text_field(wp_unslash($_GET['cleara11y_recreate_tables']))
 			: '';
 		if ('1' !== $recreate) {
@@ -187,7 +193,7 @@ class ClearA11y_Plugin {
 		}
 
 		// Verify nonce
-		if (!isset($_GET['_wpnonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'cleara11y_recreate_tables')) {
+		if (!isset($_GET['_wpnonce']) || ! is_string($_GET['_wpnonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'cleara11y_recreate_tables')) {
 			wp_die(esc_html__('Security check failed.', 'cleara11y'));
 		}
 
@@ -358,7 +364,7 @@ class ClearA11y_Plugin {
 		}
 
 		// Verify nonce
-		if (!isset($_GET['_wpnonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'cleara11y_migrate_db')) {
+		if (!isset($_GET['_wpnonce']) || ! is_string($_GET['_wpnonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'cleara11y_migrate_db')) {
 			wp_die('Security check failed.');
 		}
 
@@ -461,9 +467,6 @@ class ClearA11y_Plugin {
 		// Schedule WP Cron events
 		$this->schedule_cron_events();
 
-		// Flush rewrite rules
-		flush_rewrite_rules();
-
 		do_action('cleara11y_activated');
 	}
 
@@ -473,9 +476,6 @@ class ClearA11y_Plugin {
 	public function deactivate(): void {
 		// Clear scheduled WP Cron events
 		$this->clear_cron_events();
-
-		// Flush rewrite rules
-		flush_rewrite_rules();
 
 		do_action('cleara11y_deactivated');
 	}

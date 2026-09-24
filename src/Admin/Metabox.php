@@ -91,8 +91,6 @@ class Metabox {
 		// Get latest scan date
 		$scan_date = $this->get_latest_scan_date($post->ID);
 
-		// Get the REST API URL
-		$rest_url = rest_url('cleara11y/v1/');
 
 		?>
 		<div id="cleara11y-metabox" class="cleara11y-metabox">
@@ -159,18 +157,6 @@ class Metabox {
 			</div>
 
 		</div>
-
-		<script type="text/javascript">
-			var cleara11yMetaboxData = {
-				apiUrl: <?php echo wp_json_encode($rest_url); ?>,
-				ajaxUrl: <?php echo wp_json_encode(admin_url('admin-ajax.php')); ?>,
-				nonce: <?php echo wp_json_encode(wp_create_nonce('wp_rest')); ?>,
-				ajaxNonce: <?php echo wp_json_encode(wp_create_nonce('cleara11y-nonce')); ?>,
-				postId: <?php echo (int) $post->ID; ?>,
-				postTitle: <?php echo wp_json_encode(get_the_title($post->ID)); ?>,
-				pluginUrl: <?php echo wp_json_encode(CLEARA11Y_PLUGIN_URL); ?>
-			};
-		</script>
 		<?php
 	}
 
@@ -259,8 +245,8 @@ class Metabox {
 			wp_send_json_error(['message' => 'Permission denied']);
 		}
 
-		$post_id = isset($_POST['post_id']) ? intval($_POST['post_id']) : 0;
-		$scan_id = isset($_POST['scan_id']) ? intval($_POST['scan_id']) : 0;
+		$post_id = isset($_POST['post_id']) && is_scalar($_POST['post_id']) ? intval($_POST['post_id']) : 0;
+		$scan_id = isset($_POST['scan_id']) && is_scalar($_POST['scan_id']) ? intval($_POST['scan_id']) : 0;
 
 		if (! current_user_can('edit_post', $post_id)) {
 			wp_send_json_error(['message' => 'Permission denied'], 403);
@@ -318,7 +304,7 @@ class Metabox {
 			wp_send_json_error(['message' => 'Permission denied']);
 		}
 
-		$post_id = isset($_POST['post_id']) ? intval($_POST['post_id']) : 0;
+		$post_id = isset($_POST['post_id']) && is_scalar($_POST['post_id']) ? intval($_POST['post_id']) : 0;
 
 		if (! current_user_can('edit_post', $post_id)) {
 			wp_send_json_error(['message' => 'Permission denied'], 403);
@@ -441,7 +427,7 @@ class Metabox {
 			wp_send_json_error(['message' => 'Permission denied']);
 		}
 
-		$post_id = isset($_POST['post_id']) ? intval($_POST['post_id']) : 0;
+		$post_id = isset($_POST['post_id']) && is_scalar($_POST['post_id']) ? intval($_POST['post_id']) : 0;
 
 		if (! current_user_can('edit_post', $post_id)) {
 			wp_send_json_error(['message' => 'Permission denied'], 403);
@@ -475,6 +461,11 @@ class Metabox {
 			return;
 		}
 
+		global $post;
+		if (! $post instanceof \WP_Post || ! in_array($post->post_type, (array) get_option('cleara11y_scan_post_types', ['page', 'post']), true)) {
+			return;
+		}
+
 		// Enqueue metabox styles
 		wp_enqueue_style(
 			'cleara11y-metabox',
@@ -491,5 +482,14 @@ class Metabox {
 			CLEARA11Y_VERSION,
 			true
 		);
+		wp_localize_script('cleara11y-metabox', 'cleara11yMetaboxData', [
+			'apiUrl' => rest_url('cleara11y/v1/'),
+			'ajaxUrl' => admin_url('admin-ajax.php'),
+			'nonce' => wp_create_nonce('wp_rest'),
+			'ajaxNonce' => wp_create_nonce('cleara11y-nonce'),
+			'postId' => $post->ID,
+			'postTitle' => get_the_title($post->ID),
+			'pluginUrl' => CLEARA11Y_PLUGIN_URL,
+		]);
 	}
 }

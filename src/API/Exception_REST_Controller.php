@@ -71,13 +71,6 @@ class Exception_REST_Controller {
 	 * Register REST API routes.
 	 */
 	public function register_routes(): void {
-		// Ensure tables exist
-		add_action('rest_api_init', function() {
-			if (!Exception_Schema::tables_exist()) {
-				Exception_Schema::create_tables();
-			}
-		}, 5);
-
 		// Get exception rules list
 		register_rest_route(
 			self::NAMESPACE,
@@ -865,6 +858,46 @@ class Exception_REST_Controller {
 	 * @return array|\WP_Error Normalized parameters or validation error.
 	 */
 	private function validate_exception_params(array $params) {
+		// Validate shapes before casting: arrays must never become the text
+		// "Array", a fabricated ID, or an unintentionally broader exception.
+		$schema = [
+			'type' => 'object',
+			'properties' => [
+				'target_type' => ['type' => 'string'],
+				'reason_category' => ['type' => 'string'],
+				'note' => ['type' => 'string'],
+				'violation_id' => ['type' => 'integer', 'minimum' => 1],
+				'rule_ids' => ['type' => 'array', 'items' => ['type' => 'string']],
+				'scope' => [
+					'type' => 'object',
+					'properties' => [
+						'scope_type' => ['type' => 'string'],
+						'url' => ['type' => 'string'],
+						'post_types' => ['type' => 'array', 'items' => ['type' => 'string']],
+						'patterns' => ['type' => 'array', 'items' => ['type' => 'string']],
+					],
+				],
+				'duration' => [
+					'type' => 'object',
+					'properties' => [
+						'duration_type' => ['type' => 'string'],
+						'expires_at' => ['type' => ['string', 'null']],
+					],
+				],
+				'element_match' => [
+					'type' => 'object',
+					'properties' => [
+						'css_selector' => ['type' => 'string'],
+						'tag_name' => ['type' => 'string'],
+					],
+				],
+			],
+		];
+		$valid = rest_validate_value_from_schema($params, $schema, 'exception');
+		if (is_wp_error($valid)) {
+			return new \WP_Error('invalid_exception', $valid->get_error_message(), ['status' => 400]);
+		}
+
 		$target_type = sanitize_key((string) ($params['target_type'] ?? ''));
 		$scope = is_array($params['scope'] ?? null) ? $params['scope'] : [];
 		$duration = is_array($params['duration'] ?? null) ? $params['duration'] : [];

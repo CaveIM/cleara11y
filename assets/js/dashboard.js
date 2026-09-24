@@ -578,37 +578,37 @@
 
 			let badges = '';
 			if (counts.critical > 0) {
-				badges += `<span class="cleara11y-issue-badge critical">${counts.critical}</span>`;
+				badges += `<span class="cleara11y-issue-badge critical">${this.escapeHtml(counts.critical)}</span>`;
 			}
 			if (counts.moderate > 0) {
-				badges += `<span class="cleara11y-issue-badge moderate">${counts.moderate}</span>`;
+				badges += `<span class="cleara11y-issue-badge moderate">${this.escapeHtml(counts.moderate)}</span>`;
 			}
 			if (counts.minor > 0) {
-				badges += `<span class="cleara11y-issue-badge minor">${counts.minor}</span>`;
+				badges += `<span class="cleara11y-issue-badge minor">${this.escapeHtml(counts.minor)}</span>`;
 			}
 
 			const statusText = counts.total === 0 ? 'No issues' : counts.total + ' issue' + (counts.total !== 1 ? 's' : '');
 
 			// Add investigation actions if there are issues.
 			const viewReportButton = counts.total > 0
-				? `<a href="${this.getIssuesUrl(post.id)}" class="button button-small button-primary">View issues</a>
-					<a href="${this.getReportUrl(post.id)}" class="button button-small">Page summary</a>`
+				? `<a href="${this.safeUrl(this.getIssuesUrl(post.id))}" class="button button-small button-primary">View issues</a>
+					<a href="${this.safeUrl(this.getReportUrl(post.id))}" class="button button-small">Page summary</a>`
 				: '';
 
 			return `
 				<div class="cleara11y-page-item">
 					<div class="cleara11y-page-checkbox-wrapper">
-						<input type="checkbox" class="cleara11y-page-checkbox" value="${post.id}" id="cleara11y-cb-${post.id}">
-						<label for="cleara11y-cb-${post.id}"></label>
+						<input type="checkbox" class="cleara11y-page-checkbox" value="${this.escapeHtml(post.id)}" id="cleara11y-cb-${this.escapeHtml(post.id)}">
+						<label for="cleara11y-cb-${this.escapeHtml(post.id)}"></label>
 					</div>
 					<div class="cleara11y-page-info">
 						<div class="cleara11y-page-title">${this.escapeHtml(post.title.rendered)}</div>
-						<div class="cleara11y-page-status">${statusText}</div>
+						<div class="cleara11y-page-status">${this.escapeHtml(statusText)}</div>
 					</div>
 					<div class="cleara11y-page-actions">
 						${badges}
 						${viewReportButton}
-						<button type="button" class="button button-small cleara11y-scan-page" data-post-id="${post.id}">
+						<button type="button" class="button button-small cleara11y-scan-page" data-post-id="${this.escapeHtml(post.id)}">
 							Scan
 						</button>
 					</div>
@@ -1365,6 +1365,15 @@
 		/**
 		 * Escape HTML
 		 */
+		safeUrl(value) {
+			try {
+				const url = new URL(String(value || ''), window.location.href);
+				return ['http:', 'https:'].includes(url.protocol) ? this.escapeHtml(url.href) : '';
+			} catch (error) {
+				return '';
+			}
+		},
+
 		escapeHtml(text) {
 			const div = document.createElement('div');
 			div.textContent = text;
@@ -1422,25 +1431,25 @@
 
 			container.innerHTML = scans.map(scan => `
 				<tr>
-					<td>${this.capitalize(scan.scan_type)}</td>
+					<td>${this.escapeHtml(this.capitalize(scan.scan_type))}</td>
 					<td>
-						<span class="cleara11y-status-badge cleara11y-status-${scan.status}">
-							${this.capitalize(scan.status.replace('_', ' '))}
+						<span class="cleara11y-status-badge cleara11y-status-${this.escapeHtml(scan.status)}">
+							${this.escapeHtml(this.capitalize(scan.status.replace('_', ' ')))}
 						</span>
 					</td>
 					<td>
 						${scan.total_issues > 0
-							? `<span class="cleara11y-issue-count">${scan.total_issues}</span>`
+							? `<span class="cleara11y-issue-count">${this.escapeHtml(scan.total_issues)}</span>`
 							: `<span class="cleara11y-no-issues">None</span>`
 						}
 					</td>
 					<td>${this.escapeHtml(scan.created_at_display || '')}</td>
 					<td>
-						<a class="button button-small" href="${scan.detail_url}">
+						<a class="button button-small" href="${this.safeUrl(scan.detail_url)}">
 							View Details
 						</a>
 						${scan.total_issues > 0
-							? `<a class="button button-small" href="${window.location.origin}/wp-admin/admin.php?page=cleara11y-issues&scanId=${scan.id}&groupBy=rule">View issues</a>`
+							? `<a class="button button-small" href="${window.location.origin}/wp-admin/admin.php?page=cleara11y-issues&scanId=${this.escapeHtml(scan.id)}&groupBy=rule">View issues</a>`
 							: ''
 						}
 					</td>

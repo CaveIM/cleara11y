@@ -55,7 +55,7 @@ class Highlighter {
 	 */
 	public function __construct() {
 		add_action('template_redirect', [$this, 'detect_highlight_request']);
-		add_action('wp_footer', [$this, 'inject_highlighter_script']);
+		add_action('wp_enqueue_scripts', [$this, 'enqueue_highlighter_assets']);
 		add_action('wp_enqueue_scripts', [$this, 'enqueue_frontend_assets']);
 		add_action('wp_ajax_cleara11y_save_panel_setting', [$this, 'ajax_save_panel_setting']);
 	}
@@ -246,13 +246,13 @@ class Highlighter {
 			wp_send_json_error(['message' => __('Permission denied.', 'cleara11y')], 403);
 		}
 
-		$option = isset($_POST['option']) ? sanitize_key(wp_unslash($_POST['option'])) : '';
+		$option = isset($_POST['option']) && is_scalar($_POST['option']) ? sanitize_key(wp_unslash($_POST['option'])) : '';
 		$choices = $this->get_panel_setting_choices();
 		$settings = $this->get_panel_settings();
 
 		if (array_key_exists($option, $choices)) {
 			// Choice-based setting (sort/group): validate against its allowed values.
-			$value = isset($_POST['value']) ? sanitize_key(wp_unslash($_POST['value'])) : '';
+			$value = isset($_POST['value']) && is_scalar($_POST['value']) ? sanitize_key(wp_unslash($_POST['value'])) : '';
 
 			if (!in_array($value, $choices[$option], true)) {
 				wp_send_json_error(['message' => __('Invalid panel setting value.', 'cleara11y')], 400);
@@ -280,7 +280,8 @@ class Highlighter {
 		$this->highlight_issue = null;
 
 		// Check if highlight parameters are present
-		if (!isset($_GET[self::HIGHLIGHT_PARAM], $_GET[self::NONCE_PARAM])) {
+		if (!isset($_GET[self::HIGHLIGHT_PARAM], $_GET[self::NONCE_PARAM])
+			|| ! is_scalar($_GET[self::HIGHLIGHT_PARAM]) || ! is_string($_GET[self::NONCE_PARAM])) {
 			return;
 		}
 
@@ -309,106 +310,24 @@ class Highlighter {
 	}
 
 	/**
-	 * Inject highlighter script inline.
+	 * Enqueue assets for the authorized highlight request.
 	 *
 	 * @return void
 	 */
-	public function inject_highlighter_script(): void {
+	public function enqueue_highlighter_assets(): void {
 		$issue = $this->highlight_issue;
 		if (! $issue || ! $issue->selector) {
 			return;
 		}
 
-		?>
-		<script>
-		document.addEventListener('DOMContentLoaded', function() {
-			try {
-				var issue = <?php echo wp_json_encode(
-					[
-						'selector' => $issue->selector,
-						'severity' => $issue->severity,
-						'ruleId' => $issue->rule_id,
-						'message' => $issue->message,
-					],
-					JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
-				); ?>;
-				var element = document.querySelector(issue.selector);
-
-				if (element) {
-					element.classList.add('cleara11y-highlight-issue');
-					element.setAttribute('data-cleara11y-highlighted', 'true');
-					element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-					// Add info panel
-					var panel = document.createElement('div');
-					panel.className = 'cleara11y-highlight-panel cleara11y-severity-' + issue.severity;
-					panel.setAttribute('data-cleara11y-plugin', 'true');
-					panel.setAttribute('aria-hidden', 'true');
-					var title = document.createElement('strong');
-					title.textContent = issue.ruleId;
-					var close = document.createElement('button');
-					close.className = 'cleara11y-close-panel';
-					close.textContent = '×';
-					panel.append(title, document.createElement('br'), document.createTextNode(issue.message || ''), close);
-					document.body.appendChild(panel);
-
-					// Close button handler
-					panel.querySelector('.cleara11y-close-panel').addEventListener('click', function() {
-						element.classList.remove('cleara11y-highlight-issue');
-						panel.remove();
-					});
-
-					// Auto-hide after 10 seconds
-					setTimeout(function() {
-						element.classList.remove('cleara11y-highlight-issue');
-						panel.remove();
-					}, 10000);
-				}
-			} catch (e) {
-				console.error('ClearA11y: Could not highlight element', e);
-			}
-		});
-		</script>
-		<style>
-		.cleara11y-highlight-issue {
-			outline: 3px solid #dc3232 !important;
-			outline-offset: 2px;
-			background-color: rgba(220, 50, 50, 0.1) !important;
-		}
-		.cleara11y-highlight-panel {
-			position: fixed;
-			top: 20px;
-			right: 20px;
-			max-width: 350px;
-			padding: 15px;
-			background: #fff;
-			border-left: 5px solid;
-			box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-			z-index: 999999;
-			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-			font-size: 14px;
-		}
-		.cleara11y-highlight-panel.cleara11y-severity-critical {
-			border-left-color: #dc3232;
-		}
-		.cleara11y-highlight-panel.cleara11y-severity-moderate {
-			border-left-color: #f56e28;
-		}
-		.cleara11y-highlight-panel.cleara11y-severity-minor {
-			border-left-color: #ffb900;
-		}
-		.cleara11y-close-panel {
-			position: absolute;
-			top: 10px;
-			right: 10px;
-			background: none;
-			border: none;
-			font-size: 20px;
-			cursor: pointer;
-			line-height: 1;
-		}
-		</style>
-		<?php
+		wp_enqueue_style('cleara11y-highlighter', CLEARA11Y_PLUGIN_URL . 'assets/css/highlighter.css', [], CLEARA11Y_VERSION);
+		wp_enqueue_script('cleara11y-highlighter', CLEARA11Y_PLUGIN_URL . 'assets/js/highlighter.js', [], CLEARA11Y_VERSION, true);
+		wp_localize_script('cleara11y-highlighter', 'cleara11yHighlight', [
+			'selector' => $issue->selector,
+			'severity' => $issue->severity,
+			'ruleId' => $issue->rule_id,
+			'message' => $issue->message,
+		]);
 	}
 
 	/**

@@ -255,7 +255,7 @@
 				console.error('[ClearA11y Pages List] Error loading pages:', error);
 				container.innerHTML = `
 					<div class="notice notice-error" style="padding: 15px;">
-						<p>${cleara11yData.strings.error || 'Error'}: ${this.escapeHtml(error.message)}</p>
+						<p>${this.escapeHtml(cleara11yData.strings.error || 'Error')}: ${this.escapeHtml(error.message)}</p>
 					</div>
 				`;
 			}
@@ -270,7 +270,7 @@
 			if (pages.length === 0) {
 				container.innerHTML = `
 					<div class="notice notice-info" style="padding: 15px;">
-						<p>${cleara11yData.strings.noIssues || 'No pages found.'}</p>
+						<p>${this.escapeHtml(cleara11yData.strings.noIssues || 'No pages found.')}</p>
 					</div>
 				`;
 				return;
@@ -296,12 +296,12 @@
 					<tr>
 						<td>
 							<div class="cleara11y-score-badge" style="background: ${scoreColor}; color: #fff; padding: 5px 10px; border-radius: 3px; font-weight: 600; text-align: center;">
-								${page.score ?? '-'}
+								${this.escapeHtml(page.score ?? '-')}
 							</div>
 						</td>
 						<td>
 							<div>
-								<strong><a href="${this.escapeHtml(page.post_url)}" target="_blank" style="text-decoration: none;">${this.escapeHtml(page.post_title || '(Untitled)')}</a></strong>
+								<strong><a href="${this.safeUrl(page.post_url)}" target="_blank" style="text-decoration: none;">${this.escapeHtml(page.post_title || '(Untitled)')}</a></strong>
 								${page.scan_status === 'completed' && page.scanned_at ? `
 									<div style="font-size: 12px; color: #646970; margin-top: 4px;">
 										Scanned: ${new Date(page.scanned_at).toLocaleDateString()}
@@ -318,9 +318,9 @@
 							<div style="font-size: 13px;">
 								${page.issues.total > 0 ? `
 									<div style="display: flex; gap: 10px;">
-										<span style="color: #d63638;"><strong>${page.issues.critical}</strong> critical</span>
-										<span style="color: #f56e28;"><strong>${page.issues.moderate}</strong> moderate</span>
-										<span style="color: #ffb900;"><strong>${page.issues.minor}</strong> minor</span>
+										<span style="color: #d63638;"><strong>${this.escapeHtml(page.issues.critical)}</strong> critical</span>
+										<span style="color: #f56e28;"><strong>${this.escapeHtml(page.issues.moderate)}</strong> moderate</span>
+										<span style="color: #ffb900;"><strong>${this.escapeHtml(page.issues.minor)}</strong> minor</span>
 									</div>
 								` : '<span style="color: #00a32a;">No issues</span>'}
 							</div>
@@ -328,7 +328,7 @@
 						<td>${statusBadge}</td>
 						<td>
 							${page.issues.total > 0 ? `
-								<button type="button" class="button button-small cleara11y-view-issues" data-post-id="${page.post_id}" data-post-title="${this.escapeHtml(page.post_title || '')}">
+								<button type="button" class="button button-small cleara11y-view-issues" data-post-id="${this.escapeHtml(page.post_id)}" data-post-title="${this.escapeHtml(page.post_title || '')}">
 									View Issues
 								</button>
 							` : ''}
@@ -491,6 +491,15 @@
 		/**
 		 * Escape HTML
 		 */
+		safeUrl(value) {
+			try {
+				const url = new URL(String(value || ''), window.location.href);
+				return ['http:', 'https:'].includes(url.protocol) ? this.escapeHtml(url.href) : '';
+			} catch (error) {
+				return '';
+			}
+		},
+
 		escapeHtml(text) {
 			const div = document.createElement('div');
 			div.textContent = text;

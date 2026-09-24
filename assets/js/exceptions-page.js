@@ -1522,7 +1522,7 @@
 
 	function esc_html(text) {
 		if (!text) return '';
-		return $('<div/>').text(text).html();
+		return $('<div/>').text(text).html().replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 	}
 
 	// Pagination handlers

@@ -237,10 +237,14 @@ class PHP_Bulk_Scanner {
 	 * @return Issue[] Array of issues found.
 	 */
 	private static function scan_html(string $html, int $scan_id, int $scan_item_id, int $post_id): array {
-		libxml_use_internal_errors(true);
+		$previous_errors = libxml_use_internal_errors(true);
 		$dom = new \DOMDocument();
-		$dom->loadHTML('<?xml encoding="UTF-8">' . $html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
-		libxml_clear_errors();
+		try {
+			$dom->loadHTML('<?xml encoding="UTF-8">' . $html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD | LIBXML_NONET);
+		} finally {
+			libxml_clear_errors();
+			libxml_use_internal_errors($previous_errors);
+		}
 
 		$xpath = new \DOMXPath($dom);
 		$issues = [];

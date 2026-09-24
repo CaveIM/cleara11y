@@ -1,0 +1,57 @@
+name: Publish to WordPress.org
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Validate and preview SVN changes without publishing'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wordpress-org-cleara11y
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out release source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Validate and stage the reviewed ZIP
+        id: release
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            python3 tools/prepare-wordpress-release.py --tag "$GITHUB_REF_NAME" --output .release-build
+          elif [[ "$DRY_RUN" == true ]]; then
+            python3 tools/prepare-wordpress-release.py --output .release-build
+          else
+            echo 'Publishing requires a vMAJOR.MINOR.PATCH Git tag.' >&2
+            exit 1
+          fi
+          find .release-build -name '*.php' -print0 | xargs -0 -n1 php -l
+          echo "version=$(sed -n 's/^Stable tag: //p' .release-build/readme.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release and directory artwork
+        uses: 10up/action-wordpress-plugin-deploy@54bd289b8525fd23a5c365ec369185f2966529c2 # 2.3.0
+        with:
+          dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        env:
+          SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
+          SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
+          SLUG: cleara11y
+          BUILD_DIR: .release-build
+          ASSETS_DIR: wordpress-org
+          VERSION: ${{ steps.release.outputs.version }}

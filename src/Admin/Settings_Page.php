@@ -108,8 +108,8 @@ class Settings_Page {
 		}
 
 		// Get and sanitize settings
-		$enabled = isset($_POST['cleara11y_automated_enabled']) ? 1 : 0;
-		$frequency = isset($_POST['cleara11y_automated_frequency']) ? sanitize_text_field(wp_unslash($_POST['cleara11y_automated_frequency'])) : 'weekly';
+		$enabled = isset($_POST['cleara11y_automated_enabled']) && is_scalar($_POST['cleara11y_automated_enabled']) ? 1 : 0;
+		$frequency = isset($_POST['cleara11y_automated_frequency']) && is_scalar($_POST['cleara11y_automated_frequency']) ? sanitize_text_field(wp_unslash($_POST['cleara11y_automated_frequency'])) : 'weekly';
 
 		// Validate frequency
 		$valid_frequencies = ['5min', '10min', 'daily', 'weekly', 'monthly'];
@@ -397,143 +397,6 @@ class Settings_Page {
 
 			</div>
 		</div>
-
-		<script>
-		jQuery(document).ready(function($) {
-			$('#cleara11y-clear-database-btn').on('click', function(e) {
-				e.preventDefault();
-
-				var message = '<?php esc_html_e('Are you sure you want to clear the scan database? This action cannot be undone and will delete all scan data.', 'cleara11y'); ?>';
-
-				if (!confirm(message)) {
-					return;
-				}
-
-				if (!confirm('<?php esc_html_e('This is your last chance! Click OK to permanently delete all scan data, or Cancel to keep your data.', 'cleara11y'); ?>')) {
-					return;
-				}
-
-				$('#cleara11y-clear-database-form').submit();
-			});
-		});
-		</script>
-
-		<style>
-		.cleara11y-settings-wrap {
-			max-width: 1200px;
-		}
-
-		.cleara11y-settings-container {
-			margin-top: 20px;
-		}
-
-		.cleara11y-card {
-			background: #fff;
-			border: 1px solid #c3c4c7;
-			padding: 20px;
-			margin-bottom: 20px;
-			box-shadow: 0 1px 1px rgba(0,0,0,.04);
-		}
-
-		.cleara11y-card h2 {
-			margin-top: 0;
-			padding-bottom: 10px;
-			border-bottom: 1px solid #ddd;
-			display: flex;
-			align-items: center;
-			gap: 10px;
-		}
-
-		.cleara11y-card h2 .dashicons {
-			color: #2271b1;
-		}
-
-		.cleara11y-database-stats {
-			margin: 20px 0;
-		}
-
-		.cleara11y-database-stats h3 {
-			margin-bottom: 10px;
-		}
-
-		.cleara11y-database-stats code {
-			background: #f0f0f1;
-			padding: 2px 6px;
-			border-radius: 3px;
-			font-size: 13px;
-		}
-
-		.cleara11y-total-row {
-			background: #f6f7f7;
-		}
-
-		.cleara11y-clear-database-section {
-			margin-top: 30px;
-			padding-top: 20px;
-			border-top: 1px solid #ddd;
-		}
-
-		.cleara11y-clear-database-section h3 {
-			color: #d63638;
-			margin-bottom: 15px;
-		}
-
-		.cleara11y-warning-box {
-			background: #fff;
-			border-left: 4px solid #d63638;
-			padding: 15px;
-			margin-bottom: 20px;
-			display: flex;
-			gap: 15px;
-		}
-
-		.cleara11y-warning-box .dashicons {
-			color: #d63638;
-			font-size: 24px;
-			flex-shrink: 0;
-		}
-
-		.cleara11y-warning-content h4 {
-			margin: 0 0 10px 0;
-			color: #d63638;
-		}
-
-		.cleara11y-warning-content p {
-			margin: 0 0 10px 0;
-		}
-
-		.cleara11y-warning-content ul {
-			margin: 0;
-			padding-left: 20px;
-		}
-
-		.cleara11y-warning-content li {
-			margin-bottom: 5px;
-		}
-
-		.cleara11y-status-enabled {
-			color: #00a32a;
-		}
-
-		.cleara11y-status-enabled .dashicons {
-			color: #00a32a;
-		}
-
-		.cleara11y-status-disabled {
-			color: #646970;
-		}
-
-		.cleara11y-status-disabled .dashicons {
-			color: #646970;
-		}
-
-		.cleara11y-status-enabled,
-		.cleara11y-status-disabled {
-			display: flex;
-			align-items: center;
-			gap: 8px;
-		}
-		</style>
 		<?php
 	}
 }

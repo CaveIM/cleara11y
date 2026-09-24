@@ -33,7 +33,7 @@ class Scans_Page {
 		}
 
 		$filters = self::get_filters();
-		$page = isset($_GET['paged']) ? max(1, absint(wp_unslash($_GET['paged']))) : 1; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+		$page = isset($_GET['paged']) && is_scalar($_GET['paged']) ? max(1, absint(wp_unslash($_GET['paged']))) : 1; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
 		$per_page = 20;
 		$total = Scan_Repository::count_filtered($filters);
 		$total_pages = max(1, (int) ceil($total / $per_page));
@@ -164,17 +164,17 @@ class Scans_Page {
 	 * @return array
 	 */
 	private static function get_filters(): array {
-		$status = isset($_GET['scan_status']) ? sanitize_key(wp_unslash($_GET['scan_status'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
-		$type = isset($_GET['scan_type']) ? sanitize_key(wp_unslash($_GET['scan_type'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
-		$orderby = isset($_GET['orderby']) ? sanitize_key(wp_unslash($_GET['orderby'])) : 'created_at'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
-		$order = isset($_GET['order']) ? sanitize_key(wp_unslash($_GET['order'])) : 'desc'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+		$status = isset($_GET['scan_status']) && is_scalar($_GET['scan_status']) ? sanitize_key(wp_unslash($_GET['scan_status'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+		$type = isset($_GET['scan_type']) && is_scalar($_GET['scan_type']) ? sanitize_key(wp_unslash($_GET['scan_type'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+		$orderby = isset($_GET['orderby']) && is_scalar($_GET['orderby']) ? sanitize_key(wp_unslash($_GET['orderby'])) : 'created_at'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+		$order = isset($_GET['order']) && is_scalar($_GET['order']) ? sanitize_key(wp_unslash($_GET['order'])) : 'desc'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
 
 		return [
 			'status' => in_array($status, Scan::STATUSES, true) ? $status : '',
 			'scan_type' => in_array($type, Scan::SCAN_TYPES, true) ? $type : '',
-			'search' => isset($_GET['s']) ? sanitize_text_field(wp_unslash($_GET['s'])) : '', // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
-			'date_from' => self::sanitize_date(sanitize_text_field(wp_unslash($_GET['date_from'] ?? ''))), // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
-			'date_to' => self::sanitize_date(sanitize_text_field(wp_unslash($_GET['date_to'] ?? ''))), // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+			'search' => isset($_GET['s']) && is_scalar($_GET['s']) ? sanitize_text_field(wp_unslash($_GET['s'])) : '', // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+			'date_from' => self::sanitize_date(sanitize_text_field(wp_unslash(is_scalar($_GET['date_from'] ?? null) ? $_GET['date_from'] : ''))), // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+			'date_to' => self::sanitize_date(sanitize_text_field(wp_unslash(is_scalar($_GET['date_to'] ?? null) ? $_GET['date_to'] : ''))), // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
 			'orderby' => $orderby,
 			'order' => strtolower($order) === 'asc' ? 'ASC' : 'DESC',
 		];
@@ -246,8 +246,8 @@ class Scans_Page {
 	 * @return void
 	 */
 	public static function render_action_notice(): void {
-		$notice = isset($_GET['cleara11y_scan_notice']) ? sanitize_key(wp_unslash($_GET['cleara11y_scan_notice'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
-		$scan_id = isset($_GET['cancelled_scan_id']) ? absint(wp_unslash($_GET['cancelled_scan_id'])) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+		$notice = isset($_GET['cleara11y_scan_notice']) && is_scalar($_GET['cleara11y_scan_notice']) ? sanitize_key(wp_unslash($_GET['cleara11y_scan_notice'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+		$scan_id = isset($_GET['cancelled_scan_id']) && is_scalar($_GET['cancelled_scan_id']) ? absint(wp_unslash($_GET['cancelled_scan_id'])) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
 		if (! $notice || ! $scan_id) {
 			return;
 		}

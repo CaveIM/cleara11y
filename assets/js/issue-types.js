@@ -113,7 +113,7 @@ document.addEventListener('DOMContentLoaded', function() {
 				this.elements.issueTypesList.innerHTML = `
 					<div class="cleara11y-empty-state">
 						<span class="dashicons dashicons-search"></span>
-						<p>${this.strings.noIssues}</p>
+						<p>${this.escapeHtml(this.strings.noIssues)}</p>
 					</div>
 				`;
 				return;
@@ -121,10 +121,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
 			const html = this.state.issueTypes.map(issueType => {
 				return `
-					<div class="cleara11y-issue-type-item" data-rule-id="${issueType.rule_id}">
-						<div class="cleara11y-issue-severity ${issueType.severity}">${issueType.severity}</div>
+					<div class="cleara11y-issue-type-item" data-rule-id="${this.escapeHtml(issueType.rule_id)}">
+						<div class="cleara11y-issue-severity ${this.escapeHtml(issueType.severity)}">${this.escapeHtml(issueType.severity)}</div>
 						<div class="cleara11y-issue-count">
-							<div class="number">${issueType.issue_count}</div>
+							<div class="number">${this.escapeHtml(issueType.issue_count)}</div>
 							<div class="label">${issueType.issue_count === 1 ? 'issue' : 'issues'}</div>
 						</div>
 						<div class="cleara11y-issue-info">
@@ -132,7 +132,7 @@ document.addEventListener('DOMContentLoaded', function() {
 							<div class="rule-id">${this.escapeHtml(issueType.rule_id)}</div>
 							<div class="message">${this.escapeHtml(issueType.message || '')}</div>
 							<div class="meta">
-								<span>Found on <strong>${issueType.page_count}</strong> ${issueType.page_count === 1 ? 'page' : 'pages'}</span>
+								<span>Found on <strong>${this.escapeHtml(issueType.page_count)}</strong> ${issueType.page_count === 1 ? 'page' : 'pages'}</span>
 							</div>
 						</div>
 						<div class="cleara11y-issue-actions">
@@ -169,7 +169,7 @@ document.addEventListener('DOMContentLoaded', function() {
 			modal.style.display = 'flex';
 
 			try {
-				const response = await fetch(`${this.apiUrl}issue-types/${ruleId}/pages`, {
+				const response = await fetch(`${this.apiUrl}issue-types/${encodeURIComponent(ruleId)}/pages`, {
 					headers: {
 						'X-WP-Nonce': this.nonce,
 					},
@@ -195,18 +195,18 @@ document.addEventListener('DOMContentLoaded', function() {
 								<div class="cleara11y-page-info">
 									<div class="cleara11y-page-title">${this.escapeHtml(page.post_title || '(Untitled)')}</div>
 									<div class="cleara11y-page-url">
-										<a href="${this.escapeHtml(page.post_url)}" target="_blank" rel="noopener">${this.escapeHtml(page.post_url)}</a>
+										<a href="${this.safeUrl(page.post_url)}" target="_blank" rel="noopener">${this.escapeHtml(page.post_url)}</a>
 									</div>
 								</div>
 								<div class="cleara11y-page-issues">
-									<strong>${page.active_count}</strong> ${page.active_count === 1 ? 'issue' : 'issues'}
+									<strong>${this.escapeHtml(page.active_count)}</strong> ${page.active_count === 1 ? 'issue' : 'issues'}
 								</div>
 							</li>
 						`).join('')}
 					</ul>
 					${data.total_pages > 1 ? `
 						<div class="cleara11y-pagination">
-							Page ${data.page} of ${data.total_pages}
+							Page ${this.escapeHtml(data.page)} of ${this.escapeHtml(data.total_pages)}
 						</div>
 					` : ''}
 				`;
@@ -232,7 +232,7 @@ document.addEventListener('DOMContentLoaded', function() {
 			this.elements.statsGrid.innerHTML = `
 				<div class="cleara11y-stat-card">
 					<div class="stat-label">Total Issues</div>
-					<div class="stat-value">${counts.all || 0}</div>
+					<div class="stat-value">${this.escapeHtml(counts.all || 0)}</div>
 				</div>
 			`;
 		},
@@ -240,9 +240,18 @@ document.addEventListener('DOMContentLoaded', function() {
 		renderError() {
 			this.elements.issueTypesList.innerHTML = `
 				<div class="cleara11y-error">
-					<p>${this.strings.error}</p>
+					<p>${this.escapeHtml(this.strings.error)}</p>
 				</div>
 			`;
+		},
+
+		safeUrl(value) {
+			try {
+				const url = new URL(String(value || ''), window.location.href);
+				return ['http:', 'https:'].includes(url.protocol) ? this.escapeHtml(url.href) : '';
+			} catch (error) {
+				return '';
+			}
 		},
 
 		escapeHtml(text) {

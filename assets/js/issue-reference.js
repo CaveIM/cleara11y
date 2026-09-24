@@ -113,8 +113,7 @@ document.addEventListener('DOMContentLoaded', function() {
 			try {
 				// Check if axe is available
 				if (typeof axe === 'undefined') {
-					// Load axe-core dynamically
-					await this.loadAxeCore();
+					throw new Error('The enqueued axe-core library is unavailable.');
 				}
 
 				// Get all rules from axe-core
@@ -143,16 +142,6 @@ document.addEventListener('DOMContentLoaded', function() {
 				console.error('Error loading axe rules:', error);
 				this.renderError('Failed to load accessibility rules');
 			}
-		},
-
-		loadAxeCore() {
-			return new Promise((resolve, reject) => {
-				const script = document.createElement('script');
-				script.src = cleara11yData.pluginUrl + 'assets/js/axe.min.js';
-				script.onload = resolve;
-				script.onerror = reject;
-				document.head.appendChild(script);
-			});
 		},
 
 		processRules(rules) {
@@ -275,7 +264,7 @@ document.addEventListener('DOMContentLoaded', function() {
 			return `
 				<div class="cleara11y-reference-item" data-rule-id="${this.escapeHtml(rule.ruleId)}">
 					<div class="cleara11y-rule-meta">
-						<span class="cleara11y-rule-impact ${severity}">${this.escapeHtml(severity)}</span>
+						<span class="cleara11y-rule-impact ${this.escapeHtml(severity)}">${this.escapeHtml(severity)}</span>
 						<div class="cleara11y-rule-tags">
 							${tags.map(tag => `<span class="cleara11y-rule-tag">${this.escapeHtml(tag)}</span>`).join('')}
 						</div>
@@ -336,9 +325,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
 				<div class="cleara11y-detail-section">
 					<h4>Severity Level</h4>
-					<span class="cleara11y-rule-impact ${rule.severity || 'moderate'}">${this.escapeHtml(rule.severity || 'moderate')}</span>
+					<span class="cleara11y-rule-impact ${this.escapeHtml(rule.severity || 'moderate')}">${this.escapeHtml(rule.severity || 'moderate')}</span>
 					<small style="display: block; margin-top: 5px; color: #646970;">
-						(Numeric severity: ${rule.numericSeverity || 3} - ${this.getSeverityLabel(rule.numericSeverity)})
+						(Numeric severity: ${this.escapeHtml(rule.numericSeverity || 3)} - ${this.getSeverityLabel(rule.numericSeverity)})
 					</small>
 				</div>
 
@@ -349,7 +338,7 @@ document.addEventListener('DOMContentLoaded', function() {
 							${wcagTags.map(tag => {
 								const tagClass = tag.replace(/[\.\s]/g, '-');
 								const label = this.getWcagLabel(tag);
-								return `<span class="cleara11y-wcag-tag ${tagClass}">${this.escapeHtml(label)}</span>`;
+								return `<span class="cleara11y-wcag-tag ${this.escapeHtml(tagClass)}">${this.escapeHtml(label)}</span>`;
 							}).join('')}
 						</div>
 					</div>
@@ -367,7 +356,7 @@ document.addEventListener('DOMContentLoaded', function() {
 				${rule.helpUrl ? `
 					<div class="cleara11y-detail-section">
 						<h4>Learn More</h4>
-						<a href="${this.escapeHtml(rule.helpUrl)}" target="_blank" rel="noopener noreferrer" class="cleara11y-help-url">
+						<a href="${this.safeUrl(rule.helpUrl)}" target="_blank" rel="noopener noreferrer" class="cleara11y-help-url">
 							Full Documentation <span class="dashicons dashicons-external"></span>
 						</a>
 					</div>
@@ -432,6 +421,15 @@ document.addEventListener('DOMContentLoaded', function() {
 					<p>${this.escapeHtml(message)}</p>
 				</div>
 			`;
+		},
+
+		safeUrl(value) {
+			try {
+				const url = new URL(String(value || ''), window.location.href);
+				return ['http:', 'https:'].includes(url.protocol) ? this.escapeHtml(url.href) : '';
+			} catch (error) {
+				return '';
+			}
 		},
 
 		escapeHtml(text) {

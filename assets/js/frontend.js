@@ -356,7 +356,7 @@
 
 			if ('rule' === this.settings.group || 'element' === this.settings.group) {
 				var groups = [];
-				var byKey = {};
+				var byKey = Object.create(null);
 				entries.forEach(function(entry) {
 					var key = 'rule' === self.settings.group
 						? String(entry.issue.rule_id || '')
@@ -398,7 +398,8 @@
 				? (issue.help_text || issue.rule_id)
 				: (presentation.text || issue.help_text || issue.rule_id);
 
-			var html = '<li class="cleara11y-panel-issue severity-' + issue.severity + '" data-issue-index="' + index + '" data-severity="' + issue.severity + '">';
+			var severity = this.escapeHtml(issue.severity);
+			var html = '<li class="cleara11y-panel-issue severity-' + severity + '" data-issue-index="' + index + '" data-severity="' + severity + '">';
 			html += '<div class="cleara11y-issue-header">';
 			html += '<div class="cleara11y-issue-info">';
 			html += '<span class="cleara11y-issue-title">' + this.escapeHtml(title) + '</span>';
@@ -406,7 +407,7 @@
 			html += '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="10.5" x2="12" y2="16"></line><circle cx="12" cy="7.5" r="0.5"></circle></svg>';
 			html += '</span>';
 			html += '</div>';
-			html += '<span class="cleara11y-issue-severity-badge severity-' + issue.severity + '">' + issue.severity + '</span>';
+			html += '<span class="cleara11y-issue-severity-badge severity-' + severity + '">' + severity + '</span>';
 			html += '</div>';
 			if (presentation.htmlSnippet) {
 				html += '<code class="cleara11y-issue-snippet" title="' + this.escapeAttribute(presentation.htmlFull) + '">' + this.escapeHtml(presentation.htmlSnippet) + '</code>';

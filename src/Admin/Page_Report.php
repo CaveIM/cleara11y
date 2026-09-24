@@ -71,7 +71,7 @@ class Page_Report {
 	 * @return void
 	 */
 	public function render_page(): void {
-		$post_id = isset($_GET['post_id']) ? intval($_GET['post_id']) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
+		$post_id = isset($_GET['post_id']) && is_scalar($_GET['post_id']) ? intval($_GET['post_id']) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Read-only view/filter parameter; capabilities protect access and state changes use separate nonce-checked handlers.
 
 		if (!$post_id) {
 			wp_die(esc_html__('Invalid post ID.', 'cleara11y'));

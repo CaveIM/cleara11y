@@ -54,9 +54,10 @@ try {
 		}
 		$highlighter = new Highlighter();
 		$highlighter->detect_highlight_request();
-		ob_start();
-		$highlighter->inject_highlighter_script();
-		return ob_get_clean();
+		wp_dequeue_script('cleara11y-highlighter');
+		wp_deregister_script('cleara11y-highlighter');
+		$highlighter->enqueue_highlighter_assets();
+		return wp_scripts()->get_data('cleara11y-highlighter', 'data') ?: '';
 	};
 	foreach ([[0, $post_id, 'missing'], [0, $post_id, 'valid'], [$author_id, $post_id, 'invalid'], [$author_id, $other_id, 'valid'], [1, $other_id, 'valid']] as $case) {
 		if ('' !== $render(...$case)) {
@@ -64,11 +65,11 @@ try {
 		}
 	}
 	$output = $render($author_id, $post_id, 'valid');
-	if (! preg_match('/var issue = (.*?);\s*var element/s', $output, $match)) {
+	if (! preg_match('/var cleara11yHighlight = (.*?);$/s', $output, $match)) {
 		throw new RuntimeException('Authorized highlighting did not serialize issue data.');
 	}
 	$data = json_decode($match[1], true, 512, JSON_THROW_ON_ERROR);
-	if ($issue->message !== $data['message'] || 1 !== substr_count($output, '</script>') || str_contains($output, 'panel.innerHTML')) {
+	if ($issue->message !== $data['message'] || str_contains($output, '</script>') || str_contains($output, 'panel.innerHTML')) {
 		throw new RuntimeException('Stored evidence was modified or rendered as executable markup.');
 	}
 	// An author cannot use a valid nonce to inspect another author's issue.

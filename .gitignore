@@ -47,6 +47,7 @@ composer.lock
 # Plugin specific
 test-activation.php
 .nifty.env
+/.release-build/
 
 # OS generated files
 .DS_Store

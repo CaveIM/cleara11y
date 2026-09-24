@@ -4,7 +4,7 @@ Tags: accessibility, a11y, wcag, accessibility audit, axe
 Requires at least: 6.0
 Tested up to: 7.1
 Requires PHP: 8.0
-Stable tag: 1.6.1
+Stable tag: 1.6.2
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -81,6 +81,14 @@ Deleting the plugin removes its current-site scan and exception tables and setti
 3. Exception management for reviewed findings.
 
 == Changelog ==
+
+= 1.6.2 =
+* Harden request validation and stored-data rendering across admin and frontend views.
+* Scope maintenance behavior and restore shared XML parser state after scans.
+* Enqueue admin and highlighting assets through WordPress.
+* Validate and sanitize browser results before storing scan jobs.
+* Limit cache bypass to validated, page-bound scan requests.
+* Escape attribution metadata while preserving the audited page markup.
 
 = 1.6.1 =
 * Initial WordPress.org submission candidate.

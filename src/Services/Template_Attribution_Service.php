@@ -241,8 +241,8 @@ class Template_Attribution_Service {
 		];
 
 		printf(
-			'<script type="application/json" id="cleara11y-attribution-map">%s</script>',
-			wp_json_encode($payload, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)
+			'<template id="cleara11y-attribution-map" data-sources="%s"></template>',
+			esc_attr(wp_json_encode($payload, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT))
 		);
 	}
 
@@ -259,7 +259,13 @@ class Template_Attribution_Service {
 		}
 
 		$source_id = self::register_source($descriptor);
-		return sprintf('<!--a11y:s:%1$s-->%2$s<!--a11y:e:%1$s-->', $source_id, $html);
+		// This is already-rendered WordPress/theme/plugin output, not new plugin
+		// HTML. Escaping or KSES-filtering it here would change the audited DOM
+		// (including forms, scripts and accessibility attributes). Only our
+		// generated marker is new output; escape it and preserve the input.
+		$start = sprintf('<!--a11y:s:%s-->', esc_html($source_id));
+		$end = sprintf('<!--a11y:e:%s-->', esc_html($source_id));
+		return $start . $html . $end;
 	}
 
 	/**
